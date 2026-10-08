@@ -11,6 +11,7 @@ repository = "https://github.com/KevinGliewe/Polarion-rs"
 authors = ["Kevin Gliewe"]
 
 [workspace.dependencies]
+polarion = { path = "crates/polarion", version = "0.1.0" }
 polarion-rest = { path = "crates/polarion-rest", version = "0.1.0" }
 polarion-soap = { path = "crates/polarion-soap", version = "0.1.0" }
 

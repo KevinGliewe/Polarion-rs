@@ -21,6 +21,11 @@ const NILLABLE_PARAMS: &[(&str, &str, &str)] = &[
     ),
     (
         "TrackerWebService",
+        "getModuleWorkItems",
+        "parentWorkItemURI",
+    ),
+    (
+        "TrackerWebService",
         "moveWorkItemToDocument",
         "parentWorkItemURI",
     ),

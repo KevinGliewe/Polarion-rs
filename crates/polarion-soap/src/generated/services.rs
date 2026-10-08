@@ -7109,7 +7109,7 @@ impl TrackerService<'_> {
     pub async fn get_module_work_items(
         &self,
         module_uri: &str,
-        parent_work_item_uri: &str,
+        parent_work_item_uri: Option<&str>,
         deep: bool,
         fields: &[String],
     ) -> Result<Vec<WorkItem>> {
@@ -7117,7 +7117,12 @@ impl TrackerService<'_> {
         w.open("trackeri", "getModuleWorkItems");
         w.open_end();
         module_uri.write_xml(&mut w, "trackeri", "moduleURI");
-        parent_work_item_uri.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+        match parent_work_item_uri {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+            }
+            None => w.nil("trackeri", "parentWorkItemURI"),
+        }
         deep.write_xml(&mut w, "trackeri", "deep");
         for v in fields {
             v.write_xml(&mut w, "trackeri", "fields");

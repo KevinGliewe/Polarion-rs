@@ -4,7 +4,7 @@
 //! POLARION_URL=https://polarion.example.com/polarion \
 //! POLARION_TOKEN=<personal access token> \
 //! POLARION_PROJECT=MyProject \
-//! cargo run -p polarion-soap --example smoke
+//! cargo run -p polarion-soap --example soap_smoke
 //! ```
 //!
 //! Read-only: the client refuses every operation that may modify data, so this

@@ -5,7 +5,7 @@
 //! POLARION_TOKEN=<personal access token> \
 //! POLARION_PROJECT=MyProject \
 //! POLARION_SAVE_SPEC=polarion-openapi.json \
-//! cargo run -p polarion-rest --example smoke
+//! cargo run -p polarion-rest --example rest_smoke
 //! ```
 //!
 //! Read-only: the client refuses anything but `GET`, so this is safe to run

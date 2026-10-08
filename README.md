@@ -6,9 +6,52 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 |---|---|---|
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
-| `polarion` | planned | Ergonomic library on top of `polarion-rest` |
+| [`polarion`](crates/polarion) | usable (reads) | Convenient, JSON-serializable view of projects, work items and documents, on top of `polarion-soap` |
 | `polarion-cli` | planned | Command-line interface, with JSON output for automation |
 | `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
+
+## polarion
+
+The library the CLI and MCP server build on. It uses the SOAP services (so it works with ordinary user permissions)
+and returns flat domain types that serialize to compact JSON: enum options, users and linked work items are reduced
+to their ids, custom fields become a `key → value` map, and empty fields are left out.
+
+```rust
+use polarion::{Auth, Fields, Polarion, WorkItemQuery};
+
+// Read-only: operations that may modify data are refused before they are sent.
+let polarion = Polarion::new("https://polarion.example.com/polarion", Auth::Token("<token>".into()))?;
+
+let query = WorkItemQuery::new("type:requirement AND status:open")
+    .project("MyProject")
+    .sort("~updated")
+    .limit(20)
+    .fields(Fields::standard().with("description").with_custom("asil"));
+let open = polarion.query_work_items(&query).await?;
+println!("{}", serde_json::to_string_pretty(&open)?);
+
+let item = polarion.work_item("MyProject", "MP-42").await?;   // all fields, outgoing links
+let back_links = polarion.back_links(item.uri.as_deref().unwrap()).await?;
+
+let docs = polarion.documents("MyProject", None).await?;      // all spaces, without bodies
+let srs = polarion.document("MyProject", "Specs", "SRS").await?;
+let items = polarion.document_work_items(srs.uri.as_deref().unwrap(), &Fields::standard()).await?;
+```
+
+```json
+{"id": "MP-42", "project": "MyProject", "type": "requirement", "title": "Brakes", "status": "open",
+ "author": "jdoe", "document": {"project": "MyProject", "space": "Specs", "name": "SRS"},
+ "links": [{"role": "parent", "item": {"project": "MyProject", "id": "MP-7"}}],
+ "customFields": {"asil": "D", "platforms": ["a", "b"], "reviewed": "2024-01-31"}}
+```
+
+Anything not covered is reachable through `Polarion::soap()`. Try it against a real server (read-only, about a dozen
+small requests, prints the JSON of each result):
+
+```sh
+POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject \
+  cargo run -p polarion --example smoke
+```
 
 ## polarion-rest
 
@@ -52,7 +95,7 @@ Try it against a real server (read-only, at most five small `GET` requests; each
 
 ```sh
 POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject POLARION_SAVE_SPEC=spec.json \
-  cargo run -p polarion-rest --example smoke
+  cargo run -p polarion-rest --example rest_smoke
 ```
 
 ## polarion-soap
@@ -98,7 +141,7 @@ Try it against a real server (read-only, at most seven small requests, each repo
 
 ```sh
 POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject \
-  cargo run -p polarion-soap --example smoke
+  cargo run -p polarion-soap --example soap_smoke
 ```
 
 ## Live tests (testdrive only)
@@ -128,7 +171,7 @@ cargo xtask codegen --check  # verify it is up to date
 
 The committed spec is the definition served by a Polarion **2410** server (Apache-2.0). Newer releases add
 endpoints (testdrive's spec has 284 operations, including Pages, licensing, jobs and `GET /user`). To target
-another version, replace the spec with the one your server serves at `<polarion>/rest/v1/definition` (the smoke
+another version, replace the spec with the one your server serves at `<polarion>/rest/v1/definition` (the `rest_smoke`
 example's `POLARION_SAVE_SPEC` does this) and regenerate.
 
 ## REST permissions
