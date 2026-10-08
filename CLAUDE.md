@@ -8,3 +8,5 @@ Rust workspace: `crates/polarion-rest` (generated REST client), `xtask` (code ge
 - Hand-written runtime: `client.rs` (HTTP plumbing, pagination), `jsonapi.rs` (envelope types), `query.rs`, `error.rs`.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace`.
+- Live tests (`crates/polarion-rest/tests/live.rs`) only ever target testdrive.polarion.com; never point anything
+  that writes at another server. They need `POLARION_TESTDRIVE_TOKEN` and `POLARION_TESTDRIVE_PROJECT`.

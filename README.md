@@ -54,6 +54,19 @@ POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_P
   cargo run -p polarion-rest --example smoke
 ```
 
+## Live tests (testdrive only)
+
+`crates/polarion-rest/tests/live.rs` runs against Siemens' public test drive server. The URL is hard-coded so the
+suite can never touch a production instance. `read_tour` is read-only; `work_item_lifecycle` creates three work
+items in your Sandbox project, exercises update, bulk update, query + pagination, links, comments and attachment
+upload/download, then deletes them again (also when a step fails).
+
+```sh
+export POLARION_TESTDRIVE_TOKEN=<personal access token created on testdrive.polarion.com>
+export POLARION_TESTDRIVE_PROJECT=<your project in the testdrive Sandbox>
+cargo test -p polarion-rest --test live -- --ignored --nocapture --test-threads=1
+```
+
 ## Code generation
 
 `crates/polarion-rest/src/generated/` and `crates/polarion-rest/tests/spec_examples.rs` are generated from
