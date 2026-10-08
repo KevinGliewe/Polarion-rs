@@ -1,8 +1,9 @@
 # Polarion-rs
 
 Rust workspace: `crates/polarion-rest` (generated REST client), `crates/polarion-soap` (generated SOAP client),
-`crates/polarion` (hand-written library on top of `polarion-soap`), `crates/polarion-cli` (`polarion` binary on top of
-`polarion`), `xtask` (code generators). Planned: `polarion-mcp`.
+`crates/polarion` (hand-written library on top of `polarion-soap`), `crates/polarion-commands` (every library method
+as a JSON command), `crates/polarion-cli` (`polarion` binary) and `crates/polarion-mcp` (`polarion-mcp` MCP server),
+both built from the command catalog, `xtask` (code generators).
 The repository is English only: code, comments, docs and commit messages.
 
 - Never edit `crates/*/src/generated/*` or `crates/*/tests/spec_examples.rs` by hand. Change the generator
@@ -21,9 +22,16 @@ The repository is English only: code, comments, docs and commit messages.
   `tests/coverage.rs` fails when a SOAP operation is neither called by the library nor listed in its `EXCLUDED` with a
   reason; new operations from a newer WSDL must be exposed or excluded there. Writes are verified against wiremock only; keep the
   "Not yet verified" list in README.md current.
-- `polarion-cli`: arguments in `cli.rs`, dispatch in `run.rs` (one library call per command, results as
-  `serde_json::Value`), text/JSON output in `render.rs`. JSON output is the library's serde form; don't reshape it.
-  End-to-end tests in `tests/cli.rs` spawn the binary against wiremock.
+- `polarion-commands`: one file per area (mirroring the library handles) with a `COMMANDS` table (`command!` macro)
+  and one `async fn(&Polarion, &Args) -> Result<Value>` per command; parameter types in `catalog.rs`, JSON argument
+  parsing (item/document refs, queries, rich text, custom field coercion) in `args.rs`, environment configuration in
+  `config.rs`. `tests/coverage.rs` fails when a public library method has no command: **a new library method needs a
+  command**. Write commands set `write: true` and rely on the library's guard.
+- `polarion-cli` and `polarion-mcp` contain no Polarion logic: the clap tree (`cli.rs`) and the MCP tools
+  (`server.rs`) are generated from the catalog. CLI text output in `render.rs` (table columns come from the
+  command's `Output`); JSON output is the library's serde form, don't reshape it. The MCP server speaks
+  newline-delimited JSON-RPC on stdio; its curated tools are the `CURATED` table. End-to-end tests (`tests/cli.rs`,
+  `tests/mcp.rs`) spawn the binaries against wiremock.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace`.
 - Live tests (`crates/polarion-rest/tests/live.rs`) only ever target testdrive.polarion.com; never point anything

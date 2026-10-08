@@ -2,28 +2,8 @@
 
 use std::fmt::Write as _;
 
+use polarion_commands::Output;
 use serde_json::Value;
-
-/// How a result is shown in text mode. JSON mode always prints the value as is.
-#[derive(Debug, Clone, Copy)]
-pub enum View {
-    /// One row per array element.
-    Table(&'static [Column]),
-    /// An indented `key: value` tree.
-    Object,
-    /// One line per array element (an array of strings).
-    Lines,
-    /// `{"outgoing": [..], "incoming": [..]}` link lists.
-    Links,
-    /// A single number or string.
-    Scalar,
-}
-
-#[derive(Debug)]
-pub struct Column {
-    pub header: &'static str,
-    pub cell: fn(&Value) -> String,
-}
 
 fn str_at(v: &Value, key: &str) -> String {
     match v.get(key) {
@@ -32,78 +12,6 @@ fn str_at(v: &Value, key: &str) -> String {
         Some(other) => other.to_string(),
     }
 }
-
-pub const ITEM_COLUMNS: &[Column] = &[
-    Column {
-        header: "ID",
-        cell: |v| str_at(v, "id"),
-    },
-    Column {
-        header: "TYPE",
-        cell: |v| str_at(v, "type"),
-    },
-    Column {
-        header: "STATUS",
-        cell: |v| str_at(v, "status"),
-    },
-    Column {
-        header: "TITLE",
-        cell: |v| str_at(v, "title"),
-    },
-];
-
-pub const DOCUMENT_ITEM_COLUMNS: &[Column] = &[
-    Column {
-        header: "#",
-        cell: |v| str_at(v, "outlineNumber"),
-    },
-    Column {
-        header: "ID",
-        cell: |v| str_at(v, "id"),
-    },
-    Column {
-        header: "TYPE",
-        cell: |v| str_at(v, "type"),
-    },
-    Column {
-        header: "STATUS",
-        cell: |v| str_at(v, "status"),
-    },
-    Column {
-        header: "TITLE",
-        cell: |v| str_at(v, "title"),
-    },
-];
-
-pub const DOCUMENT_COLUMNS: &[Column] = &[
-    Column {
-        header: "DOCUMENT",
-        cell: |v| format!("{}/{}", str_at(v, "space"), str_at(v, "name")),
-    },
-    Column {
-        header: "TYPE",
-        cell: |v| str_at(v, "type"),
-    },
-    Column {
-        header: "STATUS",
-        cell: |v| str_at(v, "status"),
-    },
-    Column {
-        header: "TITLE",
-        cell: |v| str_at(v, "title"),
-    },
-];
-
-pub const PROJECT_COLUMNS: &[Column] = &[
-    Column {
-        header: "ID",
-        cell: |v| str_at(v, "id"),
-    },
-    Column {
-        header: "NAME",
-        cell: |v| str_at(v, "name"),
-    },
-];
 
 /// JSON for programs: pretty on a terminal, one line otherwise.
 pub fn json(value: &Value, pretty: bool) -> String {
@@ -115,10 +23,10 @@ pub fn json(value: &Value, pretty: bool) -> String {
     text.expect("a serde_json::Value always serializes")
 }
 
-/// Text for people. Empty for an empty list.
-pub fn text(value: &Value, view: View) -> String {
-    match view {
-        View::Table(columns) => {
+/// Text for people. Empty for an empty list or no result.
+pub fn text(value: &Value, output: Output) -> String {
+    match output {
+        Output::Table(columns) => {
             let rows: Vec<Vec<String>> = items(value)
                 .map(|item| columns.iter().map(|c| one_line(&(c.cell)(item))).collect())
                 .collect();
@@ -127,13 +35,13 @@ pub fn text(value: &Value, view: View) -> String {
             }
             table(&columns.iter().map(|c| c.header).collect::<Vec<_>>(), &rows)
         }
-        View::Object => {
+        Output::Object => {
             let mut out = String::new();
             tree(&mut out, 0, value);
             out
         }
-        View::Lines => items(value).map(|v| format!("{}\n", inline(v))).collect(),
-        View::Links => {
+        Output::Lines => items(value).map(|v| format!("{}\n", inline(v))).collect(),
+        Output::Links => {
             let mut rows = Vec::new();
             for (key, direction) in [("outgoing", "out"), ("incoming", "in")] {
                 for link in value.get(key).into_iter().flat_map(items) {
@@ -154,8 +62,35 @@ pub fn text(value: &Value, view: View) -> String {
             }
             table(&["DIRECTION", "ROLE", "ITEM", ""], &rows)
         }
-        View::Scalar => format!("{}\n", inline(value)),
+        Output::Scalar => match value {
+            Value::Null => String::new(),
+            other => format!("{}\n", inline(other)),
+        },
+        Output::Bytes => format!(
+            "{} bytes (use --out FILE to save them)\n",
+            value.get("size").and_then(Value::as_u64).unwrap_or(0)
+        ),
+        Output::Done => match value.get("changed") {
+            Some(Value::Bool(true)) => "changed\n".into(),
+            Some(Value::Bool(false)) => "unchanged\n".into(),
+            _ => "done\n".into(),
+        },
     }
+}
+
+/// The command list for `polarion commands`.
+pub fn commands(list: &[(String, bool, String)]) -> String {
+    let rows: Vec<Vec<String>> = list
+        .iter()
+        .map(|(name, write, summary)| {
+            vec![
+                name.clone(),
+                if *write { "write" } else { "" }.to_owned(),
+                summary.clone(),
+            ]
+        })
+        .collect();
+    table(&["COMMAND", "", "SUMMARY"], &rows)
 }
 
 fn items(value: &Value) -> impl Iterator<Item = &Value> {
@@ -338,12 +273,15 @@ mod tests {
             {"id": "P-10", "type": "task", "title": "Multi\nline"},
         ]);
         assert_eq!(
-            text(&items, View::Table(ITEM_COLUMNS)),
+            text(&items, Output::Table(polarion_commands::ITEM_COLUMNS)),
             "ID    TYPE         STATUS  TITLE\n\
              P-1   requirement  open    Brakes\n\
              P-10  task                 Multi line\n"
         );
-        assert_eq!(text(&json!([]), View::Table(ITEM_COLUMNS)), "");
+        assert_eq!(
+            text(&json!([]), Output::Table(polarion_commands::ITEM_COLUMNS)),
+            ""
+        );
     }
 
     #[test]
@@ -357,7 +295,7 @@ mod tests {
             "customFields": {"asil": "D", "count": 3},
         });
         assert_eq!(
-            text(&item, View::Object),
+            text(&item, Output::Object),
             "id: P-1\n\
              description: First & foremost\n  Second\n\
              assignees: amy, bob\n\
@@ -374,7 +312,7 @@ mod tests {
             "incoming": [{"role": "verifies", "item": {"uri": "x"}}],
         });
         assert_eq!(
-            text(&links, View::Links),
+            text(&links, Output::Links),
             "DIRECTION  ROLE      ITEM   \n".trim_end().to_owned()
                 + "\n"
                 + "out        parent    P/P-0  suspect\n"

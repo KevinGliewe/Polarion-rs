@@ -7,8 +7,11 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
 | [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
-| [`polarion-cli`](crates/polarion-cli) | usable (reads) | `polarion` command-line tool, with JSON output for automation |
-| `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
+| [`polarion-commands`](crates/polarion-commands) | usable | Every library method as a named JSON command with a parameter schema; shared by the CLI and the MCP server |
+| [`polarion-cli`](crates/polarion-cli) | usable (writes mock-tested only) | `polarion` command-line tool covering the whole library, with JSON output for automation |
+| [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | MCP server (stdio) so AI agents can work with Polarion |
+
+Both front ends are **read-only unless writes are enabled** for named projects (see [Writes](#writes)).
 
 ## polarion (command line)
 
@@ -30,27 +33,103 @@ $env:POLARION_TOKEN = "<personal access token>"
 $env:POLARION_PROJECT = "MyProject"
 ```
 
+Commands are `polarion <area> <command>`, one per library method (about 250). `polarion commands [AREA]` lists them
+and `--help` on any command shows its arguments.
+
 ```sh
-polarion project show
-polarion item query "type:requirement AND status:open" --sort ~updated --limit 20
-polarion item query "type:requirement" --fields id,title,description --custom asil --json
-polarion item count "type:requirement"
-polarion item show MP-42                    # or OtherProject/OP-7
-polarion item links MP-42                   # outgoing and incoming
-polarion doc list [--space Specs]
-polarion doc show Specs/SRS [--body]
-polarion doc items Specs/SRS
-polarion user show jdoe
+polarion commands items
+polarion projects get
+polarion items query "type:requirement AND status:open" --sort ~updated --limit 20
+polarion items query "type:requirement" --fields id,title,description --custom asil --json
+polarion items count "type:requirement"
+polarion items get MP-42                    # or OtherProject/OP-7, or a URI
+polarion items links MP-42                  # outgoing and incoming
+polarion items history MP-42
+polarion documents list [--space Specs]
+polarion documents get Specs/SRS [--body]
+polarion documents work-items Specs/SRS
+polarion schema custom-fields --type requirement
+polarion tests search "status:open"
+polarion plans statistics Release-1
+polarion users get jdoe
+polarion items attachment MP-42 --attachment 1-spec.pdf --out spec.pdf
 ```
 
-- **Read-only:** the client refuses every operation that may modify data, and each run ends its server session.
+- **Read-only by default:** commands marked `write` in `polarion commands` are refused before anything is sent,
+  unless `POLARION_WRITE_PROJECTS` (or `--write-projects`) names the target project. Writes that are not tied to a
+  project (users, global folders) additionally need `POLARION_ALLOW_GLOBAL_WRITES=1`. Each run ends its server
+  session.
+- **Arguments:** work items are `ID` (in the default project), `PROJECT/ID` or a URI; documents `SPACE/NAME`,
+  `PROJECT/SPACE/NAME` or a URI. Structured arguments (custom fields, test records) take JSON, e.g.
+  `--custom-fields '{"asil": "D"}'`; rich text takes a string or `{"type": "text/html", "content": "..."}`; binary
+  arguments take base64 or `@FILE`, binary results go to `--out FILE`.
 - **Text output** for people: tables for lists, an indented `key: value` view for single objects, rich text with
   HTML tags stripped.
 - **`--json`** prints the library's JSON form (pretty on a terminal, one line when piped). Errors go to stderr, in
-  JSON mode as `{"error": {"code": "notFound", "message": "..."}}`.
+  JSON mode as `{"error": {"code": "notFound", "message": "..."}}`. `polarion --json commands` includes the JSON
+  Schema of every command's arguments.
 - **Exit codes:** 0 success, 1 error, 2 usage error, 3 not found.
 - **Limits:** queries return at most 100 results unless `--limit N` or `--all`; a note on stderr says when results
   were cut off.
+
+## polarion-mcp (MCP server)
+
+```sh
+cargo install --path crates/polarion-mcp    # installs the `polarion-mcp` binary
+```
+
+An [MCP](https://modelcontextprotocol.io) server over stdio, configured by the same environment variables as the
+CLI. It offers:
+
+- **Dedicated tools for everyday reads:** `get_work_item`, `query_work_items`, `count_work_items`,
+  `work_item_links`, `work_item_history`, `list_documents`, `get_document`, `document_work_items`, `custom_fields`,
+  `field_options`, `search_test_runs`, `get_test_run`, `search_plans`, `get_project`, `get_user`.
+- **Three generic tools that reach every command:** `polarion_commands` (areas, or the commands of one area),
+  `polarion_describe` (a command's argument schema) and `polarion_call` (run a command).
+- With `POLARION_MCP_TOOLS=all`, every command is also registered as its own tool (`items_add_link`, ...). That
+  is about 270 tools, which costs the agent context on every turn; the default set is usually better.
+
+Results are the library's JSON. Failures, including refused writes, are tool errors with a message such as
+`error (readOnly): ...`. The server is read-only unless `POLARION_WRITE_PROJECTS` is set, and it tells the agent so
+when it connects.
+
+Claude Code:
+
+```sh
+claude mcp add polarion -e POLARION_URL=https://polarion.example.com/polarion \
+  -e POLARION_TOKEN=<token> -e POLARION_PROJECT=MyProject -- polarion-mcp
+```
+
+Claude Desktop and other clients (`claude_desktop_config.json`, `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "polarion": {
+      "command": "polarion-mcp",
+      "env": {
+        "POLARION_URL": "https://polarion.example.com/polarion",
+        "POLARION_TOKEN": "<token>",
+        "POLARION_PROJECT": "MyProject"
+      }
+    }
+  }
+}
+```
+
+## polarion-commands
+
+The catalog both front ends are built from: every library method as a command with a name (`items.add-link`), a
+summary, typed parameters (exported as JSON Schema), a write flag, and a handler that takes JSON arguments and
+returns the library's JSON. `polarion_commands::Config::from_env()` reads the environment variables above.
+`tests/coverage.rs` fails when a library method has no command.
+
+```rust
+let config = polarion_commands::Config::from_env();
+let polarion = config.connect()?;
+let args = polarion_commands::Args::from_value(serde_json::json!({"item": "MP-42"}), config.project.clone())?;
+let item = polarion_commands::call(&polarion, "items.get", &args).await?;
+```
 
 ## polarion
 

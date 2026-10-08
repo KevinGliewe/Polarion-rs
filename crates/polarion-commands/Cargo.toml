@@ -1,0 +1,25 @@
+[package]
+name = "polarion-commands"
+description = "Every operation of the polarion library as a named JSON command, shared by the CLI and the MCP server"
+keywords = ["polarion", "alm", "cli", "mcp"]
+categories = ["api-bindings"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+base64.workspace = true
+polarion.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[dev-dependencies]
+tokio.workspace = true
+wiremock.workspace = true
+
+[lints]
+workspace = true

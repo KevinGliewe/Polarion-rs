@@ -16,6 +16,8 @@ const VARS: &[&str] = &[
     "POLARION_TOKEN",
     "POLARION_USER",
     "POLARION_PASSWORD",
+    "POLARION_WRITE_PROJECTS",
+    "POLARION_ALLOW_GLOBAL_WRITES",
 ];
 
 fn envelope(header: &str, body: &str) -> String {
@@ -113,7 +115,7 @@ async fn item_show_prints_the_json_form() {
     )
     .await;
 
-    let run = polarion(Some(&server), &[], &["item", "show", "P/P-1", "--json"]).await;
+    let run = polarion(Some(&server), &[], &["items", "get", "P/P-1", "--json"]).await;
     assert_eq!(run.code, 0, "{}", run.stderr);
     assert_eq!(
         run.json(),
@@ -147,7 +149,7 @@ async fn missing_items_exit_with_3() {
     let run = polarion(
         Some(&server),
         &[("POLARION_PROJECT", "P")],
-        &["--json", "item", "show", "P-9"],
+        &["--json", "items", "get", "P-9"],
     )
     .await;
     assert_eq!(run.code, 3);
@@ -181,7 +183,7 @@ async fn item_query_prints_a_table_and_a_limit_note() {
         &[
             "-p",
             "P",
-            "item",
+            "items",
             "query",
             "type:requirement",
             "--limit",
@@ -220,7 +222,7 @@ async fn doc_show_skips_the_body_unless_asked() {
     let run = polarion(
         Some(&server),
         &[("POLARION_PROJECT", "P")],
-        &["doc", "show", "Specs/SRS"],
+        &["documents", "get", "Specs/SRS"],
     )
     .await;
     assert_eq!(run.code, 0, "{}", run.stderr);
@@ -234,7 +236,7 @@ async fn doc_show_skips_the_body_unless_asked() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn configuration_errors_exit_with_1_before_any_request() {
-    let run = polarion(None, &[], &["--json", "item", "show", "P-1"]).await;
+    let run = polarion(None, &[], &["--json", "items", "get", "P-1"]).await;
     assert_eq!(run.code, 1);
     let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
     assert_eq!(error["error"]["code"], "config");
@@ -246,12 +248,97 @@ async fn configuration_errors_exit_with_1_before_any_request() {
             ("POLARION_URL", "http://127.0.0.1:9"),
             ("POLARION_TOKEN", "t"),
         ],
-        &["item", "show", "P-1"],
+        &["items", "get", "P-1"],
     )
     .await;
     assert_eq!(run.code, 1);
     assert!(run.stderr.contains("no project"), "{}", run.stderr);
 
-    let run = polarion(None, &[], &["item", "frobnicate"]).await;
+    let run = polarion(None, &[], &["items", "frobnicate"]).await;
     assert_eq!(run.code, 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_are_listed() {
+    let run = polarion(None, &[], &["commands", "plans"]).await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(run.stdout.starts_with("COMMAND"), "{}", run.stdout);
+    assert!(run.stdout.contains("plans statistics"));
+    assert!(
+        run.stdout
+            .lines()
+            .any(|l| l.starts_with("plans add-items") && l.contains(" write ")),
+        "{}",
+        run.stdout
+    );
+
+    let run = polarion(None, &[], &["--json", "commands", "builds"]).await;
+    let list: Value = serde_json::from_str(&run.stdout).unwrap();
+    assert_eq!(list[0]["name"], "builds.all");
+    assert_eq!(list[2]["input"]["required"], json!(["query"]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn writes_are_refused_without_write_projects() {
+    let server = MockServer::start().await;
+    let run = polarion(Some(&server), &[], &["--json", "items", "delete", "P/P-1"]).await;
+    assert_eq!(run.code, 1);
+    let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
+    assert_eq!(error["error"]["code"], "readOnly");
+    assert!(
+        server.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn attachments_are_written_to_a_file() {
+    let server = server().await;
+    mock(
+        &server,
+        &["getAttachment>", "attachmentId>a-1<"],
+        "<getAttachmentResponse><getAttachmentReturn>aGVsbG8=</getAttachmentReturn></getAttachmentResponse>",
+    )
+    .await;
+    let dir = std::env::temp_dir().join(format!("polarion-cli-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("out.bin");
+
+    let run = polarion(
+        Some(&server),
+        &[],
+        &[
+            "items",
+            "attachment",
+            "P/P-1",
+            "--attachment",
+            "a-1",
+            "--out",
+            file.to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(std::fs::read(&file).unwrap(), b"hello");
+    assert!(run.stderr.contains("wrote 5 bytes"));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn writes_go_through_with_write_projects() {
+    let server = server().await;
+    mock(
+        &server,
+        &["addAssignee>", "assigneeId>jdoe<"],
+        "<addAssigneeResponse><addAssigneeReturn>true</addAssigneeReturn></addAssigneeResponse>",
+    )
+    .await;
+    let run = polarion(
+        Some(&server),
+        &[("POLARION_WRITE_PROJECTS", "Sandbox")],
+        &["items", "add-assignee", "Sandbox/SB-1", "--user", "jdoe"],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "changed\n");
 }
