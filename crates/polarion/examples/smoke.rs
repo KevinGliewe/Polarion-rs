@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some((space, name)) = location.as_deref().and_then(|l| l.split_once('/')) {
         if let Some(mut doc) = report(
             &format!("document({space}/{name})"),
-            polarion.document(&project, space, name).await,
+            polarion.document(&project, space, name, true).await,
         ) {
             let body = doc.body.take().map(|b| b.content.chars().count());
             show(&doc);

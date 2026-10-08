@@ -179,6 +179,20 @@ async fn documents_and_their_work_items() {
         &server,
         TRACKER,
         &[
+            "getModuleByLocationWithFields>",
+            "location>Specs/SRS<",
+            "fields>moduleName<",
+        ],
+        &format!(
+            r#"<getModuleByLocationWithFieldsResponse><getModuleByLocationWithFieldsReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs/SRS">{}</getModuleByLocationWithFieldsReturn></getModuleByLocationWithFieldsResponse>"#,
+            module("Specs", "SRS"),
+        ),
+    )
+    .await;
+    mock(
+        &server,
+        TRACKER,
+        &[
             "getModuleWorkItems>",
             r#"parentWorkItemURI xsi:nil="true"/>"#,
             "deep>true<",
@@ -204,8 +218,13 @@ async fn documents_and_their_work_items() {
     let in_space = polarion.documents("P", Some("Specs")).await.unwrap();
     assert_eq!(in_space.len(), 1);
 
-    let doc = polarion.document("P", "Specs", "SRS").await.unwrap();
+    let doc = polarion.document("P", "Specs", "SRS", true).await.unwrap();
     assert_eq!(doc.body.as_ref().unwrap().content, "<h1>SRS</h1>");
+    let meta = polarion.document("P", "Specs", "SRS", false).await.unwrap();
+    assert_eq!(
+        (meta.title.as_deref(), meta.body),
+        (Some("SRS title"), None)
+    );
 
     let items = polarion
         .document_work_items(doc.uri.as_deref().unwrap(), &Fields::standard())

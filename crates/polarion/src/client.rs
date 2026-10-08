@@ -162,7 +162,7 @@ impl Polarion {
 
     /// Documents of a project, or of one space, sorted by space and name. Bodies are not fetched.
     pub async fn documents(&self, project: &str, space: Option<&str>) -> Result<Vec<Document>> {
-        let fields: Vec<String> = DOCUMENT_LIST_FIELDS.iter().map(|&f| f.into()).collect();
+        let fields = document_list_fields();
         let tracker = self.soap.tracker();
         let modules = match space {
             Some(space) => {
@@ -184,14 +184,24 @@ impl Polarion {
         Ok(docs)
     }
 
-    /// One document with all fields, including its body.
-    pub async fn document(&self, project: &str, space: &str, name: &str) -> Result<Document> {
+    /// One document. With `with_body`, all fields including the body (which can be large);
+    /// otherwise the same fields as [`Polarion::documents`].
+    pub async fn document(
+        &self,
+        project: &str,
+        space: &str,
+        name: &str,
+        with_body: bool,
+    ) -> Result<Document> {
         let location = format!("{space}/{name}");
-        let m = self
-            .soap
-            .tracker()
-            .get_module_by_location(project, &location)
-            .await?;
+        let tracker = self.soap.tracker();
+        let m = if with_body {
+            tracker.get_module_by_location(project, &location).await?
+        } else {
+            tracker
+                .get_module_by_location_with_fields(project, &location, &document_list_fields())
+                .await?
+        };
         if m.unresolvable == Some(true) || (m.uri.is_none() && m.title.is_none()) {
             return Err(not_found("document", &format!("{project}/{location}")));
         }
@@ -211,6 +221,10 @@ impl Polarion {
             .await?;
         Ok(items.into_iter().map(WorkItem::from).collect())
     }
+}
+
+fn document_list_fields() -> Vec<String> {
+    DOCUMENT_LIST_FIELDS.iter().map(|&f| f.into()).collect()
 }
 
 fn not_found(kind: &'static str, id: &str) -> Error {

@@ -1,0 +1,32 @@
+[package]
+name = "polarion-cli"
+description = "Command-line interface for Siemens Polarion ALM, with JSON output for automation"
+keywords = ["polarion", "alm", "cli", "requirements"]
+categories = ["command-line-utilities"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "polarion"
+path = "src/main.rs"
+# Same name as the library crate; its docs would overwrite the library's.
+doc = false
+
+[dependencies]
+clap.workspace = true
+polarion.workspace = true
+serde.workspace = true
+# Keep struct field order in the JSON values the text output is rendered from.
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+
+[lints]
+workspace = true

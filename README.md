@@ -7,8 +7,50 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
 | [`polarion`](crates/polarion) | usable (reads) | Convenient, JSON-serializable view of projects, work items and documents, on top of `polarion-soap` |
-| `polarion-cli` | planned | Command-line interface, with JSON output for automation |
+| [`polarion-cli`](crates/polarion-cli) | usable (reads) | `polarion` command-line tool, with JSON output for automation |
 | `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
+
+## polarion (command line)
+
+```sh
+cargo install --path crates/polarion-cli    # installs the `polarion` binary
+```
+
+Configuration comes from the environment (credentials only from there, never from flags):
+
+```sh
+export POLARION_URL=https://polarion.example.com/polarion
+export POLARION_TOKEN=<personal access token>   # or POLARION_USER + POLARION_PASSWORD
+export POLARION_PROJECT=MyProject               # default project, or -p/--project
+```
+
+```powershell
+$env:POLARION_URL = "https://polarion.example.com/polarion"
+$env:POLARION_TOKEN = "<personal access token>"
+$env:POLARION_PROJECT = "MyProject"
+```
+
+```sh
+polarion project show
+polarion item query "type:requirement AND status:open" --sort ~updated --limit 20
+polarion item query "type:requirement" --fields id,title,description --custom asil --json
+polarion item count "type:requirement"
+polarion item show MP-42                    # or OtherProject/OP-7
+polarion item links MP-42                   # outgoing and incoming
+polarion doc list [--space Specs]
+polarion doc show Specs/SRS [--body]
+polarion doc items Specs/SRS
+polarion user show jdoe
+```
+
+- **Read-only:** the client refuses every operation that may modify data, and each run ends its server session.
+- **Text output** for people: tables for lists, an indented `key: value` view for single objects, rich text with
+  HTML tags stripped.
+- **`--json`** prints the library's JSON form (pretty on a terminal, one line when piped). Errors go to stderr, in
+  JSON mode as `{"error": {"code": "notFound", "message": "..."}}`.
+- **Exit codes:** 0 success, 1 error, 2 usage error, 3 not found.
+- **Limits:** queries return at most 100 results unless `--limit N` or `--all`; a note on stderr says when results
+  were cut off.
 
 ## polarion
 
@@ -34,7 +76,7 @@ let item = polarion.work_item("MyProject", "MP-42").await?;   // all fields, out
 let back_links = polarion.back_links(item.uri.as_deref().unwrap()).await?;
 
 let docs = polarion.documents("MyProject", None).await?;      // all spaces, without bodies
-let srs = polarion.document("MyProject", "Specs", "SRS").await?;
+let srs = polarion.document("MyProject", "Specs", "SRS", true).await?; // with body
 let items = polarion.document_work_items(srs.uri.as_deref().unwrap(), &Fields::standard()).await?;
 ```
 
