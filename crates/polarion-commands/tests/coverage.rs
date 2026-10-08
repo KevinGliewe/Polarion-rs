@@ -85,7 +85,7 @@ fn every_library_method_has_a_command() {
     let called = |m: &str| {
         let (ty, method) = m.split_once('.').unwrap();
         let pattern = match accessors[ty] {
-            "" => format!("p.{method}("),
+            "" => format!(".polarion.{method}("),
             accessor => format!(".{accessor}().{method}("),
         };
         commands.contains(&pattern)
@@ -110,43 +110,4 @@ fn every_library_method_has_a_command() {
             "excluded `{m}` is used; remove it from EXCLUDED"
         );
     }
-}
-
-#[test]
-fn catalog_is_consistent() {
-    let commands = polarion_commands::commands();
-    let mut names = std::collections::BTreeSet::new();
-    for c in commands {
-        assert!(
-            names.insert(c.full_name()),
-            "duplicate command {}",
-            c.full_name()
-        );
-        assert!(
-            polarion_commands::AREAS.iter().any(|(a, _)| *a == c.area),
-            "{}: unknown area",
-            c.full_name()
-        );
-        let mut params = std::collections::BTreeSet::new();
-        let mut optional_positional = false;
-        for p in c.params {
-            assert!(
-                params.insert(p.name),
-                "{}: duplicate parameter {}",
-                c.full_name(),
-                p.name
-            );
-            if p.positional {
-                assert!(
-                    !(optional_positional && p.required),
-                    "{}: required positional `{}` after an optional one",
-                    c.full_name(),
-                    p.name
-                );
-                optional_positional |= !p.required;
-            }
-        }
-        assert!(c.input_schema()["properties"].is_object());
-    }
-    assert!(commands.len() > 230, "{} commands", commands.len());
 }

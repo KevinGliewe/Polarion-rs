@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use polarion::Polarion;
-use polarion_commands::{AREAS, Args, Command, CommandError, Config, Output, commands, find};
+use polarion_commands::{AREAS, CommandError, Config, Context, Entry, View, catalog, find};
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
@@ -64,19 +64,19 @@ refused unless the server was started with POLARION_WRITE_PROJECTS for the targe
 project.";
 
 enum ToolKind {
-    Command(&'static Command),
+    Command(&'static Entry),
     ListCommands,
     Describe,
     Call,
 }
 
-struct Entry {
+struct Registered {
     tool: Tool,
     kind: ToolKind,
 }
 
 /// `items.back-links` → `items_back_links`.
-fn tool_name(command: &Command) -> String {
+fn tool_name(command: &Entry) -> String {
     format!("{}_{}", command.area, command.name.replace('-', "_"))
 }
 
@@ -86,19 +86,19 @@ fn tool(
     schema: Value,
     read_only: bool,
     kind: ToolKind,
-) -> Entry {
+) -> Registered {
     let Value::Object(schema) = schema else {
         unreachable!("input schemas are objects")
     };
     let tool = Tool::new_with_raw(name, Some(Cow::Owned(description)), Arc::new(schema))
         .with_annotations(ToolAnnotations::new().read_only(read_only));
-    Entry { tool, kind }
+    Registered { tool, kind }
 }
 
-fn command_tool(name: String, command: &'static Command, exchange: Option<&Exchange>) -> Entry {
+fn command_tool(name: String, command: &'static Entry, exchange: Option<&Exchange>) -> Registered {
     tool(
         name,
-        command.description(),
+        command.description.to_owned(),
         files::schema(command, exchange),
         !command.write,
         ToolKind::Command(command),
@@ -106,7 +106,7 @@ fn command_tool(name: String, command: &'static Command, exchange: Option<&Excha
 }
 
 struct Shared {
-    tools: Vec<Entry>,
+    tools: Vec<Registered>,
     polarion: Result<Polarion, CommandError>,
     config: Config,
     transport: Transport,
@@ -136,7 +136,7 @@ impl PolarionMcp {
         transport: Transport,
         exchange: Option<Exchange>,
     ) -> Self {
-        let mut tools: Vec<Entry> = CURATED
+        let mut tools: Vec<Registered> = CURATED
             .iter()
             .map(|(name, command)| {
                 let command = find(command).expect("curated commands exist");
@@ -186,10 +186,10 @@ impl PolarionMcp {
             ToolKind::Call,
         ));
         if all_tools {
-            let available = |c: &&Command| {
+            let available = |c: &&Entry| {
                 transport == Transport::Stdio || !SESSION_BOUND.contains(&c.full_name().as_str())
             };
-            for c in commands().iter().filter(available) {
+            for c in catalog().iter().filter(available) {
                 tools.push(command_tool(tool_name(c), c, exchange.as_ref()));
             }
         }
@@ -252,7 +252,7 @@ impl PolarionMcp {
         format!("{INSTRUCTIONS}{writes}{project}{shared}{files}")
     }
 
-    async fn run(&self, command: &Command, arguments: Value) -> Result<Value, CommandError> {
+    async fn run(&self, command: &Entry, arguments: Value) -> Result<Value, CommandError> {
         if self.0.transport == Transport::Http
             && SESSION_BOUND.contains(&command.full_name().as_str())
         {
@@ -260,21 +260,23 @@ impl PolarionMcp {
                 "transactions are not available over HTTP: all clients share one Polarion session",
             ));
         }
+        let command = command.parse(arguments)?;
         let polarion = self.0.polarion.as_ref().map_err(|e| CommandError {
             code: e.code,
             message: e.message.clone(),
         })?;
-        let args = Args::from_value(arguments, self.0.config.project.clone())?;
-        (command.run)(polarion, &args).await
+        let cx = Context::new(polarion, self.0.config.project.as_deref());
+        let output = command.run(&cx).await?;
+        Ok(serde_json::to_value(&output).expect("results serialize"))
     }
 
     /// Run a command for the agent: exchange arguments in, byte results as image/text blocks.
-    async fn execute(&self, command: &Command, arguments: Value) -> CallToolResult {
+    async fn execute(&self, command: &Entry, arguments: Value) -> CallToolResult {
         let exchange = self.0.exchange.as_ref();
         let outcome = async {
             let (arguments, save_as) = files::prepare(command, arguments, exchange)?;
             let value = self.run(command, arguments).await?;
-            if matches!(command.output, Output::Bytes) {
+            if matches!(command.view, View::Bytes) {
                 files::present(&value, save_as.as_deref(), exchange)
             } else {
                 Ok(vec![ContentBlock::text(text(&value))])
@@ -386,13 +388,13 @@ fn list_commands(arguments: &Value) -> Result<Value, CommandError> {
             AREAS
                 .iter()
                 .map(|(area, about)| {
-                    let count = commands().iter().filter(|c| c.area == *area).count();
+                    let count = catalog().iter().filter(|c| c.area == *area).count();
                     json!({"area": area, "description": about, "commands": count})
                 })
                 .collect(),
         )),
         Some(area) => {
-            let list: Vec<Value> = commands()
+            let list: Vec<Value> = catalog()
                 .iter()
                 .filter(|c| c.area == area)
                 .map(|c| {
@@ -424,7 +426,7 @@ fn describe(arguments: &Value, exchange: Option<&Exchange>) -> Result<Value, Com
     })?;
     Ok(json!({
         "name": c.full_name(),
-        "description": c.description(),
+        "description": c.description,
         "write": c.write,
         "inputSchema": files::schema(c, exchange),
     }))

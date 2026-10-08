@@ -7,7 +7,8 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
 | [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
-| [`polarion-commands`](crates/polarion-commands) | usable | Every library method as a named JSON command with a parameter schema; shared by the CLI and the MCP server |
+| [`polarion-commands`](crates/polarion-commands) | usable | Every library method as a typed command DTO (serde, JSON Schema, clap); shared by the CLI and the MCP server |
+| [`polarion-commands-derive`](crates/polarion-commands-derive) | internal | `#[cmd]`, `#[cmd_args]` and `registry!`: the code generation behind `polarion-commands` |
 | [`polarion-cli`](crates/polarion-cli) | usable (writes mock-tested only) | `polarion` command-line tool covering the whole library, with JSON output for automation |
 | [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | MCP server (stdio or Streamable HTTP) so AI agents can work with Polarion |
 
@@ -177,17 +178,49 @@ claude mcp add --transport http polarion https://mcp.example.com/mcp \
 
 ## polarion-commands
 
-The catalog both front ends are built from: every library method as a command with a name (`items.add-link`), a
-summary, typed parameters (exported as JSON Schema), a write flag, and a handler that takes JSON arguments and
-returns the library's JSON. `polarion_commands::Config::from_env()` reads the environment variables above.
-`tests/coverage.rs` fails when a library method has no command.
+Every library method as a command: a DTO with typed arguments (references, enums, rich text, field selections,
+binary data) and a typed result, run against a `Context`. Serialization only happens at the boundaries, and it is
+generated: `#[cmd]` derives serde (so a command or its result can be JSON, YAML or any other serde format), the
+JSON Schema of the arguments (for MCP) and the clap arguments (feature `cli`); `registry!` generates the typed
+`AnyCommand`/`AnyOutput` enums, the catalog and the command-line tree.
+
+```rust
+/// Assign a user.
+#[cmd(write, view = done)]
+pub struct AddAssignee {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+}
+
+impl Run for AddAssignee {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Changed> {
+        Ok(cx.polarion.items().add_assignee(&self.item.resolve(cx)?, &self.user).await?.into())
+    }
+}
+```
+
+Its name (`items.add-assignee`) comes from the area and the type name, the summary and the parameter help from the
+doc comments. From JSON, arguments are checked against the schema: unknown keys are refused, and scalars are
+accepted as people write them (`"5"` for 5, `"a,b"` for a list). Custom field values stay JSON in the DTOs, because
+their types are only known from Polarion's field definitions at run time.
 
 ```rust
 let config = polarion_commands::Config::from_env();
 let polarion = config.connect()?;
-let args = polarion_commands::Args::from_value(serde_json::json!({"item": "MP-42"}), config.project.clone())?;
-let item = polarion_commands::call(&polarion, "items.get", &args).await?;
+let cx = polarion_commands::Context::new(&polarion, config.project.as_deref());
+
+let item: polarion::WorkItem = items::Get { item: "MP-42".parse()?, fields: None, custom: vec![] }.run(&cx).await?;
+let output = polarion_commands::call(&cx, "items.count", json!({"query": "type:task"})).await?;  // by name, JSON in
+println!("{}", serde_json::to_string(&output)?);                                                 // serialized out
 ```
+
+`tests/coverage.rs` fails when a library method has no command; `tests/registry.rs` checks that every command parses
+from its schema and survives a serialization round trip.
 
 ## polarion
 

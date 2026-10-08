@@ -6,7 +6,7 @@ use std::path::{Component, Path, PathBuf};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use polarion_commands::{Command, CommandError, Kind, Output};
+use polarion_commands::{CommandError, Entry, View};
 use rmcp::model::ContentBlock;
 use serde_json::{Map, Value, json};
 
@@ -84,25 +84,31 @@ impl Exchange {
     }
 }
 
+/// The arguments that take binary content (base64 in the schema).
+fn byte_arguments(schema: &Value) -> Vec<String> {
+    schema["properties"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, p)| p.get("contentEncoding").and_then(Value::as_str) == Some("base64"))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 /// The argument naming the exchange file for byte parameter `param`.
 fn file_argument(param: &str) -> String {
     format!("{param}-file")
 }
 
 /// The command's input schema, plus the exchange arguments when the folder is set.
-pub fn schema(command: &Command, exchange: Option<&Exchange>) -> Value {
+pub fn schema(command: &Entry, exchange: Option<&Exchange>) -> Value {
     let mut schema = command.input_schema();
     if exchange.is_none() {
         return schema;
     }
-    let bytes: Vec<&str> = command
-        .params
-        .iter()
-        .filter(|p| matches!(p.kind, Kind::Bytes))
-        .map(|p| p.name)
-        .collect();
+    let bytes = byte_arguments(&schema);
     if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
-        if matches!(command.output, Output::Bytes) {
+        if matches!(command.view, View::Bytes) {
             properties.insert(
                 SAVE_AS.into(),
                 json!({"type": "string", "description": "Save the content as this file in the exchange folder instead of returning it"}),
@@ -116,7 +122,7 @@ pub fn schema(command: &Command, exchange: Option<&Exchange>) -> Value {
         }
     }
     if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) {
-        required.retain(|r| !r.as_str().is_some_and(|r| bytes.contains(&r)));
+        required.retain(|r| !r.as_str().is_some_and(|r| bytes.iter().any(|b| b == r)));
     }
     schema
 }
@@ -124,7 +130,7 @@ pub fn schema(command: &Command, exchange: Option<&Exchange>) -> Value {
 /// Resolve the exchange arguments: read `<param>-file` into `<param>` (base64), and take out
 /// `save_as`, which is returned.
 pub fn prepare(
-    command: &Command,
+    command: &Entry,
     arguments: Value,
     exchange: Option<&Exchange>,
 ) -> Result<(Value, Option<String>), CommandError> {
@@ -140,7 +146,7 @@ pub fn prepare(
     };
     let save_as = match arguments.remove(SAVE_AS) {
         None => None,
-        Some(_) if !matches!(command.output, Output::Bytes) => {
+        Some(_) if !matches!(command.view, View::Bytes) => {
             return Err(CommandError::invalid(format!(
                 "`{SAVE_AS}` only applies to commands that return file content"
             )));
@@ -157,12 +163,8 @@ pub fn prepare(
             Some(name)
         }
     };
-    for param in command
-        .params
-        .iter()
-        .filter(|p| matches!(p.kind, Kind::Bytes))
-    {
-        let key = file_argument(param.name);
+    for param in byte_arguments(&command.input_schema()) {
+        let key = file_argument(&param);
         let Some(name) = arguments.remove(&key) else {
             continue;
         };
@@ -170,14 +172,13 @@ pub fn prepare(
         let Value::String(name) = name else {
             return Err(CommandError::invalid(format!("`{key}` must be a string")));
         };
-        if arguments.contains_key(param.name) {
+        if arguments.contains_key(&param) {
             return Err(CommandError::invalid(format!(
-                "give either `{}` or `{key}`, not both",
-                param.name
+                "give either `{param}` or `{key}`, not both"
             )));
         }
         let data = exchange.read(&name)?;
-        arguments.insert(param.name.to_owned(), Value::from(BASE64.encode(data)));
+        arguments.insert(param, Value::from(BASE64.encode(data)));
     }
     Ok((Value::Object(arguments), save_as))
 }

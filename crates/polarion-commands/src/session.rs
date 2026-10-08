@@ -3,85 +3,73 @@
 //! Transactions only make sense within one process (the MCP server, or a program using
 //! this crate); every CLI invocation opens and ends its own session.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, Done, Result, Run};
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "session",
-        "check",
-        false,
-        Output::Scalar,
-        "Log in (if needed) and report whether the session is valid",
-        [],
-        check
-    ),
-    command!(
-        "session",
-        "in-transaction",
-        false,
-        Output::Scalar,
-        "Whether an explicit transaction is open",
-        [],
-        in_transaction
-    ),
-    command!(
-        "session",
-        "begin-transaction",
-        true,
-        Output::Done,
-        "Start a transaction (changes are applied together on commit)",
-        [],
-        begin_transaction
-    ),
-    command!(
-        "session",
-        "commit",
-        true,
-        Output::Done,
-        "Commit the open transaction",
-        [],
-        commit
-    ),
-    command!(
-        "session",
-        "rollback",
-        true,
-        Output::Done,
-        "Discard the open transaction",
-        [],
-        rollback
-    ),
-];
+/// Log in (if needed) and report whether the session is valid.
+#[cmd(view = scalar)]
+pub struct Check {}
 
-async fn check(p: &Polarion, _: &Args) -> Result<Value> {
-    // Logging in again would open a second session and leave the first one behind.
-    if !p.has_session().await? {
-        p.login().await?;
+impl Run for Check {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        // Logging in again would open a second session and leave the first one behind.
+        if !cx.polarion.has_session().await? {
+            cx.polarion.login().await?;
+        }
+        Ok(cx.polarion.has_session().await?)
     }
-    out(p.has_session().await?)
 }
 
-async fn in_transaction(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.in_transaction().await?)
+/// Whether an explicit transaction is open.
+#[cmd(view = scalar)]
+pub struct InTransaction {}
+
+impl Run for InTransaction {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.in_transaction().await?)
+    }
 }
 
-async fn begin_transaction(p: &Polarion, _: &Args) -> Result<Value> {
-    p.begin_transaction().await?;
-    Ok(Value::Null)
+/// Start a transaction (changes are applied together on commit)
+#[cmd(write, view = done)]
+pub struct BeginTransaction {}
+
+impl Run for BeginTransaction {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion.begin_transaction().await?;
+        Ok(Done)
+    }
 }
 
-async fn commit(p: &Polarion, _: &Args) -> Result<Value> {
-    p.commit().await?;
-    Ok(Value::Null)
+/// Commit the open transaction.
+#[cmd(write, view = done)]
+pub struct Commit {}
+
+impl Run for Commit {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion.commit().await?;
+        Ok(Done)
+    }
 }
 
-async fn rollback(p: &Polarion, _: &Args) -> Result<Value> {
-    p.rollback().await?;
-    Ok(Value::Null)
+/// Discard the open transaction.
+#[cmd(write, view = done)]
+pub struct Rollback {}
+
+impl Run for Rollback {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion.rollback().await?;
+        Ok(Done)
+    }
 }

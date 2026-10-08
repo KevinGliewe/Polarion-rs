@@ -1,310 +1,367 @@
 //! `security.*`: permissions, roles, licenses.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, Done, Result, Run};
 
-const KEY: Param = Param::req("key", Kind::String, "Field key");
-const USER: Param = Param::req("user", Kind::String, "User id");
-const PERMISSION: Param = Param::req("permission", Kind::String, "Permission id");
-const LOCATION: Param = Param::req(
-    "location",
-    Kind::String,
-    "Context location (project or group)",
-);
+/// Whether you can read an object.
+#[cmd(view = scalar)]
+pub struct CanRead {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+}
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "security",
-        "can-read",
-        false,
-        Output::Scalar,
-        "Whether you can read an object",
-        [URI],
-        can_read
-    ),
-    command!(
-        "security",
-        "can-modify",
-        false,
-        Output::Scalar,
-        "Whether you can modify an object",
-        [URI],
-        can_modify
-    ),
-    command!(
-        "security",
-        "can-delete",
-        false,
-        Output::Scalar,
-        "Whether you can delete an object",
-        [URI],
-        can_delete
-    ),
-    command!(
-        "security",
-        "can-create",
-        false,
-        Output::Scalar,
-        "Whether you can create objects of a prototype (e.g. WorkItem)",
-        [Param::pos("prototype", Kind::String, "Prototype"), PROJECT],
-        can_create
-    ),
-    command!(
-        "security",
-        "can-read-field",
-        false,
-        Output::Scalar,
-        "Whether you can read a field",
-        [URI, KEY],
-        can_read_field
-    ),
-    command!(
-        "security",
-        "can-modify-field",
-        false,
-        Output::Scalar,
-        "Whether you can modify a field",
-        [URI, KEY],
-        can_modify_field
-    ),
-    command!(
-        "security",
-        "can-add-to-field",
-        false,
-        Output::Scalar,
-        "Whether you can add to a collection field",
-        [URI, KEY],
-        can_add_to_field
-    ),
-    command!(
-        "security",
-        "can-remove-from-field",
-        false,
-        Output::Scalar,
-        "Whether you can remove from a collection field",
-        [URI, KEY],
-        can_remove_from_field
-    ),
-    command!(
-        "security",
-        "has-permission",
-        false,
-        Output::Scalar,
-        "Whether a user has a permission in a project",
-        [USER, PERMISSION, PROJECT],
-        has_permission
-    ),
-    command!(
-        "security",
-        "current-user-has-permission",
-        false,
-        Output::Scalar,
-        "Whether you have a permission in a project",
-        [PERMISSION, PROJECT],
-        current_user_has_permission
-    ),
-    command!(
-        "security",
-        "roles-for-user",
-        false,
-        Output::Lines,
-        "A user's global roles and roles at a location",
-        [
-            USER,
-            Param::opt(
-                "location",
-                Kind::String,
-                "Context location (global roles only if omitted)"
+impl Run for CanRead {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().can_read(&self.uri).await?)
+    }
+}
+
+/// Whether you can modify an object.
+#[cmd(view = scalar)]
+pub struct CanModify {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+}
+
+impl Run for CanModify {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().can_modify(&self.uri).await?)
+    }
+}
+
+/// Whether you can delete an object.
+#[cmd(view = scalar)]
+pub struct CanDelete {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+}
+
+impl Run for CanDelete {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().can_delete(&self.uri).await?)
+    }
+}
+
+/// Whether you can create objects of a prototype (e.g. WorkItem)
+#[cmd(view = scalar)]
+pub struct CanCreate {
+    /// Prototype
+    #[positional]
+    pub prototype: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for CanCreate {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .can_create(&self.prototype, &cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// Whether you can read a field.
+#[cmd(view = scalar)]
+pub struct CanReadField {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Field key
+    pub key: String,
+}
+
+impl Run for CanReadField {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .can_read_field(&self.uri, &self.key)
+            .await?)
+    }
+}
+
+/// Whether you can modify a field.
+#[cmd(view = scalar)]
+pub struct CanModifyField {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Field key
+    pub key: String,
+}
+
+impl Run for CanModifyField {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .can_modify_field(&self.uri, &self.key)
+            .await?)
+    }
+}
+
+/// Whether you can add to a collection field.
+#[cmd(view = scalar)]
+pub struct CanAddToField {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Field key
+    pub key: String,
+}
+
+impl Run for CanAddToField {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .can_add_to_field(&self.uri, &self.key)
+            .await?)
+    }
+}
+
+/// Whether you can remove from a collection field.
+#[cmd(view = scalar)]
+pub struct CanRemoveFromField {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Field key
+    pub key: String,
+}
+
+impl Run for CanRemoveFromField {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .can_remove_from_field(&self.uri, &self.key)
+            .await?)
+    }
+}
+
+/// Whether a user has a permission in a project.
+#[cmd(view = scalar)]
+pub struct HasPermission {
+    /// User id
+    pub user: String,
+    /// Permission id
+    pub permission: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for HasPermission {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .has_permission(
+                &self.user,
+                &self.permission,
+                &cx.project(self.project.as_deref())?,
             )
-        ],
-        roles_for_user
-    ),
-    command!(
-        "security",
-        "global-roles",
-        false,
-        Output::Lines,
-        "All global roles",
-        [],
-        global_roles
-    ),
-    command!(
-        "security",
-        "context-roles",
-        false,
-        Output::Lines,
-        "Roles defined in a context",
-        [LOCATION],
-        context_roles
-    ),
-    command!(
-        "security",
-        "context-roles-for-user",
-        false,
-        Output::Lines,
-        "A user's roles in a context",
-        [USER, LOCATION],
-        context_roles_for_user
-    ),
-    command!(
-        "security",
-        "location-of",
-        false,
-        Output::Scalar,
-        "The repository location of an object",
-        [URI],
-        location_of
-    ),
-    command!(
-        "security",
-        "user-from-token",
-        false,
-        Output::Scalar,
-        "The user owning a personal access token",
-        [Param::req("token", Kind::String, "Token")],
-        user_from_token
-    ),
-    command!(
-        "security",
-        "product-license",
-        false,
-        Output::Object,
-        "The product license",
-        [],
-        product_license
-    ),
-    command!(
-        "security",
-        "has-addon-license",
-        false,
-        Output::Scalar,
-        "Whether an add-on is licensed",
-        [Param::pos("addon", Kind::String, "Add-on id")],
-        has_addon_license
-    ),
-    command!(
-        "security",
-        "update-user-account-vault",
-        true,
-        Output::Done,
-        "Store credentials in the account vault (needs POLARION_ALLOW_GLOBAL_WRITES)",
-        [
-            Param::req("key", Kind::String, "Vault key"),
-            USER,
-            Param::req("password", Kind::String, "Password")
-        ],
-        update_user_account_vault
-    ),
-];
-
-async fn can_read(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().can_read(&a.str("uri")?).await?)
+            .await?)
+    }
 }
 
-async fn can_modify(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().can_modify(&a.str("uri")?).await?)
+/// Whether you have a permission in a project.
+#[cmd(view = scalar)]
+pub struct CurrentUserHasPermission {
+    /// Permission id
+    pub permission: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn can_delete(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().can_delete(&a.str("uri")?).await?)
+impl Run for CurrentUserHasPermission {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .current_user_has_permission(&self.permission, &cx.project(self.project.as_deref())?)
+            .await?)
+    }
 }
 
-async fn can_create(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .can_create(&a.str("prototype")?, &a.project()?)
-        .await?)
+/// A user's global roles and roles at a location.
+#[cmd(view = lines)]
+pub struct RolesForUser {
+    /// User id
+    pub user: String,
+    /// Context location (global roles only if omitted)
+    pub location: Option<String>,
 }
 
-async fn can_read_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .can_read_field(&a.str("uri")?, &a.str("key")?)
-        .await?)
+impl Run for RolesForUser {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let location = self.location;
+        Ok(cx
+            .polarion
+            .security()
+            .roles_for_user(&self.user, location.as_deref())
+            .await?)
+    }
 }
 
-async fn can_modify_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .can_modify_field(&a.str("uri")?, &a.str("key")?)
-        .await?)
+/// All global roles.
+#[cmd(view = lines)]
+pub struct GlobalRoles {}
+
+impl Run for GlobalRoles {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().global_roles().await?)
+    }
 }
 
-async fn can_add_to_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .can_add_to_field(&a.str("uri")?, &a.str("key")?)
-        .await?)
+/// Roles defined in a context.
+#[cmd(view = lines)]
+pub struct ContextRoles {
+    /// Context location (project or group)
+    pub location: String,
 }
 
-async fn can_remove_from_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .can_remove_from_field(&a.str("uri")?, &a.str("key")?)
-        .await?)
+impl Run for ContextRoles {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().context_roles(&self.location).await?)
+    }
 }
 
-async fn has_permission(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .has_permission(&a.str("user")?, &a.str("permission")?, &a.project()?)
-        .await?)
+/// A user's roles in a context.
+#[cmd(view = lines)]
+pub struct ContextRolesForUser {
+    /// User id
+    pub user: String,
+    /// Context location (project or group)
+    pub location: String,
 }
 
-async fn current_user_has_permission(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .current_user_has_permission(&a.str("permission")?, &a.project()?)
-        .await?)
+impl Run for ContextRolesForUser {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .context_roles_for_user(&self.user, &self.location)
+            .await?)
+    }
 }
 
-async fn roles_for_user(p: &Polarion, a: &Args) -> Result<Value> {
-    let location = a.opt_str("location")?;
-    out(p
-        .security()
-        .roles_for_user(&a.str("user")?, location.as_deref())
-        .await?)
+/// The repository location of an object.
+#[cmd(view = scalar)]
+pub struct LocationOf {
+    /// Object URI
+    #[positional]
+    pub uri: String,
 }
 
-async fn global_roles(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.security().global_roles().await?)
+impl Run for LocationOf {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().location_of(&self.uri).await?)
+    }
 }
 
-async fn context_roles(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().context_roles(&a.str("location")?).await?)
+/// The user owning a personal access token.
+#[cmd(view = scalar)]
+pub struct UserFromToken {
+    /// Token
+    pub token: String,
 }
 
-async fn context_roles_for_user(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .security()
-        .context_roles_for_user(&a.str("user")?, &a.str("location")?)
-        .await?)
+impl Run for UserFromToken {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().user_from_token(&self.token).await?)
+    }
 }
 
-async fn location_of(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().location_of(&a.str("uri")?).await?)
+/// The product license.
+#[cmd(view = object)]
+pub struct ProductLicense {}
+
+impl Run for ProductLicense {
+    type Output = polarion::soap::types::ProductLicense;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.security().product_license().await?)
+    }
 }
 
-async fn user_from_token(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().user_from_token(&a.str("token")?).await?)
+/// Whether an add-on is licensed.
+#[cmd(view = scalar)]
+pub struct HasAddonLicense {
+    /// Add-on id
+    #[positional]
+    pub addon: String,
 }
 
-async fn product_license(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.security().product_license().await?)
+impl Run for HasAddonLicense {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .security()
+            .has_addon_license(&self.addon)
+            .await?)
+    }
 }
 
-async fn has_addon_license(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.security().has_addon_license(&a.str("addon")?).await?)
+/// Store credentials in the account vault (needs POLARION_ALLOW_GLOBAL_WRITES)
+#[cmd(write, view = done)]
+pub struct UpdateUserAccountVault {
+    /// Vault key
+    pub key: String,
+    /// User id
+    pub user: String,
+    /// Password
+    pub password: String,
 }
 
-async fn update_user_account_vault(p: &Polarion, a: &Args) -> Result<Value> {
-    p.security()
-        .update_user_account_vault(&a.str("key")?, &a.str("user")?, &a.str("password")?)
-        .await?;
-    Ok(Value::Null)
+impl Run for UpdateUserAccountVault {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .security()
+            .update_user_account_vault(&self.key, &self.user, &self.password)
+            .await?;
+        Ok(Done)
+    }
 }

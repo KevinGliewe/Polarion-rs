@@ -1,1432 +1,1847 @@
 //! `items.*`: work items.
 
-use polarion::{NewWorkItem, NewWorkRecord, Polarion, WorkItemUpdate};
-use serde_json::{Value, json};
+use polarion::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
+use polarion_commands_derive::cmd;
+use serde::Serialize;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{bytes, changed, command, out};
+use crate::{
+    ACTION_COLUMNS, CHANGE_COLUMNS, Changed, Context, Data, DocumentArg, Done, Download,
+    FieldSelection, ITEM_COLUMNS, ItemArg, JsonObject, JsonValue, OPTION_COLUMNS, QueryArgs,
+    REF_COLUMNS, Result, RichText, Run, USER_COLUMNS,
+};
 
-const KEY: Param = Param::req(
-    "key",
-    Kind::String,
-    "Field key, e.g. `status` or a custom field id",
-);
-const ENUM_ID: Param = Param::req("enum-id", Kind::String, "Enumeration id");
-const COMMENT: Param = Param::req("comment", Kind::String, "Comment URI");
-const ROLE: Param = Param::req(
-    "role",
-    Kind::String,
-    "Link role id, e.g. `parent`, `relates_to`",
-);
-const TARGET: Param = Param::req("target", Kind::Item, "The linked work item");
-const URL: Param = Param::req("url", Kind::String, "URL");
-const USER: Param = Param::req("user", Kind::String, "User id");
-const LANGUAGE: Param = Param::opt(
-    "language",
-    Kind::String,
-    "Language id (default language if omitted)",
-);
-const ATTACHMENT: Param = Param::req("attachment", Kind::String, "Attachment id");
+/// Get a work item with all fields (or only `fields`/`custom`)
+#[cmd(view = object)]
+pub struct Get {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Custom field keys to fetch in addition
+    pub custom: Vec<String>,
+}
 
-pub(crate) const COMMANDS: &[Command] = &[
-    // ---- reads
-    command!(
-        "items",
-        "get",
-        false,
-        Output::Object,
-        "Get a work item with all fields (or only `fields`/`custom`)",
-        [ITEM, FIELDS, CUSTOM],
-        get
-    ),
-    command!(
-        "items",
-        "get-in-revision",
-        false,
-        Output::Object,
-        "Get a work item as it was in a repository revision",
-        [
-            ITEM,
-            Param::req("revision", Kind::String, "Repository revision"),
-            FIELDS,
-            CUSTOM
-        ],
-        get_in_revision
-    ),
-    command!(
-        "items",
-        "query",
-        false,
-        Output::Table(ITEM_COLUMNS),
-        "Search work items with a Lucene query",
-        [
-            QUERY, PROJECT, SORT, LIMIT, ALL, FIELDS, CUSTOM, BASELINE, REVISION
-        ],
-        query
-    ),
-    command!(
-        "items",
-        "query-refs",
-        false,
-        Output::Table(REF_COLUMNS),
-        "Search work items, returning only their references (cheaper)",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, BASELINE],
-        query_refs
-    ),
-    command!(
-        "items",
-        "query-sql",
-        false,
-        Output::Table(ITEM_COLUMNS),
-        "Select work items with SQL",
-        [SQL, FIELDS, CUSTOM, BASELINE],
-        query_sql
-    ),
-    command!(
-        "items",
-        "query-refs-sql",
-        false,
-        Output::Table(REF_COLUMNS),
-        "Select work item references with SQL",
-        [SQL, BASELINE],
-        query_refs_sql
-    ),
-    command!(
-        "items",
-        "count",
-        false,
-        Output::Scalar,
-        "Count work items matching a Lucene query",
-        [QUERY, PROJECT],
-        count
-    ),
-    command!(
-        "items",
-        "links",
-        false,
-        Output::Links,
-        "Links of a work item in both directions",
-        [ITEM],
-        links
-    ),
-    command!(
-        "items",
-        "back-links",
-        false,
-        Output::Object,
-        "Links from other work items to this one",
-        [ITEM],
-        back_links
-    ),
-    command!(
-        "items",
-        "history",
-        false,
-        Output::Table(CHANGE_COLUMNS),
-        "The change history of a work item",
-        [ITEM],
-        history
-    ),
-    command!(
-        "items",
-        "revisions",
-        false,
-        Output::Lines,
-        "Repository revisions in which a work item changed",
-        [ITEM],
-        revisions
-    ),
-    command!(
-        "items",
-        "actions",
-        false,
-        Output::Table(ACTION_COLUMNS),
-        "Workflow actions available now",
-        [ITEM],
-        actions
-    ),
-    command!(
-        "items",
-        "unavailable-actions",
-        false,
-        Output::Table(ACTION_COLUMNS),
-        "Workflow actions not available now, with the reason",
-        [ITEM],
-        unavailable_actions
-    ),
-    command!(
-        "items",
-        "initial-action",
-        false,
-        Output::Object,
-        "The workflow action performed on creation",
-        [ITEM],
-        initial_action
-    ),
-    command!(
-        "items",
-        "allowed-assignees",
-        false,
-        Output::Table(USER_COLUMNS),
-        "Users that may be assigned",
-        [ITEM],
-        allowed_assignees
-    ),
-    command!(
-        "items",
-        "allowed-approvers",
-        false,
-        Output::Table(USER_COLUMNS),
-        "Users that may approve",
-        [ITEM],
-        allowed_approvers
-    ),
-    command!(
-        "items",
-        "field-options",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options a field of this work item can take",
-        [ITEM, KEY],
-        field_options
-    ),
-    command!(
-        "items",
-        "filtered-field-options",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of a dependent field, filtered by the controlling option",
-        [
-            ITEM,
-            KEY,
-            Param::opt("filter", Kind::String, "Option id of the controlling field")
-        ],
-        filtered_field_options
-    ),
-    command!(
-        "items",
-        "field-option",
-        false,
-        Output::Object,
-        "One option of a field",
-        [ITEM, KEY, Param::req("option", Kind::String, "Option id")],
-        field_option
-    ),
-    command!(
-        "items",
-        "available-option-ids",
-        false,
-        Output::Lines,
-        "Ids of the options of a field available now",
-        [ITEM, KEY],
-        available_option_ids
-    ),
-    command!(
-        "items",
-        "enum-options",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of an enumeration (by enum id) this work item can use",
-        [ITEM, ENUM_ID],
-        enum_options
-    ),
-    command!(
-        "items",
-        "enum-option",
-        false,
-        Output::Object,
-        "One option of an enumeration (by enum id)",
-        [
-            ITEM,
-            ENUM_ID,
-            Param::req("option", Kind::String, "Option id")
-        ],
-        enum_option
-    ),
-    command!(
-        "items",
-        "available-enum-option-ids",
-        false,
-        Output::Lines,
-        "Ids of the options of an enumeration available now",
-        [ITEM, ENUM_ID],
-        available_enum_option_ids
-    ),
-    command!(
-        "items",
-        "custom-field",
-        false,
-        Output::Object,
-        "The value of one custom field",
-        [ITEM, KEY],
-        custom_field
-    ),
-    command!(
-        "items",
-        "custom-field-keys",
-        false,
-        Output::Lines,
-        "Keys of the custom fields defined for a work item",
-        [ITEM],
-        custom_field_keys
-    ),
-    command!(
-        "items",
-        "attachment",
-        false,
-        Output::Bytes,
-        "Download an attachment",
-        [ITEM, ATTACHMENT],
-        attachment
-    ),
-    command!(
-        "items",
-        "localized-title",
-        false,
-        Output::Scalar,
-        "The title in a language",
-        [ITEM, LANGUAGE],
-        localized_title
-    ),
-    command!(
-        "items",
-        "localized-description",
-        false,
-        Output::Object,
-        "The description in a language",
-        [ITEM, LANGUAGE],
-        localized_description
-    ),
-    command!(
-        "items",
-        "comment-resolved",
-        false,
-        Output::Scalar,
-        "Whether a comment is in a resolved thread",
-        [Param::pos("comment", Kind::String, "Comment URI")],
-        comment_resolved
-    ),
-    command!(
-        "items",
-        "linked-resources",
-        false,
-        Output::Object,
-        "Source code resources linked to a work item",
-        [ITEM],
-        linked_resources
-    ),
-    // ---- writes
-    command!(
-        "items",
-        "create",
-        true,
-        Output::Object,
-        "Create a work item (optionally inside a document, under a parent)",
-        [
-            PROJECT,
-            Param::req(
-                "type",
-                Kind::String,
-                "Work item type id, e.g. `requirement`"
-            ),
-            Param::req("title", Kind::String, "Title"),
-            Param::opt("description", Kind::Text, "Description"),
-            Param::opt("priority", Kind::String, "Priority id"),
-            Param::opt("severity", Kind::String, "Severity id"),
-            Param::opt("due-date", Kind::String, "Due date (YYYY-MM-DD)"),
-            Param::opt(
-                "initial-estimate",
-                Kind::String,
-                "Initial estimate, e.g. `2d`"
-            ),
-            Param::opt("remaining-estimate", Kind::String, "Remaining estimate"),
-            Param::opt(
-                "custom-fields",
-                Kind::Json,
-                "Custom field values by key (typed by the field definitions)"
-            ),
-            Param::opt("document", Kind::Document, "Create inside this document"),
-            Param::opt("parent", Kind::Item, "Parent work item inside the document"),
-        ],
-        create
-    ),
-    command!(
-        "items",
-        "update",
-        true,
-        Output::Done,
-        "Change fields of a work item (status changes go through `transition`)",
-        [
-            ITEM,
-            Param::opt("title", Kind::String, "Title"),
-            Param::opt("description", Kind::Text, "Description"),
-            Param::opt("priority", Kind::String, "Priority id"),
-            Param::opt("severity", Kind::String, "Severity id"),
-            Param::opt("resolution", Kind::String, "Resolution id"),
-            Param::opt("due-date", Kind::String, "Due date (YYYY-MM-DD)"),
-            Param::opt("initial-estimate", Kind::String, "Initial estimate"),
-            Param::opt("remaining-estimate", Kind::String, "Remaining estimate"),
-            Param::opt("time-spent", Kind::String, "Time spent"),
-            Param::opt(
-                "custom-fields",
-                Kind::Json,
-                "Custom field values by key; null clears a field"
-            ),
-            Param::opt("clear", Kind::StringList, "Standard field keys to clear"),
-        ],
-        update
-    ),
-    command!(
-        "items",
-        "set-custom-field",
-        true,
-        Output::Done,
-        "Set (or with null clear) one custom field",
-        [
-            ITEM,
-            KEY,
-            Param::req(
-                "value",
-                Kind::Any,
-                "The value (typed by the field definition); null clears"
-            )
-        ],
-        set_custom_field
-    ),
-    command!(
-        "items",
-        "clear-fields",
-        true,
-        Output::Done,
-        "Clear fields by key",
-        [ITEM, Param::req("fields", Kind::StringList, "Field keys")],
-        clear_fields
-    ),
-    command!(
-        "items",
-        "delete",
-        true,
-        Output::Done,
-        "Delete a work item",
-        [ITEM],
-        delete
-    ),
-    command!(
-        "items",
-        "move-to-document",
-        true,
-        Output::Done,
-        "Move a work item into (or within) a document",
-        [
-            ITEM,
-            Param::req("document", Kind::Document, "Target document"),
-            Param::opt(
-                "parent",
-                Kind::Item,
-                "Parent work item (top level if omitted)"
-            ),
-            Param::opt(
-                "position",
-                Kind::Integer,
-                "Position among the parent's children (end if omitted)"
-            ),
-            Param::opt(
-                "retain-flow",
-                Kind::Boolean,
-                "Keep the position in the document flow"
-            ),
-        ],
-        move_to_document
-    ),
-    command!(
-        "items",
-        "perform-action",
-        true,
-        Output::Done,
-        "Perform a workflow action by id (see `actions`)",
-        [ITEM, Param::req("action", Kind::Integer, "Action id")],
-        perform_action
-    ),
-    command!(
-        "items",
-        "transition",
-        true,
-        Output::Object,
-        "Move a work item to a status via the matching workflow action",
-        [ITEM, Param::req("status", Kind::String, "Target status id")],
-        transition
-    ),
-    command!(
-        "items",
-        "reset-workflow",
-        true,
-        Output::Done,
-        "Reset the workflow to the initial status",
-        [ITEM],
-        reset_workflow
-    ),
-    command!(
-        "items",
-        "add-comment",
-        true,
-        Output::Scalar,
-        "Comment on a work item; returns the comment URI",
-        [ITEM, TEXT, Param::opt("title", Kind::String, "Title")],
-        add_comment
-    ),
-    command!(
-        "items",
-        "add-restricted-comment",
-        true,
-        Output::Scalar,
-        "Comment visible only to some users or roles",
-        [
-            ITEM,
-            TEXT,
-            Param::req("title", Kind::String, "Title"),
-            Param::req("visible-to", Kind::StringList, "User ids or roles")
-        ],
-        add_restricted_comment
-    ),
-    command!(
-        "items",
-        "reply-to-comment",
-        true,
-        Output::Scalar,
-        "Reply to a comment",
-        [ITEM, COMMENT, TEXT],
-        reply_to_comment
-    ),
-    command!(
-        "items",
-        "set-comment-resolved",
-        true,
-        Output::Done,
-        "Mark a comment resolved or unresolved",
-        [
-            ITEM,
-            COMMENT,
-            Param::req("resolved", Kind::Boolean, "Resolved")
-        ],
-        set_comment_resolved
-    ),
-    command!(
-        "items",
-        "set-comment-tags",
-        true,
-        Output::Done,
-        "Replace the tags of a comment",
-        [
-            ITEM,
-            COMMENT,
-            Param::req("tags", Kind::StringList, "Tag ids")
-        ],
-        set_comment_tags
-    ),
-    command!(
-        "items",
-        "add-link",
-        true,
-        Output::Done,
-        "Link to another work item",
-        [ITEM, ROLE, TARGET],
-        add_link
-    ),
-    command!(
-        "items",
-        "remove-link",
-        true,
-        Output::Done,
-        "Remove a link",
-        [ITEM, ROLE, TARGET],
-        remove_link
-    ),
-    command!(
-        "items",
-        "add-link-at-revision",
-        true,
-        Output::Done,
-        "Link to another work item pinned to a revision, optionally suspect",
-        [
-            ITEM,
-            ROLE,
-            TARGET,
-            Param::opt("revision", Kind::String, "Revision (HEAD if omitted)"),
-            Param::opt("suspect", Kind::Boolean, "Mark suspect")
-        ],
-        add_link_at_revision
-    ),
-    command!(
-        "items",
-        "add-hyperlink",
-        true,
-        Output::Done,
-        "Add a hyperlink",
-        [ITEM, URL, ROLE],
-        add_hyperlink
-    ),
-    command!(
-        "items",
-        "remove-hyperlink",
-        true,
-        Output::Done,
-        "Remove a hyperlink",
-        [ITEM, URL],
-        remove_hyperlink
-    ),
-    command!(
-        "items",
-        "add-external-link",
-        true,
-        Output::Done,
-        "Link a work item on another server (OSLC) by URL",
-        [ITEM, URL, ROLE],
-        add_external_link
-    ),
-    command!(
-        "items",
-        "remove-external-link",
-        true,
-        Output::Done,
-        "Remove an external link",
-        [ITEM, URL, ROLE],
-        remove_external_link
-    ),
-    command!(
-        "items",
-        "add-oslc-link",
-        true,
-        Output::Done,
-        "Link an OSLC resource with a label",
-        [ITEM, URL, ROLE, Param::req("label", Kind::String, "Label")],
-        add_oslc_link
-    ),
-    command!(
-        "items",
-        "add-linked-revision",
-        true,
-        Output::Done,
-        "Link a repository revision",
-        [
-            ITEM,
-            Param::req("revision", Kind::String, "Revision"),
-            Param::opt(
-                "repository",
-                Kind::String,
-                "Repository (default repository if omitted)"
-            )
-        ],
-        add_linked_revision
-    ),
-    command!(
-        "items",
-        "remove-linked-revision",
-        true,
-        Output::Done,
-        "Unlink a repository revision",
-        [
-            ITEM,
-            Param::req("revision", Kind::String, "Revision"),
-            Param::opt("repository", Kind::String, "Repository")
-        ],
-        remove_linked_revision
-    ),
-    command!(
-        "items",
-        "add-planning-constraint",
-        true,
-        Output::Done,
-        "Add a planning constraint",
-        [
-            ITEM,
-            Param::req("date", Kind::String, "Date"),
-            Param::req("constraint", Kind::String, "Constraint id")
-        ],
-        add_planning_constraint
-    ),
-    command!(
-        "items",
-        "remove-planning-constraint",
-        true,
-        Output::Done,
-        "Remove a planning constraint",
-        [
-            ITEM,
-            Param::req("date", Kind::String, "Date"),
-            Param::req("constraint", Kind::String, "Constraint id")
-        ],
-        remove_planning_constraint
-    ),
-    command!(
-        "items",
-        "add-assignee",
-        true,
-        Output::Done,
-        "Assign a user",
-        [ITEM, USER],
-        add_assignee
-    ),
-    command!(
-        "items",
-        "remove-assignee",
-        true,
-        Output::Done,
-        "Unassign a user",
-        [ITEM, USER],
-        remove_assignee
-    ),
-    command!(
-        "items",
-        "add-category",
-        true,
-        Output::Done,
-        "Add a category",
-        [ITEM, Param::req("category", Kind::String, "Category id")],
-        add_category
-    ),
-    command!(
-        "items",
-        "remove-category",
-        true,
-        Output::Done,
-        "Remove a category",
-        [ITEM, Param::req("category", Kind::String, "Category id")],
-        remove_category
-    ),
-    command!(
-        "items",
-        "add-approvee",
-        true,
-        Output::Done,
-        "Request an approval from a user",
-        [ITEM, USER],
-        add_approvee
-    ),
-    command!(
-        "items",
-        "remove-approvee",
-        true,
-        Output::Done,
-        "Remove an approver",
-        [ITEM, USER],
-        remove_approvee
-    ),
-    command!(
-        "items",
-        "set-approval",
-        true,
-        Output::Done,
-        "Set a user's approval status",
-        [
-            ITEM,
-            USER,
-            Param::req(
-                "status",
-                Kind::String,
-                "e.g. `approved`, `disapproved`, `waiting`"
-            )
-        ],
-        set_approval
-    ),
-    command!(
-        "items",
-        "add-attachment",
-        true,
-        Output::Done,
-        "Attach a file",
-        [
-            ITEM,
-            Param::req("file-name", Kind::String, "File name"),
-            Param::req("title", Kind::String, "Title"),
-            Param::req("data", Kind::Bytes, "Content")
-        ],
-        add_attachment
-    ),
-    command!(
-        "items",
-        "update-attachment",
-        true,
-        Output::Done,
-        "Change an attachment's file name, title or content",
-        [
-            ITEM,
-            ATTACHMENT,
-            Param::opt("file-name", Kind::String, "File name"),
-            Param::opt("title", Kind::String, "Title"),
-            Param::opt("data", Kind::Bytes, "Content")
-        ],
-        update_attachment
-    ),
-    command!(
-        "items",
-        "delete-attachment",
-        true,
-        Output::Done,
-        "Delete an attachment",
-        [ITEM, ATTACHMENT],
-        delete_attachment
-    ),
-    command!(
-        "items",
-        "add-work-record",
-        true,
-        Output::Done,
-        "Book time",
-        [
-            ITEM,
-            USER,
-            Param::req("date", Kind::String, "Date (YYYY-MM-DD)"),
-            Param::req("time-spent", Kind::String, "Duration, e.g. `2h`"),
-            Param::opt(
-                "type",
-                Kind::String,
-                "Work record type id (needed with a comment)"
-            ),
-            Param::opt("comment", Kind::String, "Comment"),
-        ],
-        add_work_record
-    ),
-    command!(
-        "items",
-        "delete-work-record",
-        true,
-        Output::Done,
-        "Delete a work record",
-        [ITEM, Param::req("record", Kind::String, "Work record URI")],
-        delete_work_record
-    ),
-    command!(
-        "items",
-        "set-localized-title",
-        true,
-        Output::Done,
-        "Set the title in a language",
-        [
-            ITEM,
-            LANGUAGE,
-            Param::opt("title", Kind::String, "Title (clears if omitted)")
-        ],
-        set_localized_title
-    ),
-    command!(
-        "items",
-        "set-localized-description",
-        true,
-        Output::Done,
-        "Set the description in a language",
-        [
-            ITEM,
-            LANGUAGE,
-            Param::opt("description", Kind::Text, "Description (clears if omitted)")
-        ],
-        set_localized_description
-    ),
-    command!(
-        "items",
-        "auto-suspect",
-        true,
-        Output::Done,
-        "Mark links to the work item suspect",
-        [ITEM],
-        auto_suspect
-    ),
-    command!(
-        "items",
-        "auto-assign",
-        true,
-        Output::Done,
-        "Assign by the project's rules",
-        [ITEM],
-        auto_assign
-    ),
-];
+impl Run for Get {
+    type Output = polarion::WorkItem;
 
-// ---- reads
-
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    let item = a.item("item")?;
-    match a.opt_fields()? {
-        None => out(p.items().get(&item).await?),
-        Some(fields) => out(p.items().get_fields(&item, &fields).await?),
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let item = self.item.resolve(cx)?;
+        Ok(
+            match FieldSelection::fields(self.fields.as_ref(), &self.custom) {
+                None => cx.polarion.items().get(&item).await?,
+                Some(fields) => cx.polarion.items().get_fields(&item, &fields).await?,
+            },
+        )
     }
 }
 
-async fn get_in_revision(p: &Polarion, a: &Args) -> Result<Value> {
-    let fields = a.opt_fields()?;
-    out(p
-        .items()
-        .get_in_revision(&a.item("item")?, &a.str("revision")?, fields.as_ref())
-        .await?)
+/// Get a work item as it was in a repository revision.
+#[cmd(view = object)]
+pub struct GetInRevision {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Repository revision
+    pub revision: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Custom field keys to fetch in addition
+    pub custom: Vec<String>,
 }
 
-async fn query(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().query(&a.query()?).await?)
+impl Run for GetInRevision {
+    type Output = polarion::WorkItem;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let fields = FieldSelection::fields(self.fields.as_ref(), &self.custom);
+        Ok(cx
+            .polarion
+            .items()
+            .get_in_revision(&self.item.resolve(cx)?, &self.revision, fields.as_ref())
+            .await?)
+    }
 }
 
-async fn query_refs(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().query_refs(&a.query()?).await?)
+/// Search work items with a Lucene query.
+#[cmd(view = table(ITEM_COLUMNS))]
+pub struct Query {
+    #[flatten]
+    pub search: QueryArgs,
 }
 
-async fn query_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let baseline = a.opt_str("baseline")?;
-    out(p
-        .items()
-        .query_sql(&a.str("sql")?, &a.fields()?, baseline.as_deref())
-        .await?)
+impl Run for Query {
+    type Output = Vec<polarion::WorkItem>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.items().query(&self.search.query(cx)).await?)
+    }
 }
 
-async fn query_refs_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let baseline = a.opt_str("baseline")?;
-    out(p
-        .items()
-        .query_refs_sql(&a.str("sql")?, baseline.as_deref())
-        .await?)
+/// Search work items, returning only their references (cheaper)
+#[cmd(view = table(REF_COLUMNS))]
+pub struct QueryRefs {
+    #[flatten]
+    pub search: QueryArgs,
 }
 
-async fn count(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().count(&a.query()?).await?)
+impl Run for QueryRefs {
+    type Output = Vec<polarion::ItemRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .query_refs(&self.search.query(cx))
+            .await?)
+    }
 }
 
-async fn links(p: &Polarion, a: &Args) -> Result<Value> {
-    let item = p.items().get(&a.item("item")?).await?;
-    let incoming = match item.reference() {
-        Some(r) => p.items().back_links(&r).await?,
-        None => Vec::new(),
-    };
-    out(json!({"outgoing": item.links, "incoming": incoming}))
+/// Select work items with SQL.
+#[cmd(view = table(ITEM_COLUMNS))]
+pub struct QuerySql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Custom field keys to fetch in addition
+    pub custom: Vec<String>,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
 }
 
-async fn back_links(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().back_links(&a.item("item")?).await?)
+impl Run for QuerySql {
+    type Output = Vec<polarion::WorkItem>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let baseline = self.baseline;
+        Ok(cx
+            .polarion
+            .items()
+            .query_sql(
+                &self.sql,
+                &FieldSelection::fields(self.fields.as_ref(), &self.custom).unwrap_or_default(),
+                baseline.as_deref(),
+            )
+            .await?)
+    }
 }
 
-async fn history(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().history(&a.item("item")?).await?)
+/// Select work item references with SQL.
+#[cmd(view = table(REF_COLUMNS))]
+pub struct QueryRefsSql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
 }
 
-async fn revisions(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().revisions(&a.item("item")?).await?)
+impl Run for QueryRefsSql {
+    type Output = Vec<polarion::ItemRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let baseline = self.baseline;
+        Ok(cx
+            .polarion
+            .items()
+            .query_refs_sql(&self.sql, baseline.as_deref())
+            .await?)
+    }
 }
 
-async fn actions(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().actions(&a.item("item")?).await?)
+/// Count work items matching a Lucene query.
+#[cmd(view = scalar)]
+pub struct Count {
+    #[flatten]
+    pub search: QueryArgs,
 }
 
-async fn unavailable_actions(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().unavailable_actions(&a.item("item")?).await?)
+impl Run for Count {
+    type Output = u32;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.items().count(&self.search.query(cx)).await?)
+    }
 }
 
-async fn initial_action(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().initial_action(&a.item("item")?).await?)
+/// Links of a work item in both directions.
+#[cmd(view = links)]
+pub struct Links {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn allowed_assignees(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().allowed_assignees(&a.item("item")?).await?)
+/// A work item's links: `outgoing` from it, `incoming` from other items (each link's `item` is
+/// the other end).
+#[derive(Debug, Clone, Serialize)]
+pub struct ItemLinks {
+    pub outgoing: Vec<polarion::Link>,
+    pub incoming: Vec<polarion::Link>,
 }
 
-async fn allowed_approvers(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().allowed_approvers(&a.item("item")?).await?)
+impl Run for Links {
+    type Output = ItemLinks;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let item = cx.polarion.items().get(&self.item.resolve(cx)?).await?;
+        let incoming = match item.reference() {
+            Some(r) => cx.polarion.items().back_links(&r).await?,
+            None => Vec::new(),
+        };
+        Ok(ItemLinks {
+            outgoing: item.links,
+            incoming,
+        })
+    }
 }
 
-async fn field_options(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .field_options(&a.item("item")?, &a.str("key")?)
-        .await?)
+/// Links from other work items to this one.
+#[cmd(view = object)]
+pub struct BackLinks {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn filtered_field_options(p: &Polarion, a: &Args) -> Result<Value> {
-    let filter = a.opt_str("filter")?;
-    out(p
-        .items()
-        .filtered_field_options(&a.item("item")?, &a.str("key")?, filter.as_deref())
-        .await?)
+impl Run for BackLinks {
+    type Output = Vec<polarion::Link>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .back_links(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
 
-async fn field_option(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .field_option(&a.item("item")?, &a.str("key")?, &a.str("option")?)
-        .await?)
+/// The change history of a work item.
+#[cmd(view = table(CHANGE_COLUMNS))]
+pub struct History {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn available_option_ids(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .available_option_ids(&a.item("item")?, &a.str("key")?)
-        .await?)
+impl Run for History {
+    type Output = Vec<polarion::Change>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.items().history(&self.item.resolve(cx)?).await?)
+    }
 }
 
-async fn enum_options(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .enum_options(&a.item("item")?, &a.str("enum-id")?)
-        .await?)
+/// Repository revisions in which a work item changed.
+#[cmd(view = lines)]
+pub struct Revisions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn enum_option(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .enum_option(&a.item("item")?, &a.str("enum-id")?, &a.str("option")?)
-        .await?)
+impl Run for Revisions {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .revisions(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
 
-async fn available_enum_option_ids(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .available_enum_option_ids(&a.item("item")?, &a.str("enum-id")?)
-        .await?)
+/// Workflow actions available now.
+#[cmd(view = table(ACTION_COLUMNS))]
+pub struct Actions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn custom_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .custom_field(&a.item("item")?, &a.str("key")?)
-        .await?)
+impl Run for Actions {
+    type Output = Vec<polarion::WorkflowAction>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.items().actions(&self.item.resolve(cx)?).await?)
+    }
 }
 
-async fn custom_field_keys(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().custom_field_keys(&a.item("item")?).await?)
+/// Workflow actions not available now, with the reason.
+#[cmd(view = table(ACTION_COLUMNS))]
+pub struct UnavailableActions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn attachment(p: &Polarion, a: &Args) -> Result<Value> {
-    bytes(
-        &p.items()
-            .attachment(&a.item("item")?, &a.str("attachment")?)
-            .await?,
-    )
+impl Run for UnavailableActions {
+    type Output = Vec<polarion::WorkflowAction>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .unavailable_actions(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
 
-async fn localized_title(p: &Polarion, a: &Args) -> Result<Value> {
-    let language = a.opt_str("language")?;
-    out(p
-        .items()
-        .localized_title(&a.item("item")?, language.as_deref())
-        .await?)
+/// The workflow action performed on creation.
+#[cmd(view = object)]
+pub struct InitialAction {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn localized_description(p: &Polarion, a: &Args) -> Result<Value> {
-    let language = a.opt_str("language")?;
-    out(p
-        .items()
-        .localized_description(&a.item("item")?, language.as_deref())
-        .await?)
+impl Run for InitialAction {
+    type Output = Option<polarion::WorkflowAction>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .initial_action(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
 
-async fn comment_resolved(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().is_comment_resolved(&a.str("comment")?).await?)
+/// Users that may be assigned.
+#[cmd(view = table(USER_COLUMNS))]
+pub struct AllowedAssignees {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn linked_resources(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.items().linked_resources(&a.item("item")?).await?)
+impl Run for AllowedAssignees {
+    type Output = Vec<polarion::User>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .allowed_assignees(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
+
+/// Users that may approve.
+#[cmd(view = table(USER_COLUMNS))]
+pub struct AllowedApprovers {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for AllowedApprovers {
+    type Output = Vec<polarion::User>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .allowed_approvers(&self.item.resolve(cx)?)
+            .await?)
+    }
+}
+
+/// Options a field of this work item can take.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct FieldOptions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+}
+
+impl Run for FieldOptions {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .field_options(&self.item.resolve(cx)?, &self.key)
+            .await?)
+    }
+}
+
+/// Options of a dependent field, filtered by the controlling option.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct FilteredFieldOptions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+    /// Option id of the controlling field
+    pub filter: Option<String>,
+}
+
+impl Run for FilteredFieldOptions {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let filter = self.filter;
+        Ok(cx
+            .polarion
+            .items()
+            .filtered_field_options(&self.item.resolve(cx)?, &self.key, filter.as_deref())
+            .await?)
+    }
+}
+
+/// One option of a field.
+#[cmd(view = object)]
+pub struct FieldOption {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+    /// Option id
+    pub option: String,
+}
+
+impl Run for FieldOption {
+    type Output = polarion::EnumOption;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .field_option(&self.item.resolve(cx)?, &self.key, &self.option)
+            .await?)
+    }
+}
+
+/// Ids of the options of a field available now.
+#[cmd(view = lines)]
+pub struct AvailableOptionIds {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+}
+
+impl Run for AvailableOptionIds {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .available_option_ids(&self.item.resolve(cx)?, &self.key)
+            .await?)
+    }
+}
+
+/// Options of an enumeration (by enum id) this work item can use.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct EnumOptions {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Enumeration id
+    pub enum_id: String,
+}
+
+impl Run for EnumOptions {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .enum_options(&self.item.resolve(cx)?, &self.enum_id)
+            .await?)
+    }
+}
+
+/// One option of an enumeration (by enum id)
+#[cmd(view = object)]
+pub struct EnumOption {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Enumeration id
+    pub enum_id: String,
+    /// Option id
+    pub option: String,
+}
+
+impl Run for EnumOption {
+    type Output = polarion::EnumOption;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .enum_option(&self.item.resolve(cx)?, &self.enum_id, &self.option)
+            .await?)
+    }
+}
+
+/// Ids of the options of an enumeration available now.
+#[cmd(view = lines)]
+pub struct AvailableEnumOptionIds {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Enumeration id
+    pub enum_id: String,
+}
+
+impl Run for AvailableEnumOptionIds {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .available_enum_option_ids(&self.item.resolve(cx)?, &self.enum_id)
+            .await?)
+    }
+}
+
+/// The value of one custom field.
+#[cmd(view = object)]
+pub struct CustomField {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+}
+
+impl Run for CustomField {
+    type Output = Option<polarion::FieldValue>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .custom_field(&self.item.resolve(cx)?, &self.key)
+            .await?)
+    }
+}
+
+/// Keys of the custom fields defined for a work item.
+#[cmd(view = lines)]
+pub struct CustomFieldKeys {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for CustomFieldKeys {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .custom_field_keys(&self.item.resolve(cx)?)
+            .await?)
+    }
+}
+
+/// Download an attachment.
+#[cmd(view = bytes)]
+pub struct Attachment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Attachment id
+    pub attachment: String,
+}
+
+impl Run for Attachment {
+    type Output = Download;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Download(
+            cx.polarion
+                .items()
+                .attachment(&self.item.resolve(cx)?, &self.attachment)
+                .await?,
+        ))
+    }
+}
+
+/// The title in a language.
+#[cmd(view = scalar)]
+pub struct LocalizedTitle {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Language id (default language if omitted)
+    pub language: Option<String>,
+}
+
+impl Run for LocalizedTitle {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let language = self.language;
+        Ok(cx
+            .polarion
+            .items()
+            .localized_title(&self.item.resolve(cx)?, language.as_deref())
+            .await?)
+    }
+}
+
+/// The description in a language.
+#[cmd(view = object)]
+pub struct LocalizedDescription {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Language id (default language if omitted)
+    pub language: Option<String>,
+}
+
+impl Run for LocalizedDescription {
+    type Output = polarion::Text;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let language = self.language;
+        Ok(cx
+            .polarion
+            .items()
+            .localized_description(&self.item.resolve(cx)?, language.as_deref())
+            .await?)
+    }
+}
+
+/// Whether a comment is in a resolved thread.
+#[cmd(view = scalar)]
+pub struct CommentResolved {
+    /// Comment URI
+    #[positional]
+    pub comment: String,
+}
+
+impl Run for CommentResolved {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .is_comment_resolved(&self.comment)
+            .await?)
+    }
+}
+
+/// Source code resources linked to a work item.
+#[cmd(view = object)]
+pub struct LinkedResources {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for LinkedResources {
+    type Output = Vec<polarion::soap::types::LinkedResource>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .linked_resources(&self.item.resolve(cx)?)
+            .await?)
+    }
+}
+
+/// Create a work item (optionally inside a document, under a parent)
+#[cmd(write, view = object)]
+pub struct Create {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Work item type id, e.g. `requirement`
+    pub r#type: String,
+    /// Title
+    pub title: String,
+    /// Description
+    pub description: Option<RichText>,
+    /// Priority id
+    pub priority: Option<String>,
+    /// Severity id
+    pub severity: Option<String>,
+    /// Due date (YYYY-MM-DD)
+    pub due_date: Option<String>,
+    /// Initial estimate, e.g. `2d`
+    pub initial_estimate: Option<String>,
+    /// Remaining estimate
+    pub remaining_estimate: Option<String>,
+    /// Custom field values by key (typed by the field definitions)
+    pub custom_fields: Option<JsonObject>,
+    /// Create inside this document
+    pub document: Option<DocumentArg>,
+    /// Parent work item inside the document
+    pub parent: Option<ItemArg>,
+}
+
+/// A new work item: its reference and URI.
+#[derive(Debug, Clone, Serialize)]
+pub struct Created {
+    pub item: polarion::ItemRef,
+    pub uri: String,
+}
+
+impl Run for Create {
+    type Output = Created;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let project = cx.project(self.project.as_deref())?;
+        let kind = self.r#type;
+        let custom = self.custom_fields.unwrap_or_default().0;
+        let definitions = if custom.is_empty() {
+            Vec::new()
+        } else {
+            cx.polarion.schema().custom_fields(&project, &kind).await?
+        };
+        let mut new = NewWorkItem::new(&project, &kind, self.title);
+        new.description = self.description.map(polarion::Text::from);
+        new.priority = self.priority;
+        new.severity = self.severity;
+        new.due_date = self.due_date;
+        new.initial_estimate = self.initial_estimate;
+        new.remaining_estimate = self.remaining_estimate;
+        new.custom_fields = crate::values::custom_values(&custom, &definitions)?
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v?)))
+            .collect();
+        let created = match &self.document {
+            Some(document) => {
+                let parent = self.parent.as_ref().map(|i| i.resolve(cx)).transpose()?;
+                cx.polarion
+                    .items()
+                    .create_in_document(&new, &document.resolve(cx)?, parent.as_ref())
+                    .await?
+            }
+            None => cx.polarion.items().create(&new).await?,
+        };
+        Ok(Created {
+            uri: created.uri.clone(),
+            item: created,
+        })
+    }
+}
+
+/// Change fields of a work item (status changes go through `transition`)
+#[cmd(write, view = done)]
+pub struct Update {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Title
+    pub title: Option<String>,
+    /// Description
+    pub description: Option<RichText>,
+    /// Priority id
+    pub priority: Option<String>,
+    /// Severity id
+    pub severity: Option<String>,
+    /// Resolution id
+    pub resolution: Option<String>,
+    /// Due date (YYYY-MM-DD)
+    pub due_date: Option<String>,
+    /// Initial estimate
+    pub initial_estimate: Option<String>,
+    /// Remaining estimate
+    pub remaining_estimate: Option<String>,
+    /// Time spent
+    pub time_spent: Option<String>,
+    /// Custom field values by key; null clears a field
+    pub custom_fields: Option<JsonObject>,
+    /// Standard field keys to clear
+    pub clear: Vec<String>,
+}
+
+impl Run for Update {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let item = self.item.resolve(cx)?;
+        let definitions = if self.custom_fields.clone().unwrap_or_default().0.is_empty() {
+            Vec::new()
+        } else {
+            cx.polarion.schema().custom_fields_of(&item).await?
+        };
+        let update = WorkItemUpdate {
+            title: self.title,
+            description: self.description.map(polarion::Text::from),
+            priority: self.priority,
+            severity: self.severity,
+            resolution: self.resolution,
+            due_date: self.due_date,
+            initial_estimate: self.initial_estimate,
+            remaining_estimate: self.remaining_estimate,
+            time_spent: self.time_spent,
+            custom_fields: crate::values::custom_values(
+                &self.custom_fields.clone().unwrap_or_default().0,
+                &definitions,
+            )?,
+            clear: self.clear,
+        };
+        cx.polarion.items().update(&item, &update).await?;
+        Ok(Done)
+    }
+}
+
+/// Set (or with null clear) one custom field.
+#[cmd(write, view = done)]
+pub struct SetCustomField {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+    /// The value (typed by the field definition); null or absent clears
+    pub value: Option<JsonValue>,
+}
+
+impl Run for SetCustomField {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let item = self.item.resolve(cx)?;
+        let key = self.key;
+        let value = match self.value {
+            None => None,
+            Some(JsonValue(raw)) => {
+                let definition = cx.polarion.schema().custom_field_of(&item, &key).await?;
+                polarion::FieldValue::coerce(&raw, &definition)?
+            }
+        };
+        cx.polarion
+            .items()
+            .set_custom_field(&item, &key, value.as_ref())
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Clear fields by key.
+#[cmd(write, view = done)]
+pub struct ClearFields {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field keys
+    pub fields: Vec<String>,
+}
+
+impl Run for ClearFields {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .clear_fields(&self.item.resolve(cx)?, &self.fields)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Delete a work item.
+#[cmd(write, view = done)]
+pub struct Delete {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for Delete {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion.items().delete(&self.item.resolve(cx)?).await?;
+        Ok(Done)
+    }
+}
+
+/// Move a work item into (or within) a document.
+#[cmd(write, view = done)]
+pub struct MoveToDocument {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Target document
+    pub document: DocumentArg,
+    /// Parent work item (top level if omitted)
+    pub parent: Option<ItemArg>,
+    /// Position among the parent's children (end if omitted)
+    pub position: Option<u32>,
+    /// Keep the position in the document flow
+    pub retain_flow: bool,
+}
+
+impl Run for MoveToDocument {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let parent = self.parent.as_ref().map(|i| i.resolve(cx)).transpose()?;
+        cx.polarion
+            .items()
+            .move_to_document(
+                &self.item.resolve(cx)?,
+                &self.document.resolve(cx)?,
+                parent.as_ref(),
+                self.position,
+                self.retain_flow,
+            )
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Perform a workflow action by id (see `actions`)
+#[cmd(write, view = done)]
+pub struct PerformAction {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Action id
+    pub action: i32,
+}
+
+impl Run for PerformAction {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .perform_action(&self.item.resolve(cx)?, self.action)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Move a work item to a status via the matching workflow action.
+#[cmd(write, view = object)]
+pub struct Transition {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Target status id
+    pub status: String,
+}
+
+impl Run for Transition {
+    type Output = polarion::WorkflowAction;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .transition(&self.item.resolve(cx)?, &self.status)
+            .await?)
+    }
+}
+
+/// Reset the workflow to the initial status.
+#[cmd(write, view = done)]
+pub struct ResetWorkflow {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for ResetWorkflow {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .reset_workflow(&self.item.resolve(cx)?)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Comment on a work item; returns the comment URI.
+#[cmd(write, view = scalar)]
+pub struct AddComment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+    /// Title
+    pub title: Option<String>,
+}
+
+impl Run for AddComment {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let title = self.title;
+        Ok(cx
+            .polarion
+            .items()
+            .add_comment(
+                &self.item.resolve(cx)?,
+                title.as_deref(),
+                &polarion::Text::from(self.text),
+            )
+            .await?)
+    }
+}
+
+/// Comment visible only to some users or roles.
+#[cmd(write, view = scalar)]
+pub struct AddRestrictedComment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+    /// Title
+    pub title: String,
+    /// User ids or roles
+    pub visible_to: Vec<String>,
+}
+
+impl Run for AddRestrictedComment {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .add_restricted_comment(
+                &self.item.resolve(cx)?,
+                &self.title,
+                &polarion::Text::from(self.text),
+                &self.visible_to,
+            )
+            .await?)
+    }
+}
+
+/// Reply to a comment.
+#[cmd(write, view = scalar)]
+pub struct ReplyToComment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Comment URI
+    pub comment: String,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+}
+
+impl Run for ReplyToComment {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .items()
+            .reply_to_comment(
+                &self.item.resolve(cx)?,
+                &self.comment,
+                &polarion::Text::from(self.text),
+            )
+            .await?)
+    }
+}
+
+/// Mark a comment resolved or unresolved.
+#[cmd(write, view = done)]
+pub struct SetCommentResolved {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Comment URI
+    pub comment: String,
+    /// Resolved
+    pub resolved: bool,
+}
+
+impl Run for SetCommentResolved {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .set_comment_resolved(&self.item.resolve(cx)?, &self.comment, self.resolved)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Replace the tags of a comment.
+#[cmd(write, view = done)]
+pub struct SetCommentTags {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Comment URI
+    pub comment: String,
+    /// Tag ids
+    pub tags: Vec<String>,
+}
+
+impl Run for SetCommentTags {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let tags = self.tags;
+        let tags: Vec<&str> = tags.iter().map(String::as_str).collect();
+        cx.polarion
+            .items()
+            .set_comment_tags(&self.item.resolve(cx)?, &self.comment, &tags)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Link to another work item.
+#[cmd(write, view = done)]
+pub struct AddLink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+    /// The linked work item
+    pub target: ItemArg,
+}
+
+impl Run for AddLink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_link(
+                    &self.item.resolve(cx)?,
+                    &self.role,
+                    &self.target.resolve(cx)?,
+                )
+                .await?,
+        ))
+    }
+}
+
+/// Remove a link.
+#[cmd(write, view = done)]
+pub struct RemoveLink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+    /// The linked work item
+    pub target: ItemArg,
+}
+
+impl Run for RemoveLink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_link(
+                    &self.item.resolve(cx)?,
+                    &self.role,
+                    &self.target.resolve(cx)?,
+                )
+                .await?,
+        ))
+    }
+}
+
+/// Link to another work item pinned to a revision, optionally suspect.
+#[cmd(write, view = done)]
+pub struct AddLinkAtRevision {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+    /// The linked work item
+    pub target: ItemArg,
+    /// Revision (HEAD if omitted)
+    pub revision: Option<String>,
+    /// Mark suspect
+    pub suspect: bool,
+}
+
+impl Run for AddLinkAtRevision {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let revision = self.revision;
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_link_at_revision(
+                    &self.item.resolve(cx)?,
+                    &self.role,
+                    &self.target.resolve(cx)?,
+                    revision.as_deref(),
+                    self.suspect,
+                )
+                .await?,
+        ))
+    }
+}
+
+/// Add a hyperlink.
+#[cmd(write, view = done)]
+pub struct AddHyperlink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// URL
+    pub url: String,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+}
+
+impl Run for AddHyperlink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_hyperlink(&self.item.resolve(cx)?, &self.url, &self.role)
+                .await?,
+        ))
+    }
+}
+
+/// Remove a hyperlink.
+#[cmd(write, view = done)]
+pub struct RemoveHyperlink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// URL
+    pub url: String,
+}
+
+impl Run for RemoveHyperlink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_hyperlink(&self.item.resolve(cx)?, &self.url)
+                .await?,
+        ))
+    }
+}
+
+/// Link a work item on another server (OSLC) by URL.
+#[cmd(write, view = done)]
+pub struct AddExternalLink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// URL
+    pub url: String,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+}
+
+impl Run for AddExternalLink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_external_link(&self.item.resolve(cx)?, &self.url, &self.role)
+                .await?,
+        ))
+    }
+}
+
+/// Remove an external link.
+#[cmd(write, view = done)]
+pub struct RemoveExternalLink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// URL
+    pub url: String,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+}
+
+impl Run for RemoveExternalLink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_external_link(&self.item.resolve(cx)?, &self.url, &self.role)
+                .await?,
+        ))
+    }
+}
+
+/// Link an OSLC resource with a label.
+#[cmd(write, view = done)]
+pub struct AddOslcLink {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// URL
+    pub url: String,
+    /// Link role id, e.g. `parent`, `relates_to`
+    pub role: String,
+    /// Label
+    pub label: String,
+}
+
+impl Run for AddOslcLink {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_oslc_link(&self.item.resolve(cx)?, &self.url, &self.role, &self.label)
+                .await?,
+        ))
+    }
+}
+
+/// Link a repository revision.
+#[cmd(write, view = done)]
+pub struct AddLinkedRevision {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Revision
+    pub revision: String,
+    /// Repository (default repository if omitted)
+    pub repository: Option<String>,
+}
+
+impl Run for AddLinkedRevision {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let repository = self.repository;
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_linked_revision(
+                    &self.item.resolve(cx)?,
+                    repository.as_deref(),
+                    &self.revision,
+                )
+                .await?,
+        ))
+    }
+}
+
+/// Unlink a repository revision.
+#[cmd(write, view = done)]
+pub struct RemoveLinkedRevision {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Revision
+    pub revision: String,
+    /// Repository
+    pub repository: Option<String>,
+}
+
+impl Run for RemoveLinkedRevision {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let repository = self.repository;
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_linked_revision(
+                    &self.item.resolve(cx)?,
+                    repository.as_deref(),
+                    &self.revision,
+                )
+                .await?,
+        ))
+    }
+}
+
+/// Add a planning constraint.
+#[cmd(write, view = done)]
+pub struct AddPlanningConstraint {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Date
+    pub date: String,
+    /// Constraint id
+    pub constraint: String,
+}
+
+impl Run for AddPlanningConstraint {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_planning_constraint(&self.item.resolve(cx)?, &self.date, &self.constraint)
+                .await?,
+        ))
+    }
+}
+
+/// Remove a planning constraint.
+#[cmd(write, view = done)]
+pub struct RemovePlanningConstraint {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Date
+    pub date: String,
+    /// Constraint id
+    pub constraint: String,
+}
+
+impl Run for RemovePlanningConstraint {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_planning_constraint(&self.item.resolve(cx)?, &self.date, &self.constraint)
+                .await?,
+        ))
+    }
+}
+
+/// Assign a user.
+#[cmd(write, view = done)]
+pub struct AddAssignee {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+}
+
+impl Run for AddAssignee {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_assignee(&self.item.resolve(cx)?, &self.user)
+                .await?,
+        ))
+    }
+}
+
+/// Unassign a user.
+#[cmd(write, view = done)]
+pub struct RemoveAssignee {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+}
+
+impl Run for RemoveAssignee {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_assignee(&self.item.resolve(cx)?, &self.user)
+                .await?,
+        ))
+    }
+}
+
+/// Add a category.
+#[cmd(write, view = done)]
+pub struct AddCategory {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Category id
+    pub category: String,
+}
+
+impl Run for AddCategory {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .add_category(&self.item.resolve(cx)?, &self.category)
+                .await?,
+        ))
+    }
+}
+
+/// Remove a category.
+#[cmd(write, view = done)]
+pub struct RemoveCategory {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Category id
+    pub category: String,
+}
+
+impl Run for RemoveCategory {
+    type Output = Changed;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(Changed::from(
+            cx.polarion
+                .items()
+                .remove_category(&self.item.resolve(cx)?, &self.category)
+                .await?,
+        ))
+    }
+}
+
+/// Request an approval from a user.
+#[cmd(write, view = done)]
+pub struct AddApprovee {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+}
+
+impl Run for AddApprovee {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .add_approvee(&self.item.resolve(cx)?, &self.user)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Remove an approver.
+#[cmd(write, view = done)]
+pub struct RemoveApprovee {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+}
+
+impl Run for RemoveApprovee {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .remove_approvee(&self.item.resolve(cx)?, &self.user)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Set a user's approval status.
+#[cmd(write, view = done)]
+pub struct SetApproval {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+    /// e.g. `approved`, `disapproved`, `waiting`
+    pub status: String,
+}
+
+impl Run for SetApproval {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .set_approval(&self.item.resolve(cx)?, &self.user, &self.status)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Attach a file.
+#[cmd(write, view = done)]
+pub struct AddAttachment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// File name
+    pub file_name: String,
+    /// Title
+    pub title: String,
+    /// Content
+    pub data: Data,
+}
+
+impl Run for AddAttachment {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .add_attachment(
+                &self.item.resolve(cx)?,
+                &self.file_name,
+                &self.title,
+                &self.data.0,
+            )
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Change an attachment's file name, title or content.
+#[cmd(write, view = done)]
+pub struct UpdateAttachment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Attachment id
+    pub attachment: String,
+    /// File name
+    pub file_name: Option<String>,
+    /// Title
+    pub title: Option<String>,
+    /// Content
+    pub data: Option<Data>,
+}
+
+impl Run for UpdateAttachment {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (file_name, title, data) = (self.file_name, self.title, self.data.map(|d| d.0));
+        cx.polarion
+            .items()
+            .update_attachment(
+                &self.item.resolve(cx)?,
+                &self.attachment,
+                file_name.as_deref(),
+                title.as_deref(),
+                data.as_deref(),
+            )
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Delete an attachment.
+#[cmd(write, view = done)]
+pub struct DeleteAttachment {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Attachment id
+    pub attachment: String,
+}
+
+impl Run for DeleteAttachment {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .delete_attachment(&self.item.resolve(cx)?, &self.attachment)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Book time.
+#[cmd(write, view = done)]
+pub struct AddWorkRecord {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// User id
+    pub user: String,
+    /// Date (YYYY-MM-DD)
+    pub date: String,
+    /// Duration, e.g. `2h`
+    pub time_spent: String,
+    /// Work record type id (needed with a comment)
+    pub r#type: Option<String>,
+    /// Comment
+    pub comment: Option<String>,
+}
+
+impl Run for AddWorkRecord {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let record = NewWorkRecord {
+            user: self.user,
+            date: self.date,
+            time_spent: self.time_spent,
+            kind: self.r#type,
+            comment: self.comment,
+        };
+        cx.polarion
+            .items()
+            .add_work_record(&self.item.resolve(cx)?, &record)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Delete a work record.
+#[cmd(write, view = done)]
+pub struct DeleteWorkRecord {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Work record URI
+    pub record: String,
+}
+
+impl Run for DeleteWorkRecord {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .delete_work_record(&self.item.resolve(cx)?, &self.record)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Set the title in a language.
+#[cmd(write, view = done)]
+pub struct SetLocalizedTitle {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Language id (default language if omitted)
+    pub language: Option<String>,
+    /// Title (clears if omitted)
+    pub title: Option<String>,
+}
+
+impl Run for SetLocalizedTitle {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (language, title) = (self.language, self.title);
+        cx.polarion
+            .items()
+            .set_localized_title(
+                &self.item.resolve(cx)?,
+                language.as_deref(),
+                title.as_deref(),
+            )
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Set the description in a language.
+#[cmd(write, view = done)]
+pub struct SetLocalizedDescription {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Language id (default language if omitted)
+    pub language: Option<String>,
+    /// Description (clears if omitted)
+    pub description: Option<RichText>,
+}
+
+impl Run for SetLocalizedDescription {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (language, description) = (self.language, self.description.map(polarion::Text::from));
+        cx.polarion
+            .items()
+            .set_localized_description(
+                &self.item.resolve(cx)?,
+                language.as_deref(),
+                description.as_ref(),
+            )
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Mark links to the work item suspect.
+#[cmd(write, view = done)]
+pub struct AutoSuspect {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for AutoSuspect {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .auto_suspect(&self.item.resolve(cx)?)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Assign by the project's rules.
+#[cmd(write, view = done)]
+pub struct AutoAssign {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+}
+
+impl Run for AutoAssign {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .items()
+            .auto_assign(&self.item.resolve(cx)?)
+            .await?;
+        Ok(Done)
+    }
+}
+
+// ---- reads
 
 // ---- writes
-
-async fn create(p: &Polarion, a: &Args) -> Result<Value> {
-    let project = a.project()?;
-    let kind = a.str("type")?;
-    let custom = a.object("custom-fields")?;
-    let definitions = if custom.is_empty() {
-        Vec::new()
-    } else {
-        p.schema().custom_fields(&project, &kind).await?
-    };
-    let mut new = NewWorkItem::new(&project, &kind, a.str("title")?);
-    new.description = a.opt_text("description")?;
-    new.priority = a.opt_str("priority")?;
-    new.severity = a.opt_str("severity")?;
-    new.due_date = a.opt_str("due-date")?;
-    new.initial_estimate = a.opt_str("initial-estimate")?;
-    new.remaining_estimate = a.opt_str("remaining-estimate")?;
-    new.custom_fields = a
-        .custom_values("custom-fields", &definitions)?
-        .into_iter()
-        .filter_map(|(k, v)| Some((k, v?)))
-        .collect();
-    let created = match a.get("document") {
-        Some(_) => {
-            let parent = a.opt_item("parent")?;
-            p.items()
-                .create_in_document(&new, &a.document("document")?, parent.as_ref())
-                .await?
-        }
-        None => p.items().create(&new).await?,
-    };
-    out(json!({"item": created, "uri": created.uri}))
-}
-
-async fn update(p: &Polarion, a: &Args) -> Result<Value> {
-    let item = a.item("item")?;
-    let definitions = if a.object("custom-fields")?.is_empty() {
-        Vec::new()
-    } else {
-        p.schema().custom_fields_of(&item).await?
-    };
-    let update = WorkItemUpdate {
-        title: a.opt_str("title")?,
-        description: a.opt_text("description")?,
-        priority: a.opt_str("priority")?,
-        severity: a.opt_str("severity")?,
-        resolution: a.opt_str("resolution")?,
-        due_date: a.opt_str("due-date")?,
-        initial_estimate: a.opt_str("initial-estimate")?,
-        remaining_estimate: a.opt_str("remaining-estimate")?,
-        time_spent: a.opt_str("time-spent")?,
-        custom_fields: a.custom_values("custom-fields", &definitions)?,
-        clear: a.list("clear")?,
-    };
-    p.items().update(&item, &update).await?;
-    Ok(Value::Null)
-}
-
-async fn set_custom_field(p: &Polarion, a: &Args) -> Result<Value> {
-    let item = a.item("item")?;
-    let key = a.str("key")?;
-    let raw = a.get("value").cloned().unwrap_or(Value::Null);
-    let value = if raw.is_null() {
-        None
-    } else {
-        let definition = p.schema().custom_field_of(&item, &key).await?;
-        polarion::FieldValue::coerce(&raw, &definition)?
-    };
-    p.items()
-        .set_custom_field(&item, &key, value.as_ref())
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn clear_fields(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .clear_fields(&a.item("item")?, &a.list("fields")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn delete(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items().delete(&a.item("item")?).await?;
-    Ok(Value::Null)
-}
-
-async fn move_to_document(p: &Polarion, a: &Args) -> Result<Value> {
-    let parent = a.opt_item("parent")?;
-    p.items()
-        .move_to_document(
-            &a.item("item")?,
-            &a.document("document")?,
-            parent.as_ref(),
-            a.opt_u32("position")?,
-            a.bool("retain-flow")?,
-        )
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn perform_action(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .perform_action(&a.item("item")?, a.i32("action")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn transition(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .transition(&a.item("item")?, &a.str("status")?)
-        .await?)
-}
-
-async fn reset_workflow(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items().reset_workflow(&a.item("item")?).await?;
-    Ok(Value::Null)
-}
-
-async fn add_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    let title = a.opt_str("title")?;
-    out(p
-        .items()
-        .add_comment(&a.item("item")?, title.as_deref(), &a.text("text")?)
-        .await?)
-}
-
-async fn add_restricted_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .add_restricted_comment(
-            &a.item("item")?,
-            &a.str("title")?,
-            &a.text("text")?,
-            &a.list("visible-to")?,
-        )
-        .await?)
-}
-
-async fn reply_to_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .items()
-        .reply_to_comment(&a.item("item")?, &a.str("comment")?, &a.text("text")?)
-        .await?)
-}
-
-async fn set_comment_resolved(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .set_comment_resolved(&a.item("item")?, &a.str("comment")?, a.bool("resolved")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn set_comment_tags(p: &Polarion, a: &Args) -> Result<Value> {
-    let tags = a.list("tags")?;
-    let tags: Vec<&str> = tags.iter().map(String::as_str).collect();
-    p.items()
-        .set_comment_tags(&a.item("item")?, &a.str("comment")?, &tags)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn add_link(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_link(&a.item("item")?, &a.str("role")?, &a.item("target")?)
-            .await?,
-    )
-}
-
-async fn remove_link(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_link(&a.item("item")?, &a.str("role")?, &a.item("target")?)
-            .await?,
-    )
-}
-
-async fn add_link_at_revision(p: &Polarion, a: &Args) -> Result<Value> {
-    let revision = a.opt_str("revision")?;
-    changed(
-        p.items()
-            .add_link_at_revision(
-                &a.item("item")?,
-                &a.str("role")?,
-                &a.item("target")?,
-                revision.as_deref(),
-                a.bool("suspect")?,
-            )
-            .await?,
-    )
-}
-
-async fn add_hyperlink(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_hyperlink(&a.item("item")?, &a.str("url")?, &a.str("role")?)
-            .await?,
-    )
-}
-
-async fn remove_hyperlink(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_hyperlink(&a.item("item")?, &a.str("url")?)
-            .await?,
-    )
-}
-
-async fn add_external_link(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_external_link(&a.item("item")?, &a.str("url")?, &a.str("role")?)
-            .await?,
-    )
-}
-
-async fn remove_external_link(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_external_link(&a.item("item")?, &a.str("url")?, &a.str("role")?)
-            .await?,
-    )
-}
-
-async fn add_oslc_link(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_oslc_link(
-                &a.item("item")?,
-                &a.str("url")?,
-                &a.str("role")?,
-                &a.str("label")?,
-            )
-            .await?,
-    )
-}
-
-async fn add_linked_revision(p: &Polarion, a: &Args) -> Result<Value> {
-    let repository = a.opt_str("repository")?;
-    changed(
-        p.items()
-            .add_linked_revision(&a.item("item")?, repository.as_deref(), &a.str("revision")?)
-            .await?,
-    )
-}
-
-async fn remove_linked_revision(p: &Polarion, a: &Args) -> Result<Value> {
-    let repository = a.opt_str("repository")?;
-    changed(
-        p.items()
-            .remove_linked_revision(&a.item("item")?, repository.as_deref(), &a.str("revision")?)
-            .await?,
-    )
-}
-
-async fn add_planning_constraint(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_planning_constraint(&a.item("item")?, &a.str("date")?, &a.str("constraint")?)
-            .await?,
-    )
-}
-
-async fn remove_planning_constraint(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_planning_constraint(&a.item("item")?, &a.str("date")?, &a.str("constraint")?)
-            .await?,
-    )
-}
-
-async fn add_assignee(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_assignee(&a.item("item")?, &a.str("user")?)
-            .await?,
-    )
-}
-
-async fn remove_assignee(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_assignee(&a.item("item")?, &a.str("user")?)
-            .await?,
-    )
-}
-
-async fn add_category(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .add_category(&a.item("item")?, &a.str("category")?)
-            .await?,
-    )
-}
-
-async fn remove_category(p: &Polarion, a: &Args) -> Result<Value> {
-    changed(
-        p.items()
-            .remove_category(&a.item("item")?, &a.str("category")?)
-            .await?,
-    )
-}
-
-async fn add_approvee(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .add_approvee(&a.item("item")?, &a.str("user")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn remove_approvee(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .remove_approvee(&a.item("item")?, &a.str("user")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn set_approval(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .set_approval(&a.item("item")?, &a.str("user")?, &a.str("status")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn add_attachment(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .add_attachment(
-            &a.item("item")?,
-            &a.str("file-name")?,
-            &a.str("title")?,
-            &a.bytes("data")?,
-        )
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn update_attachment(p: &Polarion, a: &Args) -> Result<Value> {
-    let (file_name, title, data) = (
-        a.opt_str("file-name")?,
-        a.opt_str("title")?,
-        a.opt_bytes("data")?,
-    );
-    p.items()
-        .update_attachment(
-            &a.item("item")?,
-            &a.str("attachment")?,
-            file_name.as_deref(),
-            title.as_deref(),
-            data.as_deref(),
-        )
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn delete_attachment(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .delete_attachment(&a.item("item")?, &a.str("attachment")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn add_work_record(p: &Polarion, a: &Args) -> Result<Value> {
-    let record = NewWorkRecord {
-        user: a.str("user")?,
-        date: a.str("date")?,
-        time_spent: a.str("time-spent")?,
-        kind: a.opt_str("type")?,
-        comment: a.opt_str("comment")?,
-    };
-    p.items().add_work_record(&a.item("item")?, &record).await?;
-    Ok(Value::Null)
-}
-
-async fn delete_work_record(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items()
-        .delete_work_record(&a.item("item")?, &a.str("record")?)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn set_localized_title(p: &Polarion, a: &Args) -> Result<Value> {
-    let (language, title) = (a.opt_str("language")?, a.opt_str("title")?);
-    p.items()
-        .set_localized_title(&a.item("item")?, language.as_deref(), title.as_deref())
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn set_localized_description(p: &Polarion, a: &Args) -> Result<Value> {
-    let (language, description) = (a.opt_str("language")?, a.opt_text("description")?);
-    p.items()
-        .set_localized_description(&a.item("item")?, language.as_deref(), description.as_ref())
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn auto_suspect(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items().auto_suspect(&a.item("item")?).await?;
-    Ok(Value::Null)
-}
-
-async fn auto_assign(p: &Polarion, a: &Args) -> Result<Value> {
-    p.items().auto_assign(&a.item("item")?).await?;
-    Ok(Value::Null)
-}

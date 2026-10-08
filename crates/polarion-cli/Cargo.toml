@@ -21,7 +21,7 @@ doc = false
 base64.workspace = true
 clap.workspace = true
 polarion.workspace = true
-polarion-commands.workspace = true
+polarion-commands = { workspace = true, features = ["cli"] }
 # Keep struct field order in the JSON values the text output is rendered from.
 serde_json = { workspace = true, features = ["preserve_order"] }
 tokio.workspace = true

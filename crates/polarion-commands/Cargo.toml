@@ -1,6 +1,6 @@
 [package]
 name = "polarion-commands"
-description = "Every operation of the polarion library as a named JSON command, shared by the CLI and the MCP server"
+description = "Every operation of the polarion library as a typed command DTO, shared by the CLI and the MCP server"
 keywords = ["polarion", "alm", "cli", "mcp"]
 categories = ["api-bindings"]
 readme = "../../README.md"
@@ -13,9 +13,17 @@ authors.workspace = true
 
 [dependencies]
 base64.workspace = true
+clap = { workspace = true, optional = true }
 polarion.workspace = true
+polarion-commands-derive.workspace = true
+schemars = "1"
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
+serde_path_to_error = "0.1"
+
+[features]
+# The clap command line generated from the DTOs.
+cli = ["dep:clap"]
 
 [dev-dependencies]
 tokio.workspace = true

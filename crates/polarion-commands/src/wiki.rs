@@ -1,131 +1,177 @@
 //! `wiki.*`: wiki pages.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, FieldSelection, PAGE_COLUMNS, QueryArgs, Result, Run};
 
-const SPACE: Param = Param::req("space", Kind::String, "Wiki space id");
-
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "wiki",
-        "spaces",
-        false,
-        Output::Lines,
-        "Wiki spaces of a project",
-        [PROJECT],
-        spaces
-    ),
-    command!(
-        "wiki",
-        "pages",
-        false,
-        Output::Table(PAGE_COLUMNS),
-        "Pages of a space (all fields, or only `fields`)",
-        [PROJECT, SPACE, FIELDS],
-        pages
-    ),
-    command!(
-        "wiki",
-        "page-uris",
-        false,
-        Output::Lines,
-        "URIs of the pages of a space",
-        [PROJECT, SPACE],
-        page_uris
-    ),
-    command!(
-        "wiki",
-        "get",
-        false,
-        Output::Object,
-        "One page by URI (all fields, or only `fields`)",
-        [URI, FIELDS],
-        get
-    ),
-    command!(
-        "wiki",
-        "query",
-        false,
-        Output::Table(PAGE_COLUMNS),
-        "Search pages with a Lucene query",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, FIELDS, BASELINE],
-        query
-    ),
-    command!(
-        "wiki",
-        "query-uris",
-        false,
-        Output::Lines,
-        "Search pages, returning URIs",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, BASELINE],
-        query_uris
-    ),
-    command!(
-        "wiki",
-        "query-sql",
-        false,
-        Output::Table(PAGE_COLUMNS),
-        "Select pages with SQL",
-        [SQL, FIELDS, BASELINE],
-        query_sql
-    ),
-    command!(
-        "wiki",
-        "query-uris-sql",
-        false,
-        Output::Lines,
-        "Select page URIs with SQL",
-        [SQL, BASELINE],
-        query_uris_sql
-    ),
-];
-
-async fn spaces(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.wiki().spaces(&a.project()?).await?)
+/// Wiki spaces of a project.
+#[cmd(view = lines)]
+pub struct Spaces {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn pages(p: &Polarion, a: &Args) -> Result<Value> {
-    let fields = a.opt_fields()?;
-    out(p
-        .wiki()
-        .pages(&a.project()?, &a.str("space")?, fields.as_ref())
-        .await?)
+impl Run for Spaces {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .wiki()
+            .spaces(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
 }
 
-async fn page_uris(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.wiki().page_uris(&a.project()?, &a.str("space")?).await?)
+/// Pages of a space (all fields, or only `fields`)
+#[cmd(view = table(PAGE_COLUMNS))]
+pub struct Pages {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Wiki space id
+    pub space: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
 }
 
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    let fields = a.opt_fields()?;
-    out(p.wiki().get(&a.str("uri")?, fields.as_ref()).await?)
+impl Run for Pages {
+    type Output = Vec<polarion::WikiPage>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let fields = FieldSelection::fields(self.fields.as_ref(), &[]);
+        Ok(cx
+            .polarion
+            .wiki()
+            .pages(
+                &cx.project(self.project.as_deref())?,
+                &self.space,
+                fields.as_ref(),
+            )
+            .await?)
+    }
 }
 
-async fn query(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.wiki().query(&a.query()?).await?)
+/// URIs of the pages of a space.
+#[cmd(view = lines)]
+pub struct PageUris {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Wiki space id
+    pub space: String,
 }
 
-async fn query_uris(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.wiki().query_uris(&a.query()?).await?)
+impl Run for PageUris {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .wiki()
+            .page_uris(&cx.project(self.project.as_deref())?, &self.space)
+            .await?)
+    }
 }
 
-async fn query_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let (fields, baseline) = (a.opt_fields()?, a.opt_str("baseline")?);
-    out(p
-        .wiki()
-        .query_sql(&a.str("sql")?, fields.as_ref(), baseline.as_deref())
-        .await?)
+/// One page by URI (all fields, or only `fields`)
+#[cmd(view = object)]
+pub struct Get {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
 }
 
-async fn query_uris_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let baseline = a.opt_str("baseline")?;
-    out(p
-        .wiki()
-        .query_uris_sql(&a.str("sql")?, baseline.as_deref())
-        .await?)
+impl Run for Get {
+    type Output = polarion::WikiPage;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let fields = FieldSelection::fields(self.fields.as_ref(), &[]);
+        Ok(cx.polarion.wiki().get(&self.uri, fields.as_ref()).await?)
+    }
+}
+
+/// Search pages with a Lucene query.
+#[cmd(view = table(PAGE_COLUMNS))]
+pub struct Query {
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for Query {
+    type Output = Vec<polarion::WikiPage>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.wiki().query(&self.search.query(cx)).await?)
+    }
+}
+
+/// Search pages, returning URIs.
+#[cmd(view = lines)]
+pub struct QueryUris {
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for QueryUris {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .wiki()
+            .query_uris(&self.search.query(cx))
+            .await?)
+    }
+}
+
+/// Select pages with SQL.
+#[cmd(view = table(PAGE_COLUMNS))]
+pub struct QuerySql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
+}
+
+impl Run for QuerySql {
+    type Output = Vec<polarion::WikiPage>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (fields, baseline) = (
+            FieldSelection::fields(self.fields.as_ref(), &[]),
+            self.baseline,
+        );
+        Ok(cx
+            .polarion
+            .wiki()
+            .query_sql(&self.sql, fields.as_ref(), baseline.as_deref())
+            .await?)
+    }
+}
+
+/// Select page URIs with SQL.
+#[cmd(view = lines)]
+pub struct QueryUrisSql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
+}
+
+impl Run for QueryUrisSql {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let baseline = self.baseline;
+        Ok(cx
+            .polarion
+            .wiki()
+            .query_uris_sql(&self.sql, baseline.as_deref())
+            .await?)
+    }
 }

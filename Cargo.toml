@@ -13,13 +13,14 @@ authors = ["Kevin Gliewe"]
 [workspace.dependencies]
 polarion = { path = "crates/polarion", version = "0.1.0" }
 polarion-commands = { path = "crates/polarion-commands", version = "0.1.0" }
+polarion-commands-derive = { path = "crates/polarion-commands-derive", version = "0.1.0" }
 polarion-rest = { path = "crates/polarion-rest", version = "0.1.0" }
 polarion-soap = { path = "crates/polarion-soap", version = "0.1.0" }
 
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 base64 = "0.23"
-clap = { version = "4", features = ["env", "string"] }
+clap = { version = "4", features = ["derive", "env", "string"] }
 heck = "0.5"
 
 roxmltree = "0.21"

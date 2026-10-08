@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-use polarion_commands::Output;
+use polarion_commands::View;
 use serde_json::Value;
 
 fn str_at(v: &Value, key: &str) -> String {
@@ -24,9 +24,9 @@ pub fn json(value: &Value, pretty: bool) -> String {
 }
 
 /// Text for people. Empty for an empty list or no result.
-pub fn text(value: &Value, output: Output) -> String {
-    match output {
-        Output::Table(columns) => {
+pub fn text(value: &Value, view: View) -> String {
+    match view {
+        View::Table(columns) => {
             let rows: Vec<Vec<String>> = items(value)
                 .map(|item| columns.iter().map(|c| one_line(&(c.cell)(item))).collect())
                 .collect();
@@ -35,13 +35,13 @@ pub fn text(value: &Value, output: Output) -> String {
             }
             table(&columns.iter().map(|c| c.header).collect::<Vec<_>>(), &rows)
         }
-        Output::Object => {
+        View::Object => {
             let mut out = String::new();
             tree(&mut out, 0, value);
             out
         }
-        Output::Lines => items(value).map(|v| format!("{}\n", inline(v))).collect(),
-        Output::Links => {
+        View::Lines => items(value).map(|v| format!("{}\n", inline(v))).collect(),
+        View::Links => {
             let mut rows = Vec::new();
             for (key, direction) in [("outgoing", "out"), ("incoming", "in")] {
                 for link in value.get(key).into_iter().flat_map(items) {
@@ -62,15 +62,15 @@ pub fn text(value: &Value, output: Output) -> String {
             }
             table(&["DIRECTION", "ROLE", "ITEM", ""], &rows)
         }
-        Output::Scalar => match value {
+        View::Scalar => match value {
             Value::Null => String::new(),
             other => format!("{}\n", inline(other)),
         },
-        Output::Bytes => format!(
+        View::Bytes => format!(
             "{} bytes (use --out FILE to save them)\n",
             value.get("size").and_then(Value::as_u64).unwrap_or(0)
         ),
-        Output::Done => match value.get("changed") {
+        View::Done => match value.get("changed") {
             Some(Value::Bool(true)) => "changed\n".into(),
             Some(Value::Bool(false)) => "unchanged\n".into(),
             _ => "done\n".into(),
@@ -273,13 +273,13 @@ mod tests {
             {"id": "P-10", "type": "task", "title": "Multi\nline"},
         ]);
         assert_eq!(
-            text(&items, Output::Table(polarion_commands::ITEM_COLUMNS)),
+            text(&items, View::Table(polarion_commands::ITEM_COLUMNS)),
             "ID    TYPE         STATUS  TITLE\n\
              P-1   requirement  open    Brakes\n\
              P-10  task                 Multi line\n"
         );
         assert_eq!(
-            text(&json!([]), Output::Table(polarion_commands::ITEM_COLUMNS)),
+            text(&json!([]), View::Table(polarion_commands::ITEM_COLUMNS)),
             ""
         );
     }
@@ -295,7 +295,7 @@ mod tests {
             "customFields": {"asil": "D", "count": 3},
         });
         assert_eq!(
-            text(&item, Output::Object),
+            text(&item, View::Object),
             "id: P-1\n\
              description: First & foremost\n  Second\n\
              assignees: amy, bob\n\
@@ -312,7 +312,7 @@ mod tests {
             "incoming": [{"role": "verifies", "item": {"uri": "x"}}],
         });
         assert_eq!(
-            text(&links, Output::Links),
+            text(&links, View::Links),
             "DIRECTION  ROLE      ITEM   \n".trim_end().to_owned()
                 + "\n"
                 + "out        parent    P/P-0  suspect\n"

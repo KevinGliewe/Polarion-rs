@@ -223,7 +223,7 @@ async fn every_command_can_be_a_tool() {
     )
     .await;
     let tools = r[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 18 + polarion_commands::commands().len());
+    assert_eq!(tools.len(), 18 + polarion_commands::catalog().len());
     let delete = tools.iter().find(|t| t["name"] == "items_delete").unwrap();
     assert_eq!(delete["annotations"]["readOnlyHint"], false);
     assert!(
@@ -570,4 +570,30 @@ fn a_missing_exchange_folder_stops_the_server() {
             .unwrap()
             .contains("POLARION_MCP_FILES")
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn arguments_are_checked_against_the_command() {
+    let r = session(
+        None,
+        &[],
+        &[
+            call(
+                "polarion_call",
+                json!({"command": "items.get", "args": {"item": "P/P-1", "itme": "x"}}),
+            ),
+            call("query_work_items", json!({"limit": "many"})),
+            call("get_work_item", json!({"item": "a/b/c"})),
+        ],
+    )
+    .await;
+    let (text, error) = tool_text(&r[1]);
+    assert!(error && text.contains("unknown argument `itme`"), "{text}");
+    let (text, error) = tool_text(&r[2]);
+    assert!(
+        error && text.contains("`limit`: expected an integer"),
+        "{text}"
+    );
+    let (text, error) = tool_text(&r[3]);
+    assert!(error && text.contains("`item`"), "{text}");
 }

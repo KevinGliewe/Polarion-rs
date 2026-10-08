@@ -1,59 +1,61 @@
 //! `builds.*`.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{BUILD_COLUMNS, Context, Result, Run};
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "builds",
-        "all",
-        false,
-        Output::Table(BUILD_COLUMNS),
-        "All builds on the server",
-        [],
-        all
-    ),
-    command!(
-        "builds",
-        "of-project",
-        false,
-        Output::Table(BUILD_COLUMNS),
-        "Builds of a project",
-        [PROJECT],
-        of_project
-    ),
-    command!(
-        "builds",
-        "query",
-        false,
-        Output::Table(BUILD_COLUMNS),
-        "Builds of a project matching a Lucene query",
-        [
-            Param::pos("query", Kind::String, "Lucene query"),
-            PROJECT,
-            SORT
-        ],
-        query
-    ),
-];
+/// All builds on the server.
+#[cmd(view = table(BUILD_COLUMNS))]
+pub struct All {}
 
-async fn all(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.builds().all().await?)
+impl Run for All {
+    type Output = Vec<polarion::soap::types::Build>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.builds().all().await?)
+    }
 }
 
-async fn of_project(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.builds().of_project(&a.project()?).await?)
+/// Builds of a project.
+#[cmd(view = table(BUILD_COLUMNS))]
+pub struct OfProject {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn query(p: &Polarion, a: &Args) -> Result<Value> {
-    let sort = a.opt_str("sort")?.unwrap_or_default();
-    out(p
-        .builds()
-        .query(&a.project()?, &a.str("query")?, &sort)
-        .await?)
+impl Run for OfProject {
+    type Output = Vec<polarion::soap::types::Build>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .builds()
+            .of_project(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// Builds of a project matching a Lucene query.
+#[cmd(view = table(BUILD_COLUMNS))]
+pub struct Query {
+    /// Lucene query
+    #[positional]
+    pub query: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Sort order, e.g. `id`, `~updated` (descending)
+    pub sort: Option<String>,
+}
+
+impl Run for Query {
+    type Output = Vec<polarion::soap::types::Build>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let sort = self.sort.unwrap_or_default();
+        Ok(cx
+            .polarion
+            .builds()
+            .query(&cx.project(self.project.as_deref())?, &self.query, &sort)
+            .await?)
+    }
 }

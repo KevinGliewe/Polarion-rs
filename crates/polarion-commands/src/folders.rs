@@ -1,138 +1,160 @@
 //! `folders.*`: folders of documents and pages.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, FOLDER_COLUMNS, Result, Run};
 
-const GLOBAL: Param = Param::opt(
-    "global",
-    Kind::Boolean,
-    "The global level instead of a project",
-);
+/// All folders.
+#[cmd(view = table(FOLDER_COLUMNS))]
+pub struct List {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// The global level instead of a project
+    pub global: bool,
+}
 
-/// The project, or `None` for the global level.
-fn scope(a: &Args) -> Result<Option<String>> {
-    if a.bool("global")? {
-        Ok(None)
-    } else {
-        a.project().map(Some)
+impl Run for List {
+    type Output = Vec<polarion::soap::types::Folder>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .folders()
+            .list(scope(cx, self.project.as_deref(), self.global)?.as_deref())
+            .await?)
     }
 }
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "folders",
-        "list",
-        false,
-        Output::Table(FOLDER_COLUMNS),
-        "All folders",
-        [PROJECT, GLOBAL],
-        list
-    ),
-    command!(
-        "folders",
-        "roots",
-        false,
-        Output::Table(FOLDER_COLUMNS),
-        "Top-level folders",
-        [PROJECT, GLOBAL],
-        roots
-    ),
-    command!(
-        "folders",
-        "children",
-        false,
-        Output::Table(FOLDER_COLUMNS),
-        "Sub-folders of a folder",
-        [
-            Param::pos("parent", Kind::String, "Parent folder name"),
-            PROJECT,
-            GLOBAL
-        ],
-        children
-    ),
-    command!(
-        "folders",
-        "get",
-        false,
-        Output::Object,
-        "One folder",
-        [
-            Param::pos("name", Kind::String, "Folder name"),
-            PROJECT,
-            GLOBAL
-        ],
-        get
-    ),
-    command!(
-        "folders",
-        "containing",
-        false,
-        Output::Object,
-        "The folder containing an object",
-        [URI],
-        containing
-    ),
-    command!(
-        "folders",
-        "create",
-        true,
-        Output::Object,
-        "Create a folder (global folders need POLARION_ALLOW_GLOBAL_WRITES)",
-        [
-            Param::pos("name", Kind::String, "Folder name (unique)"),
-            Param::req("title", Kind::String, "Title"),
-            Param::opt(
-                "parent",
-                Kind::String,
-                "Parent folder name (top level if omitted)"
-            ),
-            PROJECT,
-            GLOBAL,
-        ],
-        create
-    ),
-];
-
-async fn list(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.folders().list(scope(a)?.as_deref()).await?)
+/// Top-level folders.
+#[cmd(view = table(FOLDER_COLUMNS))]
+pub struct Roots {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// The global level instead of a project
+    pub global: bool,
 }
 
-async fn roots(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.folders().roots(scope(a)?.as_deref()).await?)
+impl Run for Roots {
+    type Output = Vec<polarion::soap::types::Folder>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .folders()
+            .roots(scope(cx, self.project.as_deref(), self.global)?.as_deref())
+            .await?)
+    }
 }
 
-async fn children(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .folders()
-        .children(scope(a)?.as_deref(), &a.str("parent")?)
-        .await?)
+/// Sub-folders of a folder.
+#[cmd(view = table(FOLDER_COLUMNS))]
+pub struct Children {
+    /// Parent folder name
+    #[positional]
+    pub parent: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// The global level instead of a project
+    pub global: bool,
 }
 
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .folders()
-        .get(scope(a)?.as_deref(), &a.str("name")?)
-        .await?)
+impl Run for Children {
+    type Output = Vec<polarion::soap::types::Folder>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .folders()
+            .children(
+                scope(cx, self.project.as_deref(), self.global)?.as_deref(),
+                &self.parent,
+            )
+            .await?)
+    }
 }
 
-async fn containing(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.folders().containing(&a.str("uri")?).await?)
+/// One folder.
+#[cmd(view = object)]
+pub struct Get {
+    /// Folder name
+    #[positional]
+    pub name: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// The global level instead of a project
+    pub global: bool,
 }
 
-async fn create(p: &Polarion, a: &Args) -> Result<Value> {
-    let parent = a.opt_str("parent")?;
-    out(p
-        .folders()
-        .create(
-            scope(a)?.as_deref(),
-            parent.as_deref(),
-            &a.str("name")?,
-            &a.str("title")?,
-        )
-        .await?)
+impl Run for Get {
+    type Output = polarion::soap::types::Folder;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .folders()
+            .get(
+                scope(cx, self.project.as_deref(), self.global)?.as_deref(),
+                &self.name,
+            )
+            .await?)
+    }
+}
+
+/// The folder containing an object.
+#[cmd(view = object)]
+pub struct Containing {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+}
+
+impl Run for Containing {
+    type Output = polarion::soap::types::Folder;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.folders().containing(&self.uri).await?)
+    }
+}
+
+/// Create a folder (global folders need POLARION_ALLOW_GLOBAL_WRITES)
+#[cmd(write, view = object)]
+pub struct Create {
+    /// Folder name (unique)
+    #[positional]
+    pub name: String,
+    /// Title
+    pub title: String,
+    /// Parent folder name (top level if omitted)
+    pub parent: Option<String>,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// The global level instead of a project
+    pub global: bool,
+}
+
+impl Run for Create {
+    type Output = polarion::soap::types::Folder;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let parent = self.parent;
+        Ok(cx
+            .polarion
+            .folders()
+            .create(
+                scope(cx, self.project.as_deref(), self.global)?.as_deref(),
+                parent.as_deref(),
+                &self.name,
+                &self.title,
+            )
+            .await?)
+    }
+}
+
+/// The project's folders, or the global ones.
+fn scope(cx: &Context<'_>, project: Option<&str>, global: bool) -> Result<Option<String>> {
+    if global {
+        Ok(None)
+    } else {
+        cx.project(project).map(Some)
+    }
 }

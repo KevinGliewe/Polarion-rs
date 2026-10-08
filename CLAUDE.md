@@ -2,7 +2,7 @@
 
 Rust workspace: `crates/polarion-rest` (generated REST client), `crates/polarion-soap` (generated SOAP client),
 `crates/polarion` (hand-written library on top of `polarion-soap`), `crates/polarion-commands` (every library method
-as a JSON command), `crates/polarion-cli` (`polarion` binary) and `crates/polarion-mcp` (`polarion-mcp` MCP server),
+as a typed command DTO; macros in `crates/polarion-commands-derive`), `crates/polarion-cli` (`polarion` binary) and `crates/polarion-mcp` (`polarion-mcp` MCP server),
 both built from the command catalog, `xtask` (code generators).
 The repository is English only: code, comments, docs and commit messages.
 
@@ -22,14 +22,20 @@ The repository is English only: code, comments, docs and commit messages.
   `tests/coverage.rs` fails when a SOAP operation is neither called by the library nor listed in its `EXCLUDED` with a
   reason; new operations from a newer WSDL must be exposed or excluded there. Writes are verified against wiremock only; keep the
   "Not yet verified" list in README.md current.
-- `polarion-commands`: one file per area (mirroring the library handles) with a `COMMANDS` table (`command!` macro)
-  and one `async fn(&Polarion, &Args) -> Result<Value>` per command; parameter types in `catalog.rs`, JSON argument
-  parsing (item/document refs, queries, rich text, custom field coercion) in `args.rs`, environment configuration in
-  `config.rs`. `tests/coverage.rs` fails when a public library method has no command: **a new library method needs a
-  command**. Write commands set `write: true` and rely on the library's guard.
+- `polarion-commands`: one module per area (mirroring the library handles); every command is a DTO struct with
+  `#[cmd(write?, view = ...)]` and a hand-written `impl Run` (`type Output` is the typed result). The name comes
+  from the type name (kebab-case), the summary and help from doc comments; `#[positional]` and `#[flatten]` mark
+  fields, a field named `project` is the default-project override. Every DTO must be listed in `registry!` in
+  `lib.rs`, which generates `AnyCommand`/`AnyOutput`, the catalog (`Entry`) and the clap tree (feature `cli`).
+  Typed argument types (`ItemArg`, `DocumentArg`, `RichText`, `FieldSelection`, `Data`, `QueryArgs`, ...) are in
+  `arg.rs`; fixed value sets become enums. Only runtime-typed values (custom fields, test parameters) stay JSON
+  (`JsonObject`/`JsonValue`, typed in `values.rs`). JSON parsing (unknown keys refused, lenient scalars) is
+  `parse_as` in `command.rs`. The macros live in `crates/polarion-commands-derive`. `tests/coverage.rs` fails when a
+  public library method has no command: **a new library method needs a command**. Write commands set `write` and
+  rely on the library's guard.
 - `polarion-cli` and `polarion-mcp` contain no Polarion logic: the clap tree (`cli.rs`) and the MCP tools
   (`server.rs`) are generated from the catalog. CLI text output in `render.rs` (table columns come from the
-  command's `Output`); JSON output is the library's serde form, don't reshape it. The MCP server is an
+  command's `View`); JSON output is the library's serde form, don't reshape it. The MCP server is an
   `rmcp` `ServerHandler` (`server.rs`) whose tools are built at runtime from the catalog (no `#[tool]` macros),
   served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a bearer-token layer (`http.rs`:
   stateless, JSON replies, rmcp's Host/Origin checks); its curated tools are the `CURATED` table. Byte results

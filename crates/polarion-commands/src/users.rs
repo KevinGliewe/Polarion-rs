@@ -1,114 +1,132 @@
 //! `users.*`.
 
-use polarion::{Polarion, UserUpdate};
-use serde_json::Value;
+use polarion::UserUpdate;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, Done, Result, RichText, Run, USER_COLUMNS};
 
-const ID: Param = Param::pos("id", Kind::String, "User id");
-
-pub(crate) const COMMANDS: &[Command] = &[
-    command!("users", "get", false, Output::Object, "A user", [ID], get),
-    command!(
-        "users",
-        "get-by-uri",
-        false,
-        Output::Object,
-        "A user by URI",
-        [URI],
-        get_by_uri
-    ),
-    command!(
-        "users",
-        "list",
-        false,
-        Output::Table(USER_COLUMNS),
-        "All users",
-        [],
-        list
-    ),
-    command!(
-        "users",
-        "of-project",
-        false,
-        Output::Table(USER_COLUMNS),
-        "Users with access to a project",
-        [PROJECT],
-        of_project
-    ),
-    command!(
-        "users",
-        "avatar-url",
-        false,
-        Output::Scalar,
-        "The avatar URL of a user",
-        [URI],
-        avatar_url
-    ),
-    command!(
-        "users",
-        "create",
-        true,
-        Output::Object,
-        "Create a user (needs POLARION_ALLOW_GLOBAL_WRITES)",
-        [Param::pos("login", Kind::String, "Login name")],
-        create
-    ),
-    command!(
-        "users",
-        "update",
-        true,
-        Output::Done,
-        "Change a user (needs POLARION_ALLOW_GLOBAL_WRITES)",
-        [
-            ID,
-            Param::opt("name", Kind::String, "Name"),
-            Param::opt("email", Kind::String, "Email"),
-            Param::opt("description", Kind::Text, "Description"),
-            Param::opt(
-                "disabled-notifications",
-                Kind::Boolean,
-                "Disable notifications"
-            ),
-        ],
-        update
-    ),
-];
-
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.users().get(&a.str("id")?).await?)
+/// A user.
+#[cmd(view = object)]
+pub struct Get {
+    /// User id
+    #[positional]
+    pub id: String,
 }
 
-async fn get_by_uri(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.users().get_by_uri(&a.str("uri")?).await?)
+impl Run for Get {
+    type Output = polarion::User;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.users().get(&self.id).await?)
+    }
 }
 
-async fn list(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.users().list().await?)
+/// A user by URI.
+#[cmd(view = object)]
+pub struct GetByUri {
+    /// Object URI
+    #[positional]
+    pub uri: String,
 }
 
-async fn of_project(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.users().of_project(&a.project()?).await?)
+impl Run for GetByUri {
+    type Output = polarion::User;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.users().get_by_uri(&self.uri).await?)
+    }
 }
 
-async fn avatar_url(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.users().avatar_url(&a.str("uri")?).await?)
+/// All users.
+#[cmd(view = table(USER_COLUMNS))]
+pub struct List {}
+
+impl Run for List {
+    type Output = Vec<polarion::User>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.users().list().await?)
+    }
 }
 
-async fn create(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.users().create(&a.str("login")?).await?)
+/// Users with access to a project.
+#[cmd(view = table(USER_COLUMNS))]
+pub struct OfProject {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn update(p: &Polarion, a: &Args) -> Result<Value> {
-    let update = UserUpdate {
-        name: a.opt_str("name")?,
-        email: a.opt_str("email")?,
-        description: a.opt_text("description")?,
-        disabled_notifications: a.opt_bool("disabled-notifications")?,
-    };
-    p.users().update(&a.str("id")?, &update).await?;
-    Ok(Value::Null)
+impl Run for OfProject {
+    type Output = Vec<polarion::User>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .users()
+            .of_project(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// The avatar URL of a user.
+#[cmd(view = scalar)]
+pub struct AvatarUrl {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+}
+
+impl Run for AvatarUrl {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.users().avatar_url(&self.uri).await?)
+    }
+}
+
+/// Create a user (needs POLARION_ALLOW_GLOBAL_WRITES)
+#[cmd(write, view = object)]
+pub struct Create {
+    /// Login name
+    #[positional]
+    pub login: String,
+}
+
+impl Run for Create {
+    type Output = polarion::User;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.users().create(&self.login).await?)
+    }
+}
+
+/// Change a user (needs POLARION_ALLOW_GLOBAL_WRITES)
+#[cmd(write, view = done)]
+pub struct Update {
+    /// User id
+    #[positional]
+    pub id: String,
+    /// Name
+    pub name: Option<String>,
+    /// Email
+    pub email: Option<String>,
+    /// Description
+    pub description: Option<RichText>,
+    /// Disable notifications
+    pub disabled_notifications: Option<bool>,
+}
+
+impl Run for Update {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let update = UserUpdate {
+            name: self.name,
+            email: self.email,
+            description: self.description.map(polarion::Text::from),
+            disabled_notifications: self.disabled_notifications,
+        };
+        cx.polarion.users().update(&self.id, &update).await?;
+        Ok(Done)
+    }
 }

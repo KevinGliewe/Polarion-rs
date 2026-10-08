@@ -1,161 +1,165 @@
 //! `activities.*`: activity streams.
 
-use polarion::{ActivityScope, Polarion};
-use serde_json::Value;
+use polarion::ActivityScope;
+use polarion_commands_derive::{cmd, cmd_args};
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{ACTIVITY_COLUMNS, CommandError, Context, Done, Result, RichText, Run};
 
-const ID: Param = Param::pos("id", Kind::String, "Activity global id");
-const SCOPE: [Param; 4] = [
-    PROJECT,
-    Param::opt(
-        "group",
-        Kind::String,
-        "Project group URI instead of a project",
-    ),
-    Param::opt(
-        "everywhere",
-        Kind::Boolean,
-        "The whole repository instead of a project",
-    ),
-    Param::opt("query", Kind::String, "Lucene filter"),
-];
+/// Which activities: of a project, a project group or the whole repository, optionally filtered.
+#[cmd_args]
+pub struct ActivityFilter {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Project group URI instead of a project
+    pub group: Option<String>,
+    /// The whole repository instead of a project
+    pub everywhere: bool,
+    /// Lucene filter
+    pub query: Option<String>,
+    /// How many (default 50)
+    pub count: Option<u32>,
+}
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "activities",
-        "list",
-        false,
-        Output::Table(ACTIVITY_COLUMNS),
-        "Latest activities of a project, group or the whole repository",
-        [
-            SCOPE[0],
-            SCOPE[1],
-            SCOPE[2],
-            SCOPE[3],
-            Param::opt("count", Kind::Integer, "How many (default 50)")
-        ],
-        list
-    ),
-    command!(
-        "activities",
-        "list-ids",
-        false,
-        Output::Lines,
-        "Global ids of the latest activities",
-        [
-            SCOPE[0],
-            SCOPE[1],
-            SCOPE[2],
-            SCOPE[3],
-            Param::opt("count", Kind::Integer, "How many (default 50)")
-        ],
-        list_ids
-    ),
-    command!(
-        "activities",
-        "get",
-        false,
-        Output::Object,
-        "One activity",
-        [ID],
-        get
-    ),
-    command!(
-        "activities",
-        "sources",
-        false,
-        Output::Object,
-        "Activity sources",
-        [],
-        sources
-    ),
-    command!(
-        "activities",
-        "can-comment",
-        false,
-        Output::Scalar,
-        "Whether an activity accepts comments",
-        [ID],
-        can_comment
-    ),
-    command!(
-        "activities",
-        "can-current-user-comment",
-        false,
-        Output::Scalar,
-        "Whether you may comment on an activity",
-        [ID],
-        can_current_user_comment
-    ),
-    command!(
-        "activities",
-        "add-comment",
-        true,
-        Output::Done,
-        "Comment on an activity (needs POLARION_ALLOW_GLOBAL_WRITES)",
-        [ID, TEXT],
-        add_comment
-    ),
-];
-
-/// Runs `f` with the scope selected by the arguments.
-async fn scoped(p: &Polarion, a: &Args, ids: bool) -> Result<Value> {
-    let query = a.opt_str("query")?;
-    let count = a.opt_u32("count")?.unwrap_or(50);
-    let (group, project) = (a.opt_str("group")?, a.opt_project()?);
-    let scope = if a.bool("everywhere")? {
-        ActivityScope::All
-    } else if let Some(group) = group.as_deref() {
-        ActivityScope::Group(group)
-    } else {
-        ActivityScope::Project(project.as_deref().ok_or_else(|| {
-            crate::CommandError::invalid("no scope: pass `project`, `group` or `everywhere`")
-        })?)
-    };
-    if ids {
-        out(p
-            .activities()
-            .list_ids(scope, query.as_deref(), count)
-            .await?)
-    } else {
-        out(p.activities().list(scope, query.as_deref(), count).await?)
+impl ActivityFilter {
+    fn scope<'s>(&'s self, project: &'s Option<String>) -> Result<ActivityScope<'s>> {
+        Ok(if self.everywhere {
+            ActivityScope::All
+        } else if let Some(group) = self.group.as_deref() {
+            ActivityScope::Group(group)
+        } else {
+            ActivityScope::Project(project.as_deref().ok_or_else(|| {
+                CommandError::invalid("no scope: pass `project`, `group` or `everywhere`")
+            })?)
+        })
     }
 }
 
-async fn list(p: &Polarion, a: &Args) -> Result<Value> {
-    scoped(p, a, false).await
+/// Latest activities of a project, group or the whole repository.
+#[cmd(view = table(ACTIVITY_COLUMNS))]
+pub struct List {
+    #[flatten]
+    pub filter: ActivityFilter,
 }
 
-async fn list_ids(p: &Polarion, a: &Args) -> Result<Value> {
-    scoped(p, a, true).await
+impl Run for List {
+    type Output = Vec<polarion::soap::types::Activity>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let f = &self.filter;
+        let project = cx.opt_project(f.project.as_deref());
+        let count = f.count.unwrap_or(50);
+        Ok(cx
+            .polarion
+            .activities()
+            .list(f.scope(&project)?, f.query.as_deref(), count)
+            .await?)
+    }
 }
 
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.activities().get(&a.str("id")?).await?)
+/// Global ids of the latest activities.
+#[cmd(view = lines)]
+pub struct ListIds {
+    #[flatten]
+    pub filter: ActivityFilter,
 }
 
-async fn sources(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.activities().sources().await?)
+impl Run for ListIds {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let f = &self.filter;
+        let project = cx.opt_project(f.project.as_deref());
+        let count = f.count.unwrap_or(50);
+        Ok(cx
+            .polarion
+            .activities()
+            .list_ids(f.scope(&project)?, f.query.as_deref(), count)
+            .await?)
+    }
 }
 
-async fn can_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.activities().can_comment(&a.str("id")?).await?)
+/// One activity.
+#[cmd(view = object)]
+pub struct Get {
+    /// Activity global id
+    #[positional]
+    pub id: String,
 }
 
-async fn can_current_user_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .activities()
-        .can_current_user_comment(&a.str("id")?)
-        .await?)
+impl Run for Get {
+    type Output = polarion::soap::types::Activity;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.activities().get(&self.id).await?)
+    }
 }
 
-async fn add_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    p.activities()
-        .add_comment(&a.str("id")?, &a.text("text")?)
-        .await?;
-    Ok(Value::Null)
+/// Activity sources.
+#[cmd(view = object)]
+pub struct Sources {}
+
+impl Run for Sources {
+    type Output = Vec<polarion::soap::types::ActivitySource>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.activities().sources().await?)
+    }
+}
+
+/// Whether an activity accepts comments.
+#[cmd(view = scalar)]
+pub struct CanComment {
+    /// Activity global id
+    #[positional]
+    pub id: String,
+}
+
+impl Run for CanComment {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.activities().can_comment(&self.id).await?)
+    }
+}
+
+/// Whether you may comment on an activity.
+#[cmd(view = scalar)]
+pub struct CanCurrentUserComment {
+    /// Activity global id
+    #[positional]
+    pub id: String,
+}
+
+impl Run for CanCurrentUserComment {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .activities()
+            .can_current_user_comment(&self.id)
+            .await?)
+    }
+}
+
+/// Comment on an activity (needs POLARION_ALLOW_GLOBAL_WRITES)
+#[cmd(write, view = done)]
+pub struct AddComment {
+    /// Activity global id
+    #[positional]
+    pub id: String,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+}
+
+impl Run for AddComment {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .activities()
+            .add_comment(&self.id, &polarion::Text::from(self.text))
+            .await?;
+        Ok(Done)
+    }
 }

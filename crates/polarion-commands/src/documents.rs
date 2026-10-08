@@ -1,610 +1,724 @@
 //! `documents.*`: live documents (modules).
 
 use polarion::soap::types::PdfProperties;
-use polarion::{DocumentUpdate, NewDocument, Polarion, ReuseDocument};
-use serde_json::{Value, json};
+use polarion::{DocumentUpdate, NewDocument, ReuseDocument};
+use polarion_commands_derive::cmd;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{bytes, command, out};
+use crate::{
+    ACTION_COLUMNS, Context, DOCUMENT_COLUMNS, DOCUMENT_ITEM_COLUMNS, DocumentArg, Done, Download,
+    FieldSelection, ItemArg, JsonObject, QueryArgs, REF_COLUMNS, Result, RichText, Run,
+};
 
-const SPACE: Param = Param::opt(
-    "space",
-    Kind::String,
-    "Space id (`_default` is the default space)",
-);
-const BODY: Param = Param::opt(
-    "body",
-    Kind::Boolean,
-    "Include the document body (Polarion HTML)",
-);
-const PARENT: Param = Param::opt(
-    "parent",
-    Kind::Item,
-    "Parent work item (top level if omitted)",
-);
-const DEEP: Param = Param::opt("deep", Kind::Boolean, "Whole subtree (default true)");
-
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "documents",
-        "spaces",
-        false,
-        Output::Lines,
-        "Document spaces of a project",
-        [PROJECT],
-        spaces
-    ),
-    command!(
-        "documents",
-        "sub-folders",
-        false,
-        Output::Lines,
-        "Sub-folders of a location in the documents folder",
-        [
-            PROJECT,
-            Param::req(
-                "location",
-                Kind::String,
-                "Location relative to the documents folder"
-            )
-        ],
-        sub_folders
-    ),
-    command!(
-        "documents",
-        "list",
-        false,
-        Output::Table(DOCUMENT_COLUMNS),
-        "Documents of a project or one space (without bodies unless `full`)",
-        [
-            PROJECT,
-            SPACE,
-            Param::opt(
-                "full",
-                Kind::Boolean,
-                "All fields incl. bodies (needs `space`)"
-            )
-        ],
-        list
-    ),
-    command!(
-        "documents",
-        "refs",
-        false,
-        Output::Table(REF_COLUMNS),
-        "References of the documents in one space",
-        [PROJECT, Param::req("space", Kind::String, "Space id")],
-        refs
-    ),
-    command!(
-        "documents",
-        "get",
-        false,
-        Output::Object,
-        "Get a document (with `body`, or only `fields`)",
-        [DOCUMENT, BODY, FIELDS],
-        get
-    ),
-    command!(
-        "documents",
-        "query",
-        false,
-        Output::Table(DOCUMENT_COLUMNS),
-        "Search documents with a Lucene query",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, FIELDS, BASELINE],
-        query
-    ),
-    command!(
-        "documents",
-        "query-refs",
-        false,
-        Output::Table(REF_COLUMNS),
-        "Search documents, returning references",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, BASELINE],
-        query_refs
-    ),
-    command!(
-        "documents",
-        "query-sql",
-        false,
-        Output::Table(DOCUMENT_COLUMNS),
-        "Select documents with SQL",
-        [SQL, FIELDS, BASELINE],
-        query_sql
-    ),
-    command!(
-        "documents",
-        "query-refs-sql",
-        false,
-        Output::Table(REF_COLUMNS),
-        "Select document references with SQL",
-        [SQL, BASELINE],
-        query_refs_sql
-    ),
-    command!(
-        "documents",
-        "work-items",
-        false,
-        Output::Table(DOCUMENT_ITEM_COLUMNS),
-        "Work items of a document in document order",
-        [DOCUMENT, PARENT, DEEP, FIELDS, CUSTOM],
-        work_items
-    ),
-    command!(
-        "documents",
-        "work-item-refs",
-        false,
-        Output::Table(REF_COLUMNS),
-        "References of the work items of a document",
-        [DOCUMENT, PARENT, DEEP],
-        work_item_refs
-    ),
-    command!(
-        "documents",
-        "actions",
-        false,
-        Output::Table(ACTION_COLUMNS),
-        "Workflow actions available for a document",
-        [DOCUMENT],
-        actions
-    ),
-    command!(
-        "documents",
-        "export-pdf",
-        false,
-        Output::Bytes,
-        "Export a document as PDF",
-        [
-            DOCUMENT,
-            Param::opt("paper-size", Kind::String, "Paper size (default A4)"),
-            Param::opt(
-                "orientation",
-                Kind::String,
-                "portrait or landscape (default portrait)"
-            ),
-            Param::opt("fit-to-page-width", Kind::Boolean, "Fit to page width"),
-            Param::opt("bookmarks", Kind::Boolean, "Generate bookmarks"),
-            Param::opt("header-footer", Kind::Boolean, "Include header and footer"),
-            Param::opt(
-                "repeat-table-headers",
-                Kind::Boolean,
-                "Repeat table headers"
-            ),
-        ],
-        export_pdf
-    ),
-    command!(
-        "documents",
-        "create",
-        true,
-        Output::Object,
-        "Create a live document",
-        [
-            PROJECT,
-            SPACE,
-            Param::req("name", Kind::String, "Document name"),
-            Param::opt("title", Kind::String, "Title"),
-            Param::opt("allowed-types", Kind::StringList, "Allowed work item types"),
-            Param::opt(
-                "structure-link-role",
-                Kind::String,
-                "Link role structuring the document (default `parent`)"
-            ),
-            Param::opt("content", Kind::String, "Initial content (HTML)"),
-            Param::opt(
-                "legacy-module",
-                Kind::Boolean,
-                "Create an old-style module (createModule)"
-            ),
-            Param::opt(
-                "parent-to-child",
-                Kind::Boolean,
-                "Old-style modules: links go from parent to child"
-            ),
-        ],
-        create
-    ),
-    command!(
-        "documents",
-        "update",
-        true,
-        Output::Done,
-        "Change fields of a document",
-        [
-            DOCUMENT,
-            Param::opt("title", Kind::String, "Title"),
-            Param::opt("type", Kind::String, "Document type id"),
-            Param::opt("status", Kind::String, "Status id"),
-            Param::opt("content", Kind::Text, "The whole body"),
-            Param::opt("structure-link-role", Kind::String, "Structure link role"),
-            Param::opt("outline-numbering", Kind::Boolean, "Use outline numbering"),
-            Param::opt(
-                "custom-fields",
-                Kind::Json,
-                "Custom field values (typed from JSON; use {\"enum\": id} for enums)"
-            ),
-        ],
-        update
-    ),
-    command!(
-        "documents",
-        "delete",
-        true,
-        Output::Done,
-        "Delete a document",
-        [DOCUMENT],
-        delete
-    ),
-    command!(
-        "documents",
-        "update-title-heading",
-        true,
-        Output::Scalar,
-        "Set the first title heading in the content",
-        [DOCUMENT, Param::opt("title", Kind::String, "Title")],
-        update_title_heading
-    ),
-    command!(
-        "documents",
-        "reuse",
-        true,
-        Output::Object,
-        "Create a new document from an existing one",
-        [
-            DOCUMENT,
-            Param::opt(
-                "target-project",
-                Kind::String,
-                "Target project (default: the default project)"
-            ),
-            Param::opt(
-                "target-space",
-                Kind::String,
-                "Target space (default space if omitted)"
-            ),
-            Param::req("target-name", Kind::String, "Target document name"),
-            Param::opt("target-title", Kind::String, "Target document title"),
-            Param::opt(
-                "update-title",
-                Kind::Boolean,
-                "Also change the first title heading to the title"
-            ),
-            Param::opt(
-                "link-role",
-                Kind::String,
-                "Role of links from reused items to their sources"
-            ),
-            Param::opt(
-                "derived-fields",
-                Kind::StringList,
-                "Fields kept in sync with the source"
-            ),
-            Param::opt(
-                "legacy-module",
-                Kind::Boolean,
-                "Old-style reuse (reuseModule)"
-            ),
-            Param::opt(
-                "fields",
-                Kind::StringList,
-                "Old-style reuse: fields to copy"
-            ),
-            Param::opt(
-                "except-fields",
-                Kind::StringList,
-                "Old-style reuse: fields not to copy"
-            )
-        ],
-        reuse
-    ),
-    command!(
-        "documents",
-        "update-derived",
-        true,
-        Output::Done,
-        "Update a derived document to a revision of its source",
-        [
-            DOCUMENT,
-            Param::opt("revision", Kind::String, "Revision (HEAD if omitted)"),
-            Param::opt("auto-suspect", Kind::Boolean, "Mark changed links suspect"),
-            Param::opt(
-                "legacy-module",
-                Kind::Boolean,
-                "Old-style module (updateDerivedModule)"
-            )
-        ],
-        update_derived
-    ),
-    command!(
-        "documents",
-        "add-comment",
-        true,
-        Output::Scalar,
-        "Comment on a document, optionally about one of its work items",
-        [
-            DOCUMENT,
-            TEXT,
-            Param::opt("about", Kind::Item, "Work item the comment refers to")
-        ],
-        add_comment
-    ),
-    command!(
-        "documents",
-        "reply-to-comment",
-        true,
-        Output::Scalar,
-        "Reply to a document comment",
-        [
-            DOCUMENT,
-            Param::req("comment", Kind::String, "Comment URI"),
-            TEXT
-        ],
-        reply_to_comment
-    ),
-    command!(
-        "documents",
-        "perform-action",
-        true,
-        Output::Done,
-        "Perform a workflow action on a document",
-        [DOCUMENT, Param::req("action", Kind::Integer, "Action id")],
-        perform_action
-    ),
-    command!(
-        "documents",
-        "transition",
-        true,
-        Output::Object,
-        "Move a document to a status via the matching workflow action",
-        [
-            DOCUMENT,
-            Param::req("status", Kind::String, "Target status id")
-        ],
-        transition
-    ),
-];
-
-async fn spaces(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.documents().spaces(&a.project()?).await?)
+/// Document spaces of a project.
+#[cmd(view = lines)]
+pub struct Spaces {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn sub_folders(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .documents()
-        .sub_folders(&a.project()?, &a.str("location")?)
-        .await?)
-}
+impl Run for Spaces {
+    type Output = Vec<String>;
 
-async fn list(p: &Polarion, a: &Args) -> Result<Value> {
-    let (project, space) = (a.project()?, a.opt_str("space")?);
-    if a.bool("full")? {
-        let space = space.ok_or_else(|| crate::CommandError::invalid("`full` needs `space`"))?;
-        return out(p.documents().list_full(&project, &space).await?);
-    }
-    out(p.documents().list(&project, space.as_deref()).await?)
-}
-
-async fn refs(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.documents().refs(&a.project()?, &a.str("space")?).await?)
-}
-
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    let document = a.document("document")?;
-    if let Some(fields) = a.opt_fields()? {
-        return out(p.documents().get_by_ref(&document, Some(&fields)).await?);
-    }
-    match (&document.project, &document.space, &document.name) {
-        (Some(project), Some(space), Some(name)) => out(p
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
             .documents()
-            .get(project, space, name, a.bool("body")?)
-            .await?),
-        _ => out(p.documents().get_by_ref(&document, None).await?),
+            .spaces(&cx.project(self.project.as_deref())?)
+            .await?)
     }
 }
 
-async fn query(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.documents().query(&a.query()?).await?)
+/// Sub-folders of a location in the documents folder.
+#[cmd(view = lines)]
+pub struct SubFolders {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Location relative to the documents folder
+    pub location: String,
 }
 
-async fn query_refs(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.documents().query_refs(&a.query()?).await?)
-}
+impl Run for SubFolders {
+    type Output = Vec<String>;
 
-async fn query_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let (fields, baseline) = (a.opt_fields()?, a.opt_str("baseline")?);
-    out(p
-        .documents()
-        .query_sql(&a.str("sql")?, fields.as_ref(), baseline.as_deref())
-        .await?)
-}
-
-async fn query_refs_sql(p: &Polarion, a: &Args) -> Result<Value> {
-    let baseline = a.opt_str("baseline")?;
-    out(p
-        .documents()
-        .query_refs_sql(&a.str("sql")?, baseline.as_deref())
-        .await?)
-}
-
-async fn work_items(p: &Polarion, a: &Args) -> Result<Value> {
-    let document = a.document("document")?;
-    let (parent, deep, fields) = (
-        a.opt_item("parent")?,
-        a.opt_bool("deep")?.unwrap_or(true),
-        a.fields()?,
-    );
-    if parent.is_none() && deep {
-        return out(p.documents().work_items(&document, &fields).await?);
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .sub_folders(&cx.project(self.project.as_deref())?, &self.location)
+            .await?)
     }
-    out(p
-        .documents()
-        .work_items_under(&document, parent.as_ref(), deep, &fields)
-        .await?)
 }
 
-async fn work_item_refs(p: &Polarion, a: &Args) -> Result<Value> {
-    let parent = a.opt_item("parent")?;
-    out(p
-        .documents()
-        .work_item_refs(
-            &a.document("document")?,
-            parent.as_ref(),
-            a.opt_bool("deep")?.unwrap_or(true),
-        )
-        .await?)
+/// Documents of a project or one space (without bodies unless `full`)
+#[cmd(view = table(DOCUMENT_COLUMNS))]
+pub struct List {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Space id (`_default` is the default space)
+    pub space: Option<String>,
+    /// All fields incl. bodies (needs `space`)
+    pub full: bool,
 }
 
-async fn actions(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.documents().actions(&a.document("document")?).await?)
+impl Run for List {
+    type Output = Vec<polarion::Document>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (project, space) = (cx.project(self.project.as_deref())?, self.space);
+        if self.full {
+            let space =
+                space.ok_or_else(|| crate::CommandError::invalid("`full` needs `space`"))?;
+            return Ok(cx.polarion.documents().list_full(&project, &space).await?);
+        }
+        Ok(cx
+            .polarion
+            .documents()
+            .list(&project, space.as_deref())
+            .await?)
+    }
 }
 
-async fn export_pdf(p: &Polarion, a: &Args) -> Result<Value> {
-    let options = PdfProperties {
-        paper_size: a.opt_str("paper-size")?.unwrap_or_else(|| "A4".into()),
-        orientation: a
-            .opt_str("orientation")?
-            .unwrap_or_else(|| "portrait".into()),
-        fit_to_page_width: a.bool("fit-to-page-width")?,
-        generate_bookmarks: a.bool("bookmarks")?,
-        include_header_footer: a.bool("header-footer")?,
-        repeat_table_headers: a.bool("repeat-table-headers")?,
-    };
-    bytes(
-        &p.documents()
-            .export_pdf(&a.document("document")?, &options)
-            .await?,
-    )
+/// References of the documents in one space.
+#[cmd(view = table(REF_COLUMNS))]
+pub struct Refs {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Space id
+    pub space: String,
 }
 
-async fn create(p: &Polarion, a: &Args) -> Result<Value> {
-    let new = NewDocument {
-        project: a.project()?,
-        space: a.opt_str("space")?,
-        name: a.str("name")?,
-        title: a.opt_str("title")?,
-        allowed_types: a.list("allowed-types")?,
-        structure_link_role: a
-            .opt_str("structure-link-role")?
-            .unwrap_or_else(|| "parent".into()),
-        body: a.opt_str("content")?,
-    };
-    let created = if a.bool("legacy-module")? {
-        p.documents()
-            .create_module(&new, a.bool("parent-to-child")?)
-            .await?
-    } else {
-        p.documents().create(&new).await?
-    };
-    out(json!({"document": created, "uri": created.uri}))
+impl Run for Refs {
+    type Output = Vec<polarion::DocumentRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .refs(&cx.project(self.project.as_deref())?, &self.space)
+            .await?)
+    }
 }
 
-async fn update(p: &Polarion, a: &Args) -> Result<Value> {
-    let update = DocumentUpdate {
-        title: a.opt_str("title")?,
-        kind: a.opt_str("type")?,
-        status: a.opt_str("status")?,
-        body: a.opt_text("content")?,
-        structure_link_role: a.opt_str("structure-link-role")?,
-        uses_outline_numbering: a.opt_bool("outline-numbering")?,
-        custom_fields: a
-            .custom_values("custom-fields", &[])?
+/// Get a document (with `body`, or only `fields`)
+#[cmd(view = object)]
+pub struct Get {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Include the document body (Polarion HTML)
+    pub body: bool,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+}
+
+impl Run for Get {
+    type Output = polarion::Document;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let document = self.document.resolve(cx)?;
+        if let Some(fields) = FieldSelection::fields(self.fields.as_ref(), &[]) {
+            return Ok(cx
+                .polarion
+                .documents()
+                .get_by_ref(&document, Some(&fields))
+                .await?);
+        }
+        match (&document.project, &document.space, &document.name) {
+            (Some(project), Some(space), Some(name)) => Ok(cx
+                .polarion
+                .documents()
+                .get(project, space, name, self.body)
+                .await?),
+            _ => Ok(cx.polarion.documents().get_by_ref(&document, None).await?),
+        }
+    }
+}
+
+/// Search documents with a Lucene query.
+#[cmd(view = table(DOCUMENT_COLUMNS))]
+pub struct Query {
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for Query {
+    type Output = Vec<polarion::Document>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .query(&self.search.query(cx))
+            .await?)
+    }
+}
+
+/// Search documents, returning references.
+#[cmd(view = table(REF_COLUMNS))]
+pub struct QueryRefs {
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for QueryRefs {
+    type Output = Vec<polarion::DocumentRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .query_refs(&self.search.query(cx))
+            .await?)
+    }
+}
+
+/// Select documents with SQL.
+#[cmd(view = table(DOCUMENT_COLUMNS))]
+pub struct QuerySql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
+}
+
+impl Run for QuerySql {
+    type Output = Vec<polarion::Document>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (fields, baseline) = (
+            FieldSelection::fields(self.fields.as_ref(), &[]),
+            self.baseline,
+        );
+        Ok(cx
+            .polarion
+            .documents()
+            .query_sql(&self.sql, fields.as_ref(), baseline.as_deref())
+            .await?)
+    }
+}
+
+/// Select document references with SQL.
+#[cmd(view = table(REF_COLUMNS))]
+pub struct QueryRefsSql {
+    /// SQL query (SELECT ... FROM ...)
+    #[positional]
+    pub sql: String,
+    /// Search as of this baseline revision
+    pub baseline: Option<String>,
+}
+
+impl Run for QueryRefsSql {
+    type Output = Vec<polarion::DocumentRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let baseline = self.baseline;
+        Ok(cx
+            .polarion
+            .documents()
+            .query_refs_sql(&self.sql, baseline.as_deref())
+            .await?)
+    }
+}
+
+/// Work items of a document in document order.
+#[cmd(view = table(DOCUMENT_ITEM_COLUMNS))]
+pub struct WorkItems {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Parent work item (top level if omitted)
+    pub parent: Option<ItemArg>,
+    /// Whole subtree (default true)
+    pub deep: Option<bool>,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Custom field keys to fetch in addition
+    pub custom: Vec<String>,
+}
+
+impl Run for WorkItems {
+    type Output = Vec<polarion::WorkItem>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let document = self.document.resolve(cx)?;
+        let (parent, deep, fields) = (
+            self.parent.as_ref().map(|i| i.resolve(cx)).transpose()?,
+            self.deep.unwrap_or(true),
+            FieldSelection::fields(self.fields.as_ref(), &self.custom).unwrap_or_default(),
+        );
+        if parent.is_none() && deep {
+            return Ok(cx
+                .polarion
+                .documents()
+                .work_items(&document, &fields)
+                .await?);
+        }
+        Ok(cx
+            .polarion
+            .documents()
+            .work_items_under(&document, parent.as_ref(), deep, &fields)
+            .await?)
+    }
+}
+
+/// References of the work items of a document.
+#[cmd(view = table(REF_COLUMNS))]
+pub struct WorkItemRefs {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Parent work item (top level if omitted)
+    pub parent: Option<ItemArg>,
+    /// Whole subtree (default true)
+    pub deep: Option<bool>,
+}
+
+impl Run for WorkItemRefs {
+    type Output = Vec<polarion::ItemRef>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let parent = self.parent.as_ref().map(|i| i.resolve(cx)).transpose()?;
+        Ok(cx
+            .polarion
+            .documents()
+            .work_item_refs(
+                &self.document.resolve(cx)?,
+                parent.as_ref(),
+                self.deep.unwrap_or(true),
+            )
+            .await?)
+    }
+}
+
+/// Workflow actions available for a document.
+#[cmd(view = table(ACTION_COLUMNS))]
+pub struct Actions {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+}
+
+impl Run for Actions {
+    type Output = Vec<polarion::WorkflowAction>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .actions(&self.document.resolve(cx)?)
+            .await?)
+    }
+}
+
+/// Page orientation of a PDF export.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+#[serde(rename_all = "lowercase")]
+pub enum Orientation {
+    #[default]
+    Portrait,
+    Landscape,
+}
+
+impl Orientation {
+    fn as_str(self) -> &'static str {
+        match self {
+            Orientation::Portrait => "portrait",
+            Orientation::Landscape => "landscape",
+        }
+    }
+}
+
+/// Export a document as PDF.
+#[cmd(view = bytes)]
+pub struct ExportPdf {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Paper size (default A4)
+    pub paper_size: Option<String>,
+    /// Page orientation (default portrait)
+    pub orientation: Option<Orientation>,
+    /// Fit to page width
+    pub fit_to_page_width: bool,
+    /// Generate bookmarks
+    pub bookmarks: bool,
+    /// Include header and footer
+    pub header_footer: bool,
+    /// Repeat table headers
+    pub repeat_table_headers: bool,
+}
+
+impl Run for ExportPdf {
+    type Output = Download;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let options = PdfProperties {
+            paper_size: self.paper_size.unwrap_or_else(|| "A4".into()),
+            orientation: self.orientation.unwrap_or_default().as_str().to_owned(),
+            fit_to_page_width: self.fit_to_page_width,
+            generate_bookmarks: self.bookmarks,
+            include_header_footer: self.header_footer,
+            repeat_table_headers: self.repeat_table_headers,
+        };
+        Ok(Download(
+            cx.polarion
+                .documents()
+                .export_pdf(&self.document.resolve(cx)?, &options)
+                .await?,
+        ))
+    }
+}
+
+/// Create a live document.
+#[cmd(write, view = object)]
+pub struct Create {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Space id (`_default` is the default space)
+    pub space: Option<String>,
+    /// Document name
+    pub name: String,
+    /// Title
+    pub title: Option<String>,
+    /// Allowed work item types
+    pub allowed_types: Vec<String>,
+    /// Link role structuring the document (default `parent`)
+    pub structure_link_role: Option<String>,
+    /// Initial content (HTML)
+    pub content: Option<String>,
+    /// Create an old-style module (createModule)
+    pub legacy_module: bool,
+    /// Old-style modules: links go from parent to child
+    pub parent_to_child: bool,
+}
+
+/// A new or reused document: its reference and URI.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreatedDocument {
+    pub document: polarion::DocumentRef,
+    pub uri: String,
+}
+
+impl From<polarion::DocumentRef> for CreatedDocument {
+    fn from(document: polarion::DocumentRef) -> Self {
+        Self {
+            uri: document.uri.clone(),
+            document,
+        }
+    }
+}
+
+impl Run for Create {
+    type Output = CreatedDocument;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let new = NewDocument {
+            project: cx.project(self.project.as_deref())?,
+            space: self.space,
+            name: self.name,
+            title: self.title,
+            allowed_types: self.allowed_types,
+            structure_link_role: self.structure_link_role.unwrap_or_else(|| "parent".into()),
+            body: self.content,
+        };
+        let created = if self.legacy_module {
+            cx.polarion
+                .documents()
+                .create_module(&new, self.parent_to_child)
+                .await?
+        } else {
+            cx.polarion.documents().create(&new).await?
+        };
+        Ok(created.into())
+    }
+}
+
+/// Change fields of a document.
+#[cmd(write, view = done)]
+pub struct Update {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Title
+    pub title: Option<String>,
+    /// Document type id
+    pub r#type: Option<String>,
+    /// Status id
+    pub status: Option<String>,
+    /// The whole body
+    pub content: Option<RichText>,
+    /// Structure link role
+    pub structure_link_role: Option<String>,
+    /// Use outline numbering
+    pub outline_numbering: Option<bool>,
+    /// Custom field values (typed from JSON; use {"enum": id} for enums)
+    pub custom_fields: Option<JsonObject>,
+}
+
+impl Run for Update {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let update = DocumentUpdate {
+            title: self.title,
+            kind: self.r#type,
+            status: self.status,
+            body: self.content.map(polarion::Text::from),
+            structure_link_role: self.structure_link_role,
+            uses_outline_numbering: self.outline_numbering,
+            custom_fields: crate::values::custom_values(
+                &self.custom_fields.unwrap_or_default().0,
+                &[],
+            )?
             .into_iter()
             .filter_map(|(k, v)| Some((k, v?)))
             .collect(),
-    };
-    p.documents()
-        .update(&a.document("document")?, &update)
-        .await?;
-    Ok(Value::Null)
-}
-
-async fn delete(p: &Polarion, a: &Args) -> Result<Value> {
-    p.documents().delete(&a.document("document")?).await?;
-    Ok(Value::Null)
-}
-
-async fn update_title_heading(p: &Polarion, a: &Args) -> Result<Value> {
-    let title = a.opt_str("title")?;
-    out(p
-        .documents()
-        .update_title_heading(&a.document("document")?, title.as_deref())
-        .await?)
-}
-
-async fn reuse(p: &Polarion, a: &Args) -> Result<Value> {
-    let target = ReuseDocument {
-        project: match a.opt_str("target-project")? {
-            Some(project) => project,
-            None => a.project()?,
-        },
-        space: a.opt_str("target-space")?,
-        name: a.str("target-name")?,
-        title: a.opt_str("target-title")?,
-        update_title_in_document: a.bool("update-title")?,
-        link_role: a.opt_str("link-role")?,
-        derived_fields: a.list("derived-fields")?,
-    };
-    let source = a.document("document")?;
-    let created = if a.bool("legacy-module")? {
-        p.documents()
-            .reuse_module(
-                &source,
-                &target,
-                &a.list("fields")?,
-                &a.list("except-fields")?,
-            )
-            .await?
-    } else {
-        p.documents().reuse(&source, &target).await?
-    };
-    out(json!({"document": created, "uri": created.uri}))
-}
-
-async fn update_derived(p: &Polarion, a: &Args) -> Result<Value> {
-    let (document, revision) = (a.document("document")?, a.opt_str("revision")?);
-    if a.bool("legacy-module")? {
-        p.documents()
-            .update_derived_module(&document, revision.as_deref())
+        };
+        cx.polarion
+            .documents()
+            .update(&self.document.resolve(cx)?, &update)
             .await?;
-    } else {
-        p.documents()
-            .update_derived(&document, revision.as_deref(), a.bool("auto-suspect")?)
-            .await?;
+        Ok(Done)
     }
-    Ok(Value::Null)
 }
 
-async fn add_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    let about = a.opt_item("about")?;
-    out(p
-        .documents()
-        .add_comment(&a.document("document")?, about.as_ref(), &a.text("text")?)
-        .await?)
+/// Delete a document.
+#[cmd(write, view = done)]
+pub struct Delete {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
 }
 
-async fn reply_to_comment(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .documents()
-        .reply_to_comment(
-            &a.document("document")?,
-            &a.str("comment")?,
-            &a.text("text")?,
-        )
-        .await?)
+impl Run for Delete {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .documents()
+            .delete(&self.document.resolve(cx)?)
+            .await?;
+        Ok(Done)
+    }
 }
 
-async fn perform_action(p: &Polarion, a: &Args) -> Result<Value> {
-    p.documents()
-        .perform_action(&a.document("document")?, a.i32("action")?)
-        .await?;
-    Ok(Value::Null)
+/// Set the first title heading in the content.
+#[cmd(write, view = scalar)]
+pub struct UpdateTitleHeading {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Title
+    pub title: Option<String>,
 }
 
-async fn transition(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .documents()
-        .transition(&a.document("document")?, &a.str("status")?)
-        .await?)
+impl Run for UpdateTitleHeading {
+    type Output = Option<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let title = self.title;
+        Ok(cx
+            .polarion
+            .documents()
+            .update_title_heading(&self.document.resolve(cx)?, title.as_deref())
+            .await?)
+    }
+}
+
+/// Create a new document from an existing one.
+#[cmd(write, view = object)]
+pub struct Reuse {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Target project (default: the default project)
+    pub target_project: Option<String>,
+    /// Target space (default space if omitted)
+    pub target_space: Option<String>,
+    /// Target document name
+    pub target_name: String,
+    /// Target document title
+    pub target_title: Option<String>,
+    /// Also change the first title heading to the title
+    pub update_title: bool,
+    /// Role of links from reused items to their sources
+    pub link_role: Option<String>,
+    /// Fields kept in sync with the source
+    pub derived_fields: Vec<String>,
+    /// Old-style reuse (reuseModule)
+    pub legacy_module: bool,
+    /// Old-style reuse: fields to copy
+    pub fields: Vec<String>,
+    /// Old-style reuse: fields not to copy
+    pub except_fields: Vec<String>,
+}
+
+impl Run for Reuse {
+    type Output = CreatedDocument;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let target = ReuseDocument {
+            project: match self.target_project {
+                Some(project) => project,
+                None => cx.project(None)?,
+            },
+            space: self.target_space,
+            name: self.target_name,
+            title: self.target_title,
+            update_title_in_document: self.update_title,
+            link_role: self.link_role,
+            derived_fields: self.derived_fields,
+        };
+        let source = self.document.resolve(cx)?;
+        let created = if self.legacy_module {
+            cx.polarion
+                .documents()
+                .reuse_module(&source, &target, &self.fields, &self.except_fields)
+                .await?
+        } else {
+            cx.polarion.documents().reuse(&source, &target).await?
+        };
+        Ok(created.into())
+    }
+}
+
+/// Update a derived document to a revision of its source.
+#[cmd(write, view = done)]
+pub struct UpdateDerived {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Revision (HEAD if omitted)
+    pub revision: Option<String>,
+    /// Mark changed links suspect
+    pub auto_suspect: bool,
+    /// Old-style module (updateDerivedModule)
+    pub legacy_module: bool,
+}
+
+impl Run for UpdateDerived {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let (document, revision) = (self.document.resolve(cx)?, self.revision);
+        if self.legacy_module {
+            cx.polarion
+                .documents()
+                .update_derived_module(&document, revision.as_deref())
+                .await?;
+        } else {
+            cx.polarion
+                .documents()
+                .update_derived(&document, revision.as_deref(), self.auto_suspect)
+                .await?;
+        }
+        Ok(Done)
+    }
+}
+
+/// Comment on a document, optionally about one of its work items.
+#[cmd(write, view = scalar)]
+pub struct AddComment {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+    /// Work item the comment refers to
+    pub about: Option<ItemArg>,
+}
+
+impl Run for AddComment {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let about = self.about.as_ref().map(|i| i.resolve(cx)).transpose()?;
+        Ok(cx
+            .polarion
+            .documents()
+            .add_comment(
+                &self.document.resolve(cx)?,
+                about.as_ref(),
+                &polarion::Text::from(self.text),
+            )
+            .await?)
+    }
+}
+
+/// Reply to a document comment.
+#[cmd(write, view = scalar)]
+pub struct ReplyToComment {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Comment URI
+    pub comment: String,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
+}
+
+impl Run for ReplyToComment {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .reply_to_comment(
+                &self.document.resolve(cx)?,
+                &self.comment,
+                &polarion::Text::from(self.text),
+            )
+            .await?)
+    }
+}
+
+/// Perform a workflow action on a document.
+#[cmd(write, view = done)]
+pub struct PerformAction {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Action id
+    pub action: i32,
+}
+
+impl Run for PerformAction {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .documents()
+            .perform_action(&self.document.resolve(cx)?, self.action)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Move a document to a status via the matching workflow action.
+#[cmd(write, view = object)]
+pub struct Transition {
+    /// Document: SPACE/NAME (in the default project), PROJECT/SPACE/NAME, or URI
+    #[positional]
+    pub document: DocumentArg,
+    /// Target status id
+    pub status: String,
+}
+
+impl Run for Transition {
+    type Output = polarion::WorkflowAction;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .documents()
+            .transition(&self.document.resolve(cx)?, &self.status)
+            .await?)
+    }
 }

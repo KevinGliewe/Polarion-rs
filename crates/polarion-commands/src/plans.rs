@@ -1,341 +1,430 @@
 //! `plans.*`: planning.
 
-use polarion::{PlanUpdate, Polarion};
-use serde_json::Value;
+use polarion::PlanUpdate;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, Done, ItemArg, JsonObject, PLAN_COLUMNS, QueryArgs, Result, RichText, Run};
 
-const PLAN: Param = Param::pos("plan", Kind::String, "Plan URI");
-const TYPE: Param = Param::req("type", Kind::String, "Work item type id");
-const SPAN_PROJECT: Param = Param::req("span-project", Kind::String, "Project id");
-
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "plans",
-        "get",
-        false,
-        Output::Object,
-        "A plan by id",
-        [Param::pos("id", Kind::String, "Plan id"), PROJECT],
-        get
-    ),
-    command!(
-        "plans",
-        "get-by-uri",
-        false,
-        Output::Object,
-        "A plan by URI",
-        [PLAN],
-        get_by_uri
-    ),
-    command!(
-        "plans",
-        "search",
-        false,
-        Output::Table(PLAN_COLUMNS),
-        "Search plans with a Lucene query",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, FIELDS],
-        search
-    ),
-    command!(
-        "plans",
-        "search-templates",
-        false,
-        Output::Table(PLAN_COLUMNS),
-        "Search plan templates",
-        [QUERY, PROJECT, SORT, LIMIT, ALL, FIELDS],
-        search_templates
-    ),
-    command!(
-        "plans",
-        "statistics",
-        false,
-        Output::Object,
-        "Progress statistics of a plan",
-        [PLAN],
-        statistics
-    ),
-    command!(
-        "plans",
-        "report",
-        false,
-        Output::Object,
-        "The page content of a plan",
-        [PLAN],
-        report
-    ),
-    command!(
-        "plans",
-        "was-started",
-        false,
-        Output::Scalar,
-        "Whether a plan was started",
-        [PLAN],
-        was_started
-    ),
-    command!(
-        "plans",
-        "create",
-        true,
-        Output::Scalar,
-        "Create a plan from a template; returns its URI",
-        [
-            Param::pos("id", Kind::String, "Plan id"),
-            Param::req("name", Kind::String, "Name"),
-            Param::req("template", Kind::String, "Template id"),
-            PROJECT,
-            Param::opt("parent", Kind::String, "Parent plan id")
-        ],
-        create
-    ),
-    command!(
-        "plans",
-        "create-template",
-        true,
-        Output::Scalar,
-        "Create a plan template; returns its URI",
-        [
-            Param::pos("id", Kind::String, "Template id"),
-            Param::req("name", Kind::String, "Name"),
-            PROJECT,
-            Param::opt("template", Kind::String, "Base template id")
-        ],
-        create_template
-    ),
-    command!(
-        "plans",
-        "update",
-        true,
-        Output::Done,
-        "Change fields of a plan",
-        [
-            PLAN,
-            Param::opt("name", Kind::String, "Name"),
-            Param::opt("status", Kind::String, "Status id"),
-            Param::opt("description", Kind::Text, "Description"),
-            Param::opt("start-date", Kind::String, "Start date"),
-            Param::opt("due-date", Kind::String, "Due date"),
-            Param::opt("capacity", Kind::Number, "Capacity"),
-            Param::opt("default-estimate", Kind::Number, "Default estimate"),
-            Param::opt("estimation-field", Kind::String, "Estimation field"),
-            Param::opt("prioritization-field", Kind::String, "Prioritization field"),
-            Param::opt("color", Kind::String, "Color"),
-            Param::opt("sort-order", Kind::Integer, "Sort order"),
-            Param::opt(
-                "custom-fields",
-                Kind::Json,
-                "Custom field values (typed from JSON; use {\"enum\": id} for enums)"
-            ),
-        ],
-        update
-    ),
-    command!(
-        "plans",
-        "set-report",
-        true,
-        Output::Done,
-        "Set the page content of a plan",
-        [PLAN, TEXT],
-        set_report
-    ),
-    command!(
-        "plans",
-        "delete",
-        true,
-        Output::Done,
-        "Delete plans by id",
-        [Param::pos("ids", Kind::StringList, "Plan ids"), PROJECT],
-        delete
-    ),
-    command!(
-        "plans",
-        "add-items",
-        true,
-        Output::Done,
-        "Plan work items",
-        [PLAN, Param::req("items", Kind::ItemList, "Work items")],
-        add_items
-    ),
-    command!(
-        "plans",
-        "remove-items",
-        true,
-        Output::Done,
-        "Unplan work items",
-        [PLAN, Param::req("items", Kind::ItemList, "Work items")],
-        remove_items
-    ),
-    command!(
-        "plans",
-        "add-allowed-type",
-        true,
-        Output::Done,
-        "Allow a work item type",
-        [PLAN, TYPE],
-        add_allowed_type
-    ),
-    command!(
-        "plans",
-        "remove-allowed-type",
-        true,
-        Output::Done,
-        "Disallow a work item type",
-        [PLAN, TYPE],
-        remove_allowed_type
-    ),
-    command!(
-        "plans",
-        "add-project-to-span",
-        true,
-        Output::Done,
-        "Add a project to the plan's span",
-        [PLAN, SPAN_PROJECT],
-        add_project_to_span
-    ),
-    command!(
-        "plans",
-        "remove-project-from-span",
-        true,
-        Output::Done,
-        "Remove a project from the plan's span",
-        [PLAN, SPAN_PROJECT],
-        remove_project_from_span
-    ),
-];
-
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().get(&a.project()?, &a.str("id")?).await?)
+/// A plan by id.
+#[cmd(view = object)]
+pub struct Get {
+    /// Plan id
+    #[positional]
+    pub id: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn get_by_uri(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().get_by_uri(&a.str("plan")?).await?)
+impl Run for Get {
+    type Output = polarion::Plan;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .plans()
+            .get(&cx.project(self.project.as_deref())?, &self.id)
+            .await?)
+    }
 }
 
-async fn search(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().search(&a.query()?).await?)
+/// A plan by URI.
+#[cmd(view = object)]
+pub struct GetByUri {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
 }
 
-async fn search_templates(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().search_templates(&a.query()?).await?)
+impl Run for GetByUri {
+    type Output = polarion::Plan;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.plans().get_by_uri(&self.plan).await?)
+    }
 }
 
-async fn statistics(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().statistics(&a.str("plan")?).await?)
+/// Search plans with a Lucene query.
+#[cmd(view = table(PLAN_COLUMNS))]
+pub struct Search {
+    #[flatten]
+    pub search: QueryArgs,
 }
 
-async fn report(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().report(&a.str("plan")?).await?)
+impl Run for Search {
+    type Output = Vec<polarion::Plan>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.plans().search(&self.search.query(cx)).await?)
+    }
 }
 
-async fn was_started(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.plans().was_started(&a.str("plan")?).await?)
+/// Search plan templates.
+#[cmd(view = table(PLAN_COLUMNS))]
+pub struct SearchTemplates {
+    #[flatten]
+    pub search: QueryArgs,
 }
 
-async fn create(p: &Polarion, a: &Args) -> Result<Value> {
-    let parent = a.opt_str("parent")?;
-    out(p
-        .plans()
-        .create(
-            &a.project()?,
-            &a.str("id")?,
-            &a.str("name")?,
-            parent.as_deref(),
-            &a.str("template")?,
-        )
-        .await?)
+impl Run for SearchTemplates {
+    type Output = Vec<polarion::Plan>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .plans()
+            .search_templates(&self.search.query(cx))
+            .await?)
+    }
 }
 
-async fn create_template(p: &Polarion, a: &Args) -> Result<Value> {
-    let template = a.opt_str("template")?;
-    out(p
-        .plans()
-        .create_template(
-            &a.project()?,
-            &a.str("id")?,
-            &a.str("name")?,
-            template.as_deref(),
-        )
-        .await?)
+/// Progress statistics of a plan.
+#[cmd(view = object)]
+pub struct Statistics {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
 }
 
-async fn update(p: &Polarion, a: &Args) -> Result<Value> {
-    let update = PlanUpdate {
-        name: a.opt_str("name")?,
-        status: a.opt_str("status")?,
-        description: a.opt_text("description")?,
-        start_date: a.opt_str("start-date")?,
-        due_date: a.opt_str("due-date")?,
-        capacity: a.opt_f32("capacity")?,
-        default_estimate: a.opt_f32("default-estimate")?,
-        estimation_field: a.opt_str("estimation-field")?,
-        prioritization_field: a.opt_str("prioritization-field")?,
-        color: a.opt_str("color")?,
-        sort_order: a
-            .opt_i64("sort-order")?
-            .map(|i| i32::try_from(i).unwrap_or(i32::MAX)),
-        custom_fields: a
-            .custom_values("custom-fields", &[])?
+impl Run for Statistics {
+    type Output = polarion::soap::types::PlanStatistics;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.plans().statistics(&self.plan).await?)
+    }
+}
+
+/// The page content of a plan.
+#[cmd(view = object)]
+pub struct Report {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+}
+
+impl Run for Report {
+    type Output = polarion::Text;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.plans().report(&self.plan).await?)
+    }
+}
+
+/// Whether a plan was started.
+#[cmd(view = scalar)]
+pub struct WasStarted {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+}
+
+impl Run for WasStarted {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.plans().was_started(&self.plan).await?)
+    }
+}
+
+/// Create a plan from a template; returns its URI.
+#[cmd(write, view = scalar)]
+pub struct Create {
+    /// Plan id
+    #[positional]
+    pub id: String,
+    /// Name
+    pub name: String,
+    /// Template id
+    pub template: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Parent plan id
+    pub parent: Option<String>,
+}
+
+impl Run for Create {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let parent = self.parent;
+        Ok(cx
+            .polarion
+            .plans()
+            .create(
+                &cx.project(self.project.as_deref())?,
+                &self.id,
+                &self.name,
+                parent.as_deref(),
+                &self.template,
+            )
+            .await?)
+    }
+}
+
+/// Create a plan template; returns its URI.
+#[cmd(write, view = scalar)]
+pub struct CreateTemplate {
+    /// Template id
+    #[positional]
+    pub id: String,
+    /// Name
+    pub name: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Base template id
+    pub template: Option<String>,
+}
+
+impl Run for CreateTemplate {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let template = self.template;
+        Ok(cx
+            .polarion
+            .plans()
+            .create_template(
+                &cx.project(self.project.as_deref())?,
+                &self.id,
+                &self.name,
+                template.as_deref(),
+            )
+            .await?)
+    }
+}
+
+/// Change fields of a plan.
+#[cmd(write, view = done)]
+pub struct Update {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Name
+    pub name: Option<String>,
+    /// Status id
+    pub status: Option<String>,
+    /// Description
+    pub description: Option<RichText>,
+    /// Start date
+    pub start_date: Option<String>,
+    /// Due date
+    pub due_date: Option<String>,
+    /// Capacity
+    pub capacity: Option<f32>,
+    /// Default estimate
+    pub default_estimate: Option<f32>,
+    /// Estimation field
+    pub estimation_field: Option<String>,
+    /// Prioritization field
+    pub prioritization_field: Option<String>,
+    /// Color
+    pub color: Option<String>,
+    /// Sort order
+    pub sort_order: Option<i32>,
+    /// Custom field values (typed from JSON; use {"enum": id} for enums)
+    pub custom_fields: Option<JsonObject>,
+}
+
+impl Run for Update {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let update = PlanUpdate {
+            name: self.name,
+            status: self.status,
+            description: self.description.map(polarion::Text::from),
+            start_date: self.start_date,
+            due_date: self.due_date,
+            capacity: self.capacity,
+            default_estimate: self.default_estimate,
+            estimation_field: self.estimation_field,
+            prioritization_field: self.prioritization_field,
+            color: self.color,
+            sort_order: self.sort_order,
+            custom_fields: crate::values::custom_values(
+                &self.custom_fields.unwrap_or_default().0,
+                &[],
+            )?
             .into_iter()
             .filter_map(|(k, v)| Some((k, v?)))
             .collect(),
-    };
-    p.plans().update(&a.str("plan")?, &update).await?;
-    Ok(Value::Null)
+        };
+        cx.polarion.plans().update(&self.plan, &update).await?;
+        Ok(Done)
+    }
 }
 
-async fn set_report(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .set_report(&a.str("plan")?, &a.text("text")?)
-        .await?;
-    Ok(Value::Null)
+/// Set the page content of a plan.
+#[cmd(write, view = done)]
+pub struct SetReport {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Text: a string (plain text) or {type: text/html, content}
+    pub text: RichText,
 }
 
-async fn delete(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans().delete(&a.project()?, &a.list("ids")?).await?;
-    Ok(Value::Null)
+impl Run for SetReport {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .set_report(&self.plan, &polarion::Text::from(self.text))
+            .await?;
+        Ok(Done)
+    }
 }
 
-async fn add_items(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .add_items(&a.str("plan")?, &a.items("items")?)
-        .await?;
-    Ok(Value::Null)
+/// Delete plans by id.
+#[cmd(write, view = done)]
+pub struct Delete {
+    /// Plan ids
+    #[positional]
+    pub ids: Vec<String>,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
 }
 
-async fn remove_items(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .remove_items(&a.str("plan")?, &a.items("items")?)
-        .await?;
-    Ok(Value::Null)
+impl Run for Delete {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .delete(&cx.project(self.project.as_deref())?, &self.ids)
+            .await?;
+        Ok(Done)
+    }
 }
 
-async fn add_allowed_type(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .add_allowed_type(&a.str("plan")?, &a.str("type")?)
-        .await?;
-    Ok(Value::Null)
+/// Plan work items.
+#[cmd(write, view = done)]
+pub struct AddItems {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Work items
+    pub items: Vec<ItemArg>,
 }
 
-async fn remove_allowed_type(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .remove_allowed_type(&a.str("plan")?, &a.str("type")?)
-        .await?;
-    Ok(Value::Null)
+impl Run for AddItems {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .add_items(&self.plan, &ItemArg::resolve_all(&self.items, cx)?)
+            .await?;
+        Ok(Done)
+    }
 }
 
-async fn add_project_to_span(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .add_project_to_span(&a.str("plan")?, &a.str("span-project")?)
-        .await?;
-    Ok(Value::Null)
+/// Unplan work items.
+#[cmd(write, view = done)]
+pub struct RemoveItems {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Work items
+    pub items: Vec<ItemArg>,
 }
 
-async fn remove_project_from_span(p: &Polarion, a: &Args) -> Result<Value> {
-    p.plans()
-        .remove_project_from_span(&a.str("plan")?, &a.str("span-project")?)
-        .await?;
-    Ok(Value::Null)
+impl Run for RemoveItems {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .remove_items(&self.plan, &ItemArg::resolve_all(&self.items, cx)?)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Allow a work item type.
+#[cmd(write, view = done)]
+pub struct AddAllowedType {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Work item type id
+    pub r#type: String,
+}
+
+impl Run for AddAllowedType {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .add_allowed_type(&self.plan, &self.r#type)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Disallow a work item type.
+#[cmd(write, view = done)]
+pub struct RemoveAllowedType {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Work item type id
+    pub r#type: String,
+}
+
+impl Run for RemoveAllowedType {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .remove_allowed_type(&self.plan, &self.r#type)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Add a project to the plan's span.
+#[cmd(write, view = done)]
+pub struct AddProjectToSpan {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Project id
+    pub span_project: String,
+}
+
+impl Run for AddProjectToSpan {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .add_project_to_span(&self.plan, &self.span_project)
+            .await?;
+        Ok(Done)
+    }
+}
+
+/// Remove a project from the plan's span.
+#[cmd(write, view = done)]
+pub struct RemoveProjectFromSpan {
+    /// Plan URI
+    #[positional]
+    pub plan: String,
+    /// Project id
+    pub span_project: String,
+}
+
+impl Run for RemoveProjectFromSpan {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        cx.polarion
+            .plans()
+            .remove_project_from_span(&self.plan, &self.span_project)
+            .await?;
+        Ok(Done)
+    }
 }

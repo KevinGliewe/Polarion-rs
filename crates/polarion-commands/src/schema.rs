@@ -1,418 +1,554 @@
 //! `schema.*`: project configuration.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, FIELD_COLUMNS, ItemArg, OPTION_COLUMNS, Result, Run};
 
-const TYPE: Param = Param::req("type", Kind::String, "Work item type id");
-const KEY: Param = Param::req(
-    "key",
-    Kind::String,
-    "Field key, e.g. `status` or a custom field id",
-);
-const ENUM_ID: Param = Param::req("enum-id", Kind::String, "Enumeration id");
-const CONTROL: Param = Param::req("control", Kind::String, "Value of the controlling field");
-const LANGUAGE: Param = Param::req("language", Kind::String, "Language id");
-
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "schema",
-        "custom-fields",
-        false,
-        Output::Table(FIELD_COLUMNS),
-        "Custom fields defined for a work item type",
-        [PROJECT, TYPE],
-        custom_fields
-    ),
-    command!(
-        "schema",
-        "custom-field",
-        false,
-        Output::Object,
-        "One custom field definition",
-        [PROJECT, TYPE, KEY],
-        custom_field
-    ),
-    command!(
-        "schema",
-        "custom-field-keys",
-        false,
-        Output::Lines,
-        "Keys of the custom fields of a work item type",
-        [PROJECT, TYPE],
-        custom_field_keys
-    ),
-    command!(
-        "schema",
-        "custom-fields-of",
-        false,
-        Output::Table(FIELD_COLUMNS),
-        "Custom field definitions of one work item",
-        [ITEM],
-        custom_fields_of
-    ),
-    command!(
-        "schema",
-        "custom-field-of",
-        false,
-        Output::Object,
-        "One custom field definition of a work item",
-        [ITEM, KEY],
-        custom_field_of
-    ),
-    command!(
-        "schema",
-        "field-options",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of a field's enumeration (e.g. type, status, priority)",
-        [PROJECT, KEY],
-        field_options
-    ),
-    command!(
-        "schema",
-        "field-option-ids",
-        false,
-        Output::Lines,
-        "Option ids of a field's enumeration",
-        [PROJECT, KEY],
-        field_option_ids
-    ),
-    command!(
-        "schema",
-        "enum-options",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of an enumeration by id",
-        [PROJECT, ENUM_ID],
-        enum_options
-    ),
-    command!(
-        "schema",
-        "enum-option-ids",
-        false,
-        Output::Lines,
-        "Option ids of an enumeration",
-        [PROJECT, ENUM_ID],
-        enum_option_ids
-    ),
-    command!(
-        "schema",
-        "field-options-with-control",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of a dependent field given the controlling value",
-        [PROJECT, KEY, CONTROL],
-        field_options_with_control
-    ),
-    command!(
-        "schema",
-        "enum-options-with-control",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Options of a dependent enumeration given the controlling value",
-        [PROJECT, ENUM_ID, CONTROL],
-        enum_options_with_control
-    ),
-    command!(
-        "schema",
-        "enum-control-key",
-        false,
-        Output::Scalar,
-        "The field controlling a dependent field",
-        [PROJECT, KEY],
-        enum_control_key
-    ),
-    command!(
-        "schema",
-        "enum-control-key-for-enum",
-        false,
-        Output::Scalar,
-        "The field controlling a dependent enumeration",
-        [PROJECT, ENUM_ID],
-        enum_control_key_for_enum
-    ),
-    command!(
-        "schema",
-        "object-option",
-        false,
-        Output::Object,
-        "The enum option representing an object (e.g. a user)",
-        [URI, ENUM_ID],
-        object_option
-    ),
-    command!(
-        "schema",
-        "object-option-for-key",
-        false,
-        Output::Object,
-        "The option representing an object for a prototype's field",
-        [
-            URI,
-            Param::req("prototype", Kind::String, "Prototype, e.g. `WorkItem`"),
-            KEY
-        ],
-        object_option_for_key
-    ),
-    command!(
-        "schema",
-        "initial-action",
-        false,
-        Output::Object,
-        "The workflow action performed when a work item of a type is created",
-        [PROJECT, TYPE],
-        initial_action
-    ),
-    command!(
-        "schema",
-        "categories",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Work item categories",
-        [PROJECT],
-        categories
-    ),
-    command!(
-        "schema",
-        "time-points",
-        false,
-        Output::Table(OPTION_COLUMNS),
-        "Time points (milestones)",
-        [PROJECT],
-        time_points
-    ),
-    command!(
-        "schema",
-        "default-language",
-        false,
-        Output::Object,
-        "The default language",
-        [PROJECT],
-        default_language
-    ),
-    command!(
-        "schema",
-        "language",
-        false,
-        Output::Object,
-        "One language definition",
-        [PROJECT, LANGUAGE],
-        language
-    ),
-    command!(
-        "schema",
-        "languages",
-        false,
-        Output::Object,
-        "Language definitions (except the default)",
-        [PROJECT],
-        languages
-    ),
-    command!(
-        "schema",
-        "localized-title-field",
-        false,
-        Output::Scalar,
-        "The field storing a type's title in a language",
-        [PROJECT, LANGUAGE, TYPE],
-        localized_title_field
-    ),
-    command!(
-        "schema",
-        "localized-description-field",
-        false,
-        Output::Scalar,
-        "The field storing a type's description in a language",
-        [PROJECT, LANGUAGE, TYPE],
-        localized_description_field
-    ),
-    command!(
-        "schema",
-        "duration-hours",
-        false,
-        Output::Scalar,
-        "A duration (e.g. `1d 4h`) in hours",
-        [Param::pos("duration", Kind::String, "Duration")],
-        duration_hours
-    ),
-    command!(
-        "schema",
-        "one-day-length",
-        false,
-        Output::Scalar,
-        "The length of one working day",
-        [],
-        one_day_length
-    ),
-    command!(
-        "schema",
-        "history-available",
-        false,
-        Output::Scalar,
-        "Whether history is available",
-        [],
-        history_available
-    ),
-];
-
-async fn custom_fields(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .custom_fields(&a.project()?, &a.str("type")?)
-        .await?)
+/// Custom fields defined for a work item type.
+#[cmd(view = table(FIELD_COLUMNS))]
+pub struct CustomFields {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Work item type id
+    pub r#type: String,
 }
 
-async fn custom_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .custom_field(&a.project()?, &a.str("type")?, &a.str("key")?)
-        .await?)
+impl Run for CustomFields {
+    type Output = Vec<polarion::FieldDefinition>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .custom_fields(&cx.project(self.project.as_deref())?, &self.r#type)
+            .await?)
+    }
 }
 
-async fn custom_field_keys(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .custom_field_keys(&a.project()?, &a.str("type")?)
-        .await?)
+/// One custom field definition.
+#[cmd(view = object)]
+pub struct CustomField {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Work item type id
+    pub r#type: String,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
 }
 
-async fn custom_fields_of(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().custom_fields_of(&a.item("item")?).await?)
+impl Run for CustomField {
+    type Output = polarion::FieldDefinition;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .custom_field(
+                &cx.project(self.project.as_deref())?,
+                &self.r#type,
+                &self.key,
+            )
+            .await?)
+    }
 }
 
-async fn custom_field_of(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .custom_field_of(&a.item("item")?, &a.str("key")?)
-        .await?)
+/// Keys of the custom fields of a work item type.
+#[cmd(view = lines)]
+pub struct CustomFieldKeys {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Work item type id
+    pub r#type: String,
 }
 
-async fn field_options(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .field_options(&a.project()?, &a.str("key")?)
-        .await?)
+impl Run for CustomFieldKeys {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .custom_field_keys(&cx.project(self.project.as_deref())?, &self.r#type)
+            .await?)
+    }
 }
 
-async fn field_option_ids(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .field_option_ids(&a.project()?, &a.str("key")?)
-        .await?)
+/// Custom field definitions of one work item.
+#[cmd(view = table(FIELD_COLUMNS))]
+pub struct CustomFieldsOf {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
 }
 
-async fn enum_options(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .enum_options(&a.project()?, &a.str("enum-id")?)
-        .await?)
+impl Run for CustomFieldsOf {
+    type Output = Vec<polarion::FieldDefinition>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .custom_fields_of(&self.item.resolve(cx)?)
+            .await?)
+    }
 }
 
-async fn enum_option_ids(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .enum_option_ids(&a.project()?, &a.str("enum-id")?)
-        .await?)
+/// One custom field definition of a work item.
+#[cmd(view = object)]
+pub struct CustomFieldOf {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
 }
 
-async fn field_options_with_control(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .field_options_with_control(&a.project()?, &a.str("key")?, &a.str("control")?)
-        .await?)
+impl Run for CustomFieldOf {
+    type Output = polarion::FieldDefinition;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .custom_field_of(&self.item.resolve(cx)?, &self.key)
+            .await?)
+    }
 }
 
-async fn enum_options_with_control(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .enum_options_with_control(&a.project()?, &a.str("enum-id")?, &a.str("control")?)
-        .await?)
+/// Options of a field's enumeration (e.g. type, status, priority)
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct FieldOptions {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
 }
 
-async fn enum_control_key(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .enum_control_key(&a.project()?, &a.str("key")?)
-        .await?)
+impl Run for FieldOptions {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .field_options(&cx.project(self.project.as_deref())?, &self.key)
+            .await?)
+    }
 }
 
-async fn enum_control_key_for_enum(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .enum_control_key_for_enum(&a.project()?, &a.str("enum-id")?)
-        .await?)
+/// Option ids of a field's enumeration.
+#[cmd(view = lines)]
+pub struct FieldOptionIds {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
 }
 
-async fn object_option(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .object_option(&a.str("uri")?, &a.str("enum-id")?)
-        .await?)
+impl Run for FieldOptionIds {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .field_option_ids(&cx.project(self.project.as_deref())?, &self.key)
+            .await?)
+    }
 }
 
-async fn object_option_for_key(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .object_option_for_key(&a.str("uri")?, &a.str("prototype")?, &a.str("key")?)
-        .await?)
+/// Options of an enumeration by id.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct EnumOptions {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Enumeration id
+    pub enum_id: String,
 }
 
-async fn initial_action(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .initial_action(&a.project()?, &a.str("type")?)
-        .await?)
+impl Run for EnumOptions {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .enum_options(&cx.project(self.project.as_deref())?, &self.enum_id)
+            .await?)
+    }
 }
 
-async fn categories(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().categories(&a.project()?).await?)
+/// Option ids of an enumeration.
+#[cmd(view = lines)]
+pub struct EnumOptionIds {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Enumeration id
+    pub enum_id: String,
 }
 
-async fn time_points(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().time_points(&a.project()?).await?)
+impl Run for EnumOptionIds {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .enum_option_ids(&cx.project(self.project.as_deref())?, &self.enum_id)
+            .await?)
+    }
 }
 
-async fn default_language(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().default_language(&a.project()?).await?)
+/// Options of a dependent field given the controlling value.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct FieldOptionsWithControl {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+    /// Value of the controlling field
+    pub control: String,
 }
 
-async fn language(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .language(&a.project()?, &a.str("language")?)
-        .await?)
+impl Run for FieldOptionsWithControl {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .field_options_with_control(
+                &cx.project(self.project.as_deref())?,
+                &self.key,
+                &self.control,
+            )
+            .await?)
+    }
 }
 
-async fn languages(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().languages(&a.project()?).await?)
+/// Options of a dependent enumeration given the controlling value.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct EnumOptionsWithControl {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Enumeration id
+    pub enum_id: String,
+    /// Value of the controlling field
+    pub control: String,
 }
 
-async fn localized_title_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .localized_title_field(&a.project()?, &a.str("language")?, &a.str("type")?)
-        .await?)
+impl Run for EnumOptionsWithControl {
+    type Output = Vec<polarion::EnumOption>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .enum_options_with_control(
+                &cx.project(self.project.as_deref())?,
+                &self.enum_id,
+                &self.control,
+            )
+            .await?)
+    }
 }
 
-async fn localized_description_field(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .schema()
-        .localized_description_field(&a.project()?, &a.str("language")?, &a.str("type")?)
-        .await?)
+/// The field controlling a dependent field.
+#[cmd(view = scalar)]
+pub struct EnumControlKey {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
 }
 
-async fn duration_hours(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.schema().duration_hours(&a.str("duration")?).await?)
+impl Run for EnumControlKey {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .enum_control_key(&cx.project(self.project.as_deref())?, &self.key)
+            .await?)
+    }
 }
 
-async fn one_day_length(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.schema().one_day_length().await?)
+/// The field controlling a dependent enumeration.
+#[cmd(view = scalar)]
+pub struct EnumControlKeyForEnum {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Enumeration id
+    pub enum_id: String,
 }
 
-async fn history_available(p: &Polarion, _: &Args) -> Result<Value> {
-    out(p.schema().history_available().await?)
+impl Run for EnumControlKeyForEnum {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .enum_control_key_for_enum(&cx.project(self.project.as_deref())?, &self.enum_id)
+            .await?)
+    }
+}
+
+/// The enum option representing an object (e.g. a user)
+#[cmd(view = object)]
+pub struct ObjectOption {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Enumeration id
+    pub enum_id: String,
+}
+
+impl Run for ObjectOption {
+    type Output = polarion::EnumOption;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .object_option(&self.uri, &self.enum_id)
+            .await?)
+    }
+}
+
+/// The option representing an object for a prototype's field.
+#[cmd(view = object)]
+pub struct ObjectOptionForKey {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Prototype, e.g. `WorkItem`
+    pub prototype: String,
+    /// Field key, e.g. `status` or a custom field id
+    pub key: String,
+}
+
+impl Run for ObjectOptionForKey {
+    type Output = polarion::EnumOption;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .object_option_for_key(&self.uri, &self.prototype, &self.key)
+            .await?)
+    }
+}
+
+/// The workflow action performed when a work item of a type is created.
+#[cmd(view = object)]
+pub struct InitialAction {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Work item type id
+    pub r#type: String,
+}
+
+impl Run for InitialAction {
+    type Output = Option<polarion::WorkflowAction>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .initial_action(&cx.project(self.project.as_deref())?, &self.r#type)
+            .await?)
+    }
+}
+
+/// Work item categories.
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct Categories {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for Categories {
+    type Output = Vec<polarion::Category>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .categories(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// Time points (milestones)
+#[cmd(view = table(OPTION_COLUMNS))]
+pub struct TimePoints {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for TimePoints {
+    type Output = Vec<polarion::TimePoint>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .time_points(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// The default language.
+#[cmd(view = object)]
+pub struct DefaultLanguage {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for DefaultLanguage {
+    type Output = polarion::soap::types::LanguageDefinition;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .default_language(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// One language definition.
+#[cmd(view = object)]
+pub struct Language {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Language id
+    pub language: String,
+}
+
+impl Run for Language {
+    type Output = polarion::soap::types::LanguageDefinition;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .language(&cx.project(self.project.as_deref())?, &self.language)
+            .await?)
+    }
+}
+
+/// Language definitions (except the default)
+#[cmd(view = object)]
+pub struct Languages {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+}
+
+impl Run for Languages {
+    type Output = Vec<polarion::soap::types::LanguageDefinition>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .languages(&cx.project(self.project.as_deref())?)
+            .await?)
+    }
+}
+
+/// The field storing a type's title in a language.
+#[cmd(view = scalar)]
+pub struct LocalizedTitleField {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Language id
+    pub language: String,
+    /// Work item type id
+    pub r#type: String,
+}
+
+impl Run for LocalizedTitleField {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .localized_title_field(
+                &cx.project(self.project.as_deref())?,
+                &self.language,
+                &self.r#type,
+            )
+            .await?)
+    }
+}
+
+/// The field storing a type's description in a language.
+#[cmd(view = scalar)]
+pub struct LocalizedDescriptionField {
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Language id
+    pub language: String,
+    /// Work item type id
+    pub r#type: String,
+}
+
+impl Run for LocalizedDescriptionField {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .schema()
+            .localized_description_field(
+                &cx.project(self.project.as_deref())?,
+                &self.language,
+                &self.r#type,
+            )
+            .await?)
+    }
+}
+
+/// A duration (e.g. `1d 4h`) in hours.
+#[cmd(view = scalar)]
+pub struct DurationHours {
+    /// Duration
+    #[positional]
+    pub duration: String,
+}
+
+impl Run for DurationHours {
+    type Output = f32;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.schema().duration_hours(&self.duration).await?)
+    }
+}
+
+/// The length of one working day.
+#[cmd(view = scalar)]
+pub struct OneDayLength {}
+
+impl Run for OneDayLength {
+    type Output = i64;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.schema().one_day_length().await?)
+    }
+}
+
+/// Whether history is available.
+#[cmd(view = scalar)]
+pub struct HistoryAvailable {}
+
+impl Run for HistoryAvailable {
+    type Output = bool;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.schema().history_available().await?)
+    }
 }

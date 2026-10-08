@@ -9,47 +9,53 @@ use std::process::ExitCode;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use polarion_commands::{Args, CommandError, Output, commands};
+use clap::Parser as _;
+use polarion_commands::{AnyCommand, CommandError, Context, Entry, View, catalog, find};
 use serde_json::{Value, json};
 
-use crate::cli::{Globals, Invocation};
+use crate::cli::{Opts, Top};
+
+/// What every invocation needs besides the command.
+struct Globals {
+    json: bool,
+    out: Option<String>,
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
-    let matches = cli::build().get_matches();
-    let globals = cli::globals(&matches);
-    let invocation = match cli::invocation(&matches) {
-        Ok(i) => i,
-        Err(message) => return fail(&globals, &CommandError::invalid(message)),
+    let opts = Opts::parse();
+    let config = opts.global.config();
+    let globals = Globals {
+        json: opts.global.json,
+        out: opts.global.out.clone(),
     };
-    match invocation {
-        Invocation::List(area) => list(&globals, area.as_deref()),
-        Invocation::Run { command, args } => {
-            let args = Args::new(args, globals.config.project.clone());
-            let result = match globals.config.connect() {
-                Ok(polarion) => {
-                    let result = (command.run)(&polarion, &args).await;
-                    // Every login opens a session on the server (which may hold a license); end it.
-                    let _ = polarion.logout().await;
-                    result
-                }
-                Err(e) => Err(e),
-            };
-            match result {
-                Ok(value) => print(&globals, command, &args, &value),
-                Err(e) => fail(&globals, &e),
-            }
+    let command = match opts.command {
+        Top::Commands { area } => return list(&globals, area.as_deref()),
+        Top::Run(cli) => AnyCommand::from(cli),
+    };
+    let entry = find(command.name()).expect("commands come from the catalog");
+    let args = serde_json::to_value(&command).expect("commands serialize")["args"].take();
+    let result = match config.connect() {
+        Ok(polarion) => {
+            let cx = Context::new(&polarion, config.project.as_deref());
+            let result = command.run(&cx).await;
+            // Every login opens a session on the server (which may hold a license); end it.
+            let _ = polarion.logout().await;
+            result
         }
+        Err(e) => Err(e),
+    };
+    match result {
+        Ok(output) => {
+            let value = serde_json::to_value(&output).expect("results serialize");
+            print(&globals, entry, &args, &value)
+        }
+        Err(e) => fail(&globals, &e),
     }
 }
 
-fn print(
-    globals: &Globals,
-    command: &polarion_commands::Command,
-    args: &Args,
-    value: &Value,
-) -> ExitCode {
-    if let (Output::Bytes, Some(path)) = (command.output, &globals.out) {
+fn print(globals: &Globals, entry: &Entry, args: &Value, value: &Value) -> ExitCode {
+    if let (View::Bytes, Some(path)) = (entry.view, &globals.out) {
         let data = value
             .get("base64")
             .and_then(Value::as_str)
@@ -69,42 +75,37 @@ fn print(
     let text = if globals.json {
         render::json(value, std::io::stdout().is_terminal()) + "\n"
     } else {
-        render::text(value, command.output)
+        render::text(value, entry.view)
     };
     if text.is_empty() {
         eprintln!("no results");
     }
     // A closed pipe (`polarion ... | head`) is not an error worth reporting.
     let _ = std::io::stdout().lock().write_all(text.as_bytes());
-    if let Some(note) = truncation_note(command, args, value) {
+    if let Some(note) = truncation_note(entry, args, value) {
         eprintln!("note: {note}");
     }
     ExitCode::SUCCESS
 }
 
 /// A hint when a limited query returned exactly `limit` results.
-fn truncation_note(
-    command: &polarion_commands::Command,
-    args: &Args,
-    value: &Value,
-) -> Option<String> {
-    let has_limit = command.params.iter().any(|p| p.name == "limit");
-    if !has_limit || args.bool("all").unwrap_or(false) {
+fn truncation_note(entry: &Entry, args: &Value, value: &Value) -> Option<String> {
+    let schema = entry.input_schema();
+    if schema["properties"].get("limit").is_none() || args.get("all") == Some(&Value::Bool(true)) {
         return None;
     }
     let limit = args
-        .opt_u32("limit")
-        .ok()
-        .flatten()
-        .unwrap_or(polarion::DEFAULT_LIMIT);
-    (value.as_array()?.len() == limit as usize)
+        .get("limit")
+        .and_then(Value::as_u64)
+        .unwrap_or(u64::from(polarion::DEFAULT_LIMIT));
+    (value.as_array()?.len() as u64 == limit)
         .then(|| format!("showing the first {limit} results; use --limit N or --all for more"))
 }
 
 fn list(globals: &Globals, area: Option<&str>) -> ExitCode {
-    let selected: Vec<_> = commands()
+    let selected: Vec<&Entry> = catalog()
         .iter()
-        .filter(|c| area.is_none_or(|a| c.area == a))
+        .filter(|e| area.is_none_or(|a| e.area == a))
         .collect();
     if selected.is_empty() {
         return fail(
@@ -115,7 +116,7 @@ fn list(globals: &Globals, area: Option<&str>) -> ExitCode {
     if globals.json {
         let list: Vec<Value> = selected
             .iter()
-            .map(|c| json!({"name": c.full_name(), "summary": c.summary, "write": c.write, "input": c.input_schema()}))
+            .map(|e| json!({"name": e.full_name(), "summary": e.summary, "write": e.write, "input": e.input_schema()}))
             .collect();
         println!(
             "{}",
@@ -124,11 +125,11 @@ fn list(globals: &Globals, area: Option<&str>) -> ExitCode {
     } else {
         let rows: Vec<(String, bool, String)> = selected
             .iter()
-            .map(|c| {
+            .map(|e| {
                 (
-                    format!("{} {}", c.area, c.name),
-                    c.write,
-                    c.summary.to_owned(),
+                    format!("{} {}", e.area, e.name),
+                    e.write,
+                    e.summary.to_owned(),
                 )
             })
             .collect();

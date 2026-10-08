@@ -1,100 +1,109 @@
 //! `revisions.*`: source repository revisions.
 
-use polarion::Polarion;
-use serde_json::Value;
+use polarion_commands_derive::cmd;
 
-use crate::args::Args;
-use crate::catalog::*;
-use crate::error::Result;
-use crate::util::{command, out};
+use crate::{Context, FieldSelection, ITEM_COLUMNS, QueryArgs, REVISION_COLUMNS, Result, Run};
 
-pub(crate) const COMMANDS: &[Command] = &[
-    command!(
-        "revisions",
-        "get",
-        false,
-        Output::Object,
-        "A revision of a repository",
-        [
-            Param::pos("revision", Kind::String, "Revision id"),
-            Param::opt(
-                "repository",
-                Kind::String,
-                "Repository (default: `default`)"
-            )
-        ],
-        get
-    ),
-    command!(
-        "revisions",
-        "get-by-uri",
-        false,
-        Output::Object,
-        "A revision by URI",
-        [URI],
-        get_by_uri
-    ),
-    command!(
-        "revisions",
-        "query",
-        false,
-        Output::Table(REVISION_COLUMNS),
-        "Search revisions with a Lucene query",
-        [QUERY, SORT, FIELDS],
-        query
-    ),
-    command!(
-        "revisions",
-        "query-uris",
-        false,
-        Output::Lines,
-        "Search revisions, returning URIs",
-        [
-            QUERY,
-            SORT,
-            Param::opt(
-                "include-internal",
-                Kind::Boolean,
-                "Include Polarion's own commits"
-            )
-        ],
-        query_uris
-    ),
-    command!(
-        "revisions",
-        "work-items",
-        false,
-        Output::Table(ITEM_COLUMNS),
-        "Work items linked to a revision",
-        [URI, FIELDS, CUSTOM],
-        work_items
-    ),
-];
-
-async fn get(p: &Polarion, a: &Args) -> Result<Value> {
-    let repository = a.opt_str("repository")?.unwrap_or_else(|| "default".into());
-    out(p.revisions().get(&repository, &a.str("revision")?).await?)
+/// A revision of a repository.
+#[cmd(view = object)]
+pub struct Get {
+    /// Revision id
+    #[positional]
+    pub revision: String,
+    /// Repository (default: `default`)
+    pub repository: Option<String>,
 }
 
-async fn get_by_uri(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.revisions().get_by_uri(&a.str("uri")?).await?)
+impl Run for Get {
+    type Output = polarion::Revision;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let repository = self.repository.unwrap_or_else(|| "default".into());
+        Ok(cx
+            .polarion
+            .revisions()
+            .get(&repository, &self.revision)
+            .await?)
+    }
 }
 
-async fn query(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p.revisions().query(&a.query()?).await?)
+/// A revision by URI.
+#[cmd(view = object)]
+pub struct GetByUri {
+    /// Object URI
+    #[positional]
+    pub uri: String,
 }
 
-async fn query_uris(p: &Polarion, a: &Args) -> Result<Value> {
-    out(p
-        .revisions()
-        .query_uris(&a.query()?, a.bool("include-internal")?)
-        .await?)
+impl Run for GetByUri {
+    type Output = polarion::Revision;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx.polarion.revisions().get_by_uri(&self.uri).await?)
+    }
 }
 
-async fn work_items(p: &Polarion, a: &Args) -> Result<Value> {
-    let fields = a.opt_fields()?;
-    out(p
-        .revisions()
-        .work_items(&a.str("uri")?, fields.as_ref())
-        .await?)
+/// Search revisions with a Lucene query.
+#[cmd(view = table(REVISION_COLUMNS))]
+pub struct Query {
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for Query {
+    type Output = Vec<polarion::Revision>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .revisions()
+            .query(&self.search.query(cx))
+            .await?)
+    }
+}
+
+/// Search revisions, returning URIs.
+#[cmd(view = lines)]
+pub struct QueryUris {
+    /// Include Polarion's own commits
+    pub include_internal: bool,
+    #[flatten]
+    pub search: QueryArgs,
+}
+
+impl Run for QueryUris {
+    type Output = Vec<String>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        Ok(cx
+            .polarion
+            .revisions()
+            .query_uris(&self.search.query(cx), self.include_internal)
+            .await?)
+    }
+}
+
+/// Work items linked to a revision.
+#[cmd(view = table(ITEM_COLUMNS))]
+pub struct WorkItems {
+    /// Object URI
+    #[positional]
+    pub uri: String,
+    /// Fields to fetch: `standard`, `all`, or a list of field keys
+    pub fields: Option<FieldSelection>,
+    /// Custom field keys to fetch in addition
+    pub custom: Vec<String>,
+}
+
+impl Run for WorkItems {
+    type Output = Vec<polarion::WorkItem>;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let fields = FieldSelection::fields(self.fields.as_ref(), &self.custom);
+        Ok(cx
+            .polarion
+            .revisions()
+            .work_items(&self.uri, fields.as_ref())
+            .await?)
+    }
 }
