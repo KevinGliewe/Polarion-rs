@@ -47,10 +47,10 @@ let created = client.post_work_items("MyProject", &[new]).await?;
 - **TLS:** the OS trust store is used, so corporate CAs work; extra PEM CAs or (for test servers) disabled
   validation via `Client::builder`.
 
-Try it against a real server (read-only, at most three small `GET` requests):
+Try it against a real server (read-only, at most six small `GET` requests; each step reports OK or FAIL independently):
 
 ```sh
-POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject \
+POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject POLARION_SAVE_SPEC=spec.json \
   cargo run -p polarion-rest --example smoke
 ```
 
