@@ -35,7 +35,7 @@ let new: WorkItem = Resource::from_attributes(WorkItemAttributes {
 let created = client.post_work_items("MyProject", &[new]).await?;
 ```
 
-- **Coverage:** all 284 operations of the spec, including multipart uploads (`FilePart`) and binary downloads (`Vec<u8>`).
+- **Coverage:** all 221 operations of the Polarion 2410 spec, including multipart uploads (`FilePart`) and binary downloads (`Vec<u8>`).
 - **Types:** one attributes struct per resource type (`WorkItemAttributes`, `DocumentAttributes`, ...) shared by
   read, create and update. Custom fields land in `extra`.
 - **Query parameters:** `Query` builder for paging, sparse fieldsets (`fields[workitems]=@all`), `include`, Lucene `query`,
@@ -47,7 +47,7 @@ let created = client.post_work_items("MyProject", &[new]).await?;
 - **TLS:** the OS trust store is used, so corporate CAs work; extra PEM CAs or (for test servers) disabled
   validation via `Client::builder`.
 
-Try it against a real server (read-only, at most six small `GET` requests; each step reports OK or FAIL independently):
+Try it against a real server (read-only, at most five small `GET` requests; each step reports OK or FAIL independently):
 
 ```sh
 POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject POLARION_SAVE_SPEC=spec.json \
@@ -78,9 +78,18 @@ cargo xtask codegen          # regenerate
 cargo xtask codegen --check  # verify it is up to date
 ```
 
-To target another Polarion version, replace the spec with the one your server serves at
-`<polarion>/rest/v1/definition` and regenerate. The committed spec was fetched from
-`https://testdrive.polarion.com/polarion/rest/v1/definition` (Apache-2.0).
+The committed spec is the definition served by a Polarion **2410** server (Apache-2.0). Newer releases add
+endpoints (testdrive's spec has 284 operations, including Pages, licensing, jobs and `GET /user`). To target
+another version, replace the spec with the one your server serves at `<polarion>/rest/v1/definition` (the smoke
+example's `POLARION_SAVE_SPEC` does this) and regenerate.
+
+## REST permissions
+
+Polarion guards the REST API with its own per-role permissions (REST API endpoint `GET`, `PATCH`, `POST`, `DELETE`,
+configured in the Global context). By default only `admin` and `project_admin` have them, so other users get
+`403 Forbidden` on every endpoint even with a valid token, including for projects they can open in the UI. An
+administrator has to grant at least `GET`, e.g. to `project_user`. See
+[Siemens: REST API authorization](https://developer.siemens.com/polarion/authorization.html).
 
 `spec_examples.rs` builds an example document from every schema in the spec and checks it round-trips through the
 generated types, so mapping gaps show up as test failures rather than silently dropped fields.

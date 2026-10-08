@@ -20,35 +20,6 @@ use crate::jsonapi::{
 };
 use crate::query::Query;
 
-/// # AI
-impl Client {
-    /// Generates a chat completion using a Large Language Model (LLM).
-    ///
-    /// `POST /llms/actions/generateCompletion` (`generateCompletion`)
-    pub async fn generate_completion(
-        &self,
-        body: &GenerateCompletionRequestBody,
-    ) -> Result<GenerateCompletionResponseBody> {
-        let mut req = self.request(
-            Method::POST,
-            &["llms", "actions", "generateCompletion"],
-            None,
-        );
-        req = req.json(body);
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Large Language Models (LLMs).
-    ///
-    /// `GET /llms` (`getLlms`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`.
-    pub async fn get_llms(&self, query: &Query) -> Result<ListEnvelope<LlmAttributes>> {
-        let req = self.request(Method::GET, &["llms"], Some(query));
-        self.execute_json(req).await
-    }
-}
-
 /// # Collections
 impl Client {
     /// Closes the specified Collection.
@@ -185,29 +156,6 @@ impl Client {
         self.execute_json(req).await
     }
 
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/collections/{collectionId}/actions/getFieldsMetadata` (`getFieldsMetadataForCollection`)
-    pub async fn get_fields_metadata_for_collection(
-        &self,
-        project_id: &str,
-        collection_id: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "collections",
-                collection_id,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
-        );
-        self.execute_json(req).await
-    }
-
     /// Updates the specified Collection.
     ///
     /// `PATCH /projects/{projectId}/collections/{collectionId}` (`patchCollections`)
@@ -308,193 +256,6 @@ impl Client {
             None,
         );
         self.execute_empty(req).await
-    }
-
-    /// Reuses the specified Collection.
-    ///
-    /// `POST /projects/{projectId}/collections/{collectionId}/actions/reuse` (`reuseCollection`)
-    ///
-    /// Query parameters: `revision`.
-    pub async fn reuse_collection(
-        &self,
-        project_id: &str,
-        collection_id: &str,
-        query: &Query,
-        body: &ReuseCollectionRequestBody,
-    ) -> Result<SingleEnvelope<CollectionAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "collections",
-                collection_id,
-                "actions",
-                "reuse",
-            ],
-            Some(query),
-        );
-        req = req.json(body);
-        self.execute_json(req).await
-    }
-}
-
-/// # Custom Fields
-impl Client {
-    /// Deletes the specified Custom Field configuration from the Global context.
-    ///
-    /// `DELETE /customfields/{resourceType}/{targetType}` (`deleteGlobalCustomFields`)
-    pub async fn delete_global_custom_fields(
-        &self,
-        resource_type: &str,
-        target_type: &str,
-    ) -> Result<()> {
-        let req = self.request(
-            Method::DELETE,
-            &["customfields", resource_type, target_type],
-            None,
-        );
-        self.execute_empty(req).await
-    }
-
-    /// Deletes the specified Custom Field configuration from the Project context.
-    ///
-    /// `DELETE /projects/{projectId}/customfields/{resourceType}/{targetType}` (`deleteProjectCustomFields`)
-    pub async fn delete_project_custom_fields(
-        &self,
-        project_id: &str,
-        resource_type: &str,
-        target_type: &str,
-    ) -> Result<()> {
-        let req = self.request(
-            Method::DELETE,
-            &[
-                "projects",
-                project_id,
-                "customfields",
-                resource_type,
-                target_type,
-            ],
-            None,
-        );
-        self.execute_empty(req).await
-    }
-
-    /// Returns the defined Custom Fields for the resource type and target type in the Global context.
-    ///
-    /// `GET /customfields/{resourceType}/{targetType}` (`getGlobalCustomFields`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_global_custom_fields(
-        &self,
-        resource_type: &str,
-        target_type: &str,
-        query: &Query,
-    ) -> Result<SingleEnvelope<CustomFieldAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["customfields", resource_type, target_type],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns the defined Custom Fields for the resource type and target type in the Project context.
-    ///
-    /// `GET /projects/{projectId}/customfields/{resourceType}/{targetType}` (`getProjectCustomFields`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_project_custom_fields(
-        &self,
-        project_id: &str,
-        resource_type: &str,
-        target_type: &str,
-        query: &Query,
-    ) -> Result<SingleEnvelope<CustomFieldAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "customfields",
-                resource_type,
-                target_type,
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Updates the specified Custom Fields in the Project context.
-    ///
-    /// `PATCH /projects/{projectId}/customfields/{resourceType}/{targetType}` (`patchCustomField`)
-    pub async fn patch_custom_field(
-        &self,
-        project_id: &str,
-        resource_type: &str,
-        target_type: &str,
-        data: &Resource<CustomFieldAttributes>,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::PATCH,
-            &[
-                "projects",
-                project_id,
-                "customfields",
-                resource_type,
-                target_type,
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Updates the specified Custom Fields in the Global context.
-    ///
-    /// `PATCH /customfields/{resourceType}/{targetType}` (`patchGlobalCustomFields`)
-    pub async fn patch_global_custom_fields(
-        &self,
-        resource_type: &str,
-        target_type: &str,
-        data: &Resource<CustomFieldAttributes>,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::PATCH,
-            &["customfields", resource_type, target_type],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Creates a list of Custom Fields in the Global context.
-    ///
-    /// `POST /customfields` (`postGlobalCustomFields`)
-    pub async fn post_global_custom_fields(
-        &self,
-        data: &[Resource<CustomFieldAttributes>],
-    ) -> Result<ListEnvelope<CustomFieldAttributes>> {
-        let mut req = self.request(Method::POST, &["customfields"], None);
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
-    }
-
-    /// Creates a list of Custom Fields in the Project context.
-    ///
-    /// `POST /projects/{projectId}/customfields` (`postProjectCustomFields`)
-    pub async fn post_project_custom_fields(
-        &self,
-        project_id: &str,
-        data: &[Resource<CustomFieldAttributes>],
-    ) -> Result<ListEnvelope<CustomFieldAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &["projects", project_id, "customfields"],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
     }
 }
 
@@ -784,33 +545,6 @@ impl Client {
 
 /// # Document Parts
 impl Client {
-    /// Deletes a list of Document Parts.
-    ///
-    /// `DELETE /projects/{projectId}/spaces/{spaceId}/documents/{documentName}/parts` (`deleteDocumentParts`)
-    pub async fn delete_document_parts(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        document_name: &str,
-        data: &[ResourceRef],
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::DELETE,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "documents",
-                document_name,
-                "parts",
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
     /// Returns the specified Document Part.
     ///
     /// `GET /projects/{projectId}/spaces/{spaceId}/documents/{documentName}/parts/{partId}` (`getDocumentPart`)
@@ -866,66 +600,6 @@ impl Client {
             ],
             Some(query),
         );
-        self.execute_json(req).await
-    }
-
-    /// Moves a Work Item Document Part.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/documents/{documentName}/parts/{partId}/actions/move` (`moveDocumentParts`)
-    pub async fn move_document_parts(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        document_name: &str,
-        part_id: &str,
-        body: &MoveDocumentPartRequestBody,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "documents",
-                document_name,
-                "parts",
-                part_id,
-                "actions",
-                "move",
-            ],
-            None,
-        );
-        req = req.json(body);
-        self.execute_empty(req).await
-    }
-
-    /// Overwrites multiple Work Item Document Parts.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/documents/{documentName}/parts/actions/overwrite` (`overwriteDocumentParts`)
-    pub async fn overwrite_document_parts(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        document_name: &str,
-        body: &OverwriteDocumentPartsRequestBody,
-    ) -> Result<OverwriteDocumentPartsResponseBody> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "documents",
-                document_name,
-                "parts",
-                "actions",
-                "overwrite",
-            ],
-            None,
-        );
-        req = req.json(body);
         self.execute_json(req).await
     }
 
@@ -1034,19 +708,6 @@ impl Client {
             Some(query),
         );
         req = req.json(body);
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Documents from all Projects.
-    ///
-    /// `GET /all/documents` (`getAllDocuments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`, `revision`.
-    pub async fn get_all_documents(
-        &self,
-        query: &Query,
-    ) -> Result<ListEnvelope<DocumentAttributes>> {
-        let req = self.request(Method::GET, &["all", "documents"], Some(query));
         self.execute_json(req).await
     }
 
@@ -1165,100 +826,6 @@ impl Client {
             ],
             Some(query),
         );
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Documents from the Project context.
-    ///
-    /// `GET /projects/{projectId}/documents` (`getDocuments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`, `revision`.
-    pub async fn get_documents(
-        &self,
-        project_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<DocumentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["projects", project_id, "documents"],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/documents/{documentName}/actions/getFieldsMetadata` (`getFieldsMetadataForDocument`)
-    pub async fn get_fields_metadata_for_document(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        document_name: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "documents",
-                document_name,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Documents from a given Project Space.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/documents` (`getSpaceDocuments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`.
-    pub async fn get_space_documents(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<DocumentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["projects", project_id, "spaces", space_id, "documents"],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Imports a Word document to create a new Polarion Document.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/documents/actions/importWordDocument` (`importWordDocument`)
-    pub async fn import_word_document(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        parameters: &ImportWordDocumentParameters,
-        file: FilePart,
-    ) -> Result<SingleEnvelope<JobAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "documents",
-                "actions",
-                "importWordDocument",
-            ],
-            None,
-        );
-        let mut form = Form::new();
-        let v = parameters;
-        form = form.part("parameters", json_part(v)?);
-        form = form.part("file", file.into_part()?);
-        req = req.multipart(form);
         self.execute_json(req).await
     }
 
@@ -1430,19 +997,6 @@ impl Client {
         self.execute_json(req).await
     }
 
-    /// Returns a list of Enumerations from the Global context.
-    ///
-    /// `GET /enumerations` (`getGlobalEnumerations`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`.
-    pub async fn get_global_enumerations(
-        &self,
-        query: &Query,
-    ) -> Result<ListEnvelope<EnumerationAttributes>> {
-        let req = self.request(Method::GET, &["enumerations"], Some(query));
-        self.execute_json(req).await
-    }
-
     /// Returns the specified Enumeration from the Project context.
     ///
     /// `GET /projects/{projectId}/enumerations/{enumContext}/{enumName}/{targetType}` (`getProjectEnumeration`)
@@ -1466,24 +1020,6 @@ impl Client {
                 enum_name,
                 target_type,
             ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Enumerations from the Project context.
-    ///
-    /// `GET /projects/{projectId}/enumerations` (`getProjectEnumerations`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`.
-    pub async fn get_project_enumerations(
-        &self,
-        project_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<EnumerationAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["projects", project_id, "enumerations"],
             Some(query),
         );
         self.execute_json(req).await
@@ -1914,18 +1450,6 @@ impl Client {
 
 /// # Jobs
 impl Client {
-    /// Executes a Job.
-    ///
-    /// `POST /jobs/actions/execute` (`executeJob`)
-    pub async fn execute_job(
-        &self,
-        body: &ExecuteJobRequestBody,
-    ) -> Result<SingleEnvelope<JobAttributes>> {
-        let mut req = self.request(Method::POST, &["jobs", "actions", "execute"], None);
-        req = req.json(body);
-        self.execute_json(req).await
-    }
-
     /// Returns the specified Job.
     ///
     /// `GET /jobs/{jobId}` (`getJob`)
@@ -1938,14 +1462,6 @@ impl Client {
     ) -> Result<SingleEnvelope<JobAttributes>> {
         let req = self.request(Method::GET, &["jobs", job_id], Some(query));
         self.execute_json(req).await
-    }
-
-    /// Downloads the Log content for a specified job.
-    ///
-    /// `GET /jobs/{jobId}/log/content` (`getJobLogContent`)
-    pub async fn get_job_log_content(&self, job_id: &str) -> Result<Vec<u8>> {
-        let req = self.request(Method::GET, &["jobs", job_id, "log", "content"], None);
-        self.execute_bytes(req).await
     }
 
     /// Downloads the file content for a specified job.
@@ -1962,158 +1478,6 @@ impl Client {
             None,
         );
         self.execute_bytes(req).await
-    }
-
-    /// Returns the list of Jobs.
-    ///
-    /// `GET /jobs` (`getJobs`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `projectId`.
-    pub async fn get_jobs(&self, query: &Query) -> Result<ListEnvelope<JobAttributes>> {
-        let req = self.request(Method::GET, &["jobs"], Some(query));
-        self.execute_json(req).await
-    }
-}
-
-/// # License
-impl Client {
-    /// Deletes a list of Group license slots. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `DELETE /license/types/{typeId}/slots` (`deleteLicenseSlots`)
-    pub async fn delete_license_slots(&self, type_id: &str, data: &[ResourceRef]) -> Result<()> {
-        let mut req = self.request(
-            Method::DELETE,
-            &["license", "types", type_id, "slots"],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Returns information on the available License Limits.
-    ///
-    /// `GET /license` (`getLicense`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_license(&self, query: &Query) -> Result<SingleEnvelope<LicenseAttributes>> {
-        let req = self.request(Method::GET, &["license"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of License Assignments. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `GET /license/assignments` (`getLicenseAssignments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `activeOnly`.
-    pub async fn get_license_assignments(
-        &self,
-        query: &Query,
-    ) -> Result<ListEnvelope<LicenseAssignmentAttributes>> {
-        let req = self.request(Method::GET, &["license", "assignments"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns the specified License Assignment. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `GET /license/assignments/{userId}` (`getLicenseAssignmentsForUser`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_license_assignments_for_user(
-        &self,
-        user_id: &str,
-        query: &Query,
-    ) -> Result<SingleEnvelope<LicenseAssignmentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["license", "assignments", user_id],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns the specified License Slot. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `GET /license/types/{typeId}/slots/{model}/{group}` (`getLicenseSlot`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_license_slot(
-        &self,
-        type_id: &str,
-        model: &str,
-        group: &str,
-        query: &Query,
-    ) -> Result<SingleEnvelope<LicenseSlotAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["license", "types", type_id, "slots", model, group],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns information on the available License Slots. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `GET /license/types/{typeId}/slots` (`getLicenseSlots`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `revision`.
-    pub async fn get_license_slots(
-        &self,
-        type_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<LicenseSlotAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["license", "types", type_id, "slots"],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Updates the product License. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `PATCH /license` (`patchLicense`)
-    pub async fn patch_license(&self, data: &Resource<LicenseAttributes>) -> Result<()> {
-        let mut req = self.request(Method::PATCH, &["license"], None);
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Updates a user's License Assignment. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `PATCH /license/assignments/{userId}` (`patchLicenseAssignment`)
-    pub async fn patch_license_assignment(
-        &self,
-        user_id: &str,
-        data: &Resource<LicenseAssignmentAttributes>,
-    ) -> Result<()> {
-        let mut req = self.request(Method::PATCH, &["license", "assignments", user_id], None);
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Updates the License Assignments of multiple users. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `PATCH /license/assignments` (`patchLicenseAssignments`)
-    pub async fn patch_license_assignments(
-        &self,
-        data: &[Resource<LicenseAssignmentAttributes>],
-    ) -> Result<()> {
-        let mut req = self.request(Method::PATCH, &["license", "assignments"], None);
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Creates a list of group License Slots. (Not supported by cloud-based Polarion X.)
-    ///
-    /// `POST /license/types/{typeId}/slots` (`postLicenseSlots`)
-    pub async fn post_license_slots(
-        &self,
-        type_id: &str,
-        data: &[Resource<LicenseSlotAttributes>],
-    ) -> Result<ListEnvelope<LicenseSlotAttributes>> {
-        let mut req = self.request(Method::POST, &["license", "types", type_id, "slots"], None);
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
     }
 }
 
@@ -2251,33 +1615,6 @@ impl Client {
         self.execute_empty(req).await
     }
 
-    /// Returns a list of Backlinked Work Items.
-    ///
-    /// Returns the incoming links from other Work Items (also known as backlinks). Does not pertain to External links.
-    ///
-    /// `GET /projects/{projectId}/workitems/{workItemId}/backlinkedworkitems` (`getBacklinkedWorkItems`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `revision`.
-    pub async fn get_backlinked_work_items(
-        &self,
-        project_id: &str,
-        work_item_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<LinkedWorkItemAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "workitems",
-                work_item_id,
-                "backlinkedworkitems",
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
     /// Returns the specified Linked Work Item.
     ///
     /// Returns the direct outgoing links to other Work Items. (The same as the corresponding Java API method.) Does not pertain to external links or backlinks.
@@ -2370,32 +1707,6 @@ impl Client {
         self.execute_empty(req).await
     }
 
-    /// Creates a list of Backlinked Work Items.
-    ///
-    /// Creates incoming links from other Work Items (backlinks). Does not pertain to External links.
-    ///
-    /// `POST /projects/{projectId}/workitems/{workItemId}/backlinkedworkitems` (`postBacklinkedWorkItems`)
-    pub async fn post_backlinked_work_items(
-        &self,
-        project_id: &str,
-        work_item_id: &str,
-        data: &[Resource<LinkedWorkItemAttributes>],
-    ) -> Result<ListEnvelope<LinkedWorkItemAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "workitems",
-                work_item_id,
-                "backlinkedworkitems",
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
-    }
-
     /// Creates a list of Linked Work Items.
     ///
     /// Creates the direct outgoing links to other Work Items. (The same as the corresponding Java API method.) Does not pertain to external links or backlinks.
@@ -2423,83 +1734,8 @@ impl Client {
     }
 }
 
-/// # Metadata
-impl Client {
-    /// Returns fields for the resource type and its target type in the Global context.
-    ///
-    /// `GET /actions/getFieldsMetadata` (`getGlobalFieldsMetadata`)
-    ///
-    /// Query parameters: `targetType`.
-    pub async fn get_global_fields_metadata(
-        &self,
-        resource_type: &str,
-        query: &Query,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let query = query.clone().param("resourceType", resource_type);
-        let req = self.request(Method::GET, &["actions", "getFieldsMetadata"], Some(&query));
-        self.execute_json(req).await
-    }
-
-    /// Returns global metadata, including version, build, REST API configuration properties, etc. (Available to all REST API users.)
-    ///
-    /// `GET /metadata` (`getMetadata`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`.
-    pub async fn get_metadata(&self, query: &Query) -> Result<SingleEnvelope<MetadataAttributes>> {
-        let req = self.request(Method::GET, &["metadata"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns fields for the resource type and its target type in the Project context.
-    ///
-    /// `GET /projects/{projectId}/actions/getFieldsMetadata` (`getProjectFieldsMetadata`)
-    ///
-    /// Query parameters: `targetType`.
-    pub async fn get_project_fields_metadata(
-        &self,
-        project_id: &str,
-        resource_type: &str,
-        query: &Query,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let query = query.clone().param("resourceType", resource_type);
-        let req = self.request(
-            Method::GET,
-            &["projects", project_id, "actions", "getFieldsMetadata"],
-            Some(&query),
-        );
-        self.execute_json(req).await
-    }
-}
-
 /// # Page Attachments
 impl Client {
-    /// Deletes the specified Page Attachment.
-    ///
-    /// `DELETE /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/attachments/{attachmentId}` (`deletePageAttachment`)
-    pub async fn delete_page_attachment(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        attachment_id: &str,
-    ) -> Result<()> {
-        let req = self.request(
-            Method::DELETE,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "attachments",
-                attachment_id,
-            ],
-            None,
-        );
-        self.execute_empty(req).await
-    }
-
     /// Returns the specified Page Attachment.
     ///
     /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/attachments/{attachmentId}` (`getPageAttachment`)
@@ -2561,72 +1797,6 @@ impl Client {
         self.execute_bytes(req).await
     }
 
-    /// Returns a list of Page Attachments.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/attachments` (`getPageAttachments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `revision`.
-    pub async fn get_page_attachments(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<PageAttachmentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "attachments",
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Updates the specified Page Attachment.
-    ///
-    /// See more in the REST API User Guide.
-    ///
-    /// `PATCH /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/attachments/{attachmentId}` (`patchPageAttachment`)
-    pub async fn patch_page_attachment(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        attachment_id: &str,
-        resource: &Resource<PageAttachmentAttributes>,
-        content: Option<FilePart>,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::PATCH,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "attachments",
-                attachment_id,
-            ],
-            None,
-        );
-        let mut form = Form::new();
-        let v = resource;
-        form = form.part("resource", json_part(&DataRef { data: v })?);
-        if let Some(file) = content {
-            form = form.part("content", file.into_part()?);
-        }
-        req = req.multipart(form);
-        self.execute_empty(req).await
-    }
-
     /// Creates a list of Page Attachments.
     ///
     /// Files are identified by order or optionally by the 'lid' attribute. See more in the REST API User Guide.
@@ -2665,169 +1835,8 @@ impl Client {
     }
 }
 
-/// # Page Comments
-impl Client {
-    /// Returns the specified Page Comment.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/comments/{commentId}` (`getPageComment`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`, `revision`.
-    pub async fn get_page_comment(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        comment_id: &str,
-        query: &Query,
-    ) -> Result<SingleEnvelope<PageCommentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects", project_id, "spaces", space_id, "pages", page_name, "comments",
-                comment_id,
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Page Comments.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/comments` (`getPageComments`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `revision`.
-    pub async fn get_page_comments(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<PageCommentAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects", project_id, "spaces", space_id, "pages", page_name, "comments",
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Updates the specified Page Comment.
-    ///
-    /// `PATCH /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/comments/{commentId}` (`patchPageComment`)
-    pub async fn patch_page_comment(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        comment_id: &str,
-        data: &Resource<PageCommentAttributes>,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::PATCH,
-            &[
-                "projects", project_id, "spaces", space_id, "pages", page_name, "comments",
-                comment_id,
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Creates a list of Page Comments.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/comments` (`postPageComments`)
-    pub async fn post_page_comments(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        data: &[Resource<PageCommentAttributes>],
-    ) -> Result<ListEnvelope<PageCommentAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects", project_id, "spaces", space_id, "pages", page_name, "comments",
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
-    }
-}
-
 /// # Pages
 impl Client {
-    /// Deletes the specified Page.
-    ///
-    /// `DELETE /projects/{projectId}/spaces/{spaceId}/pages/{pageName}` (`deletePage`)
-    pub async fn delete_page(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-    ) -> Result<()> {
-        let req = self.request(
-            Method::DELETE,
-            &[
-                "projects", project_id, "spaces", space_id, "pages", page_name,
-            ],
-            None,
-        );
-        self.execute_empty(req).await
-    }
-
-    /// Deletes a list of Page Relationships.
-    ///
-    /// `DELETE /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/relationships/{relationshipId}` (`deletePageRelationships`)
-    pub async fn delete_page_relationships(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        relationship_id: &str,
-        data: &[ResourceRef],
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::DELETE,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "relationships",
-                relationship_id,
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Returns a list of Pages from all Projects and Pages on the Repository level.
-    ///
-    /// `GET /all/pages` (`getAllPages`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`, `revision`.
-    pub async fn get_all_pages(&self, query: &Query) -> Result<ListEnvelope<PageAttributes>> {
-        let req = self.request(Method::GET, &["all", "pages"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of all Pages on the Repository level.
-    ///
-    /// `GET /pages` (`getGlobalPages`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`.
-    pub async fn get_global_pages(&self, query: &Query) -> Result<ListEnvelope<PageAttributes>> {
-        let req = self.request(Method::GET, &["pages"], Some(query));
-        self.execute_json(req).await
-    }
-
     /// Returns the specified Page.
     ///
     /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}` (`getPage`)
@@ -2850,112 +1859,6 @@ impl Client {
         self.execute_json(req).await
     }
 
-    /// Returns a list of Page Relationships.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/relationships/{relationshipId}` (`getPageRelationships`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `revision`.
-    pub async fn get_page_relationships(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        relationship_id: &str,
-        query: &Query,
-    ) -> Result<Envelope<Option<RelationshipData>>> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "relationships",
-                relationship_id,
-            ],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Pages from the Project context.
-    ///
-    /// `GET /projects/{projectId}/pages` (`getPages`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`, `revision`.
-    pub async fn get_pages(
-        &self,
-        project_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<PageAttributes>> {
-        let req = self.request(Method::GET, &["projects", project_id, "pages"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Pages in a given Space on the Repository level.
-    ///
-    /// `GET /spaces/{spaceId}/pages` (`getRepositorySpacePages`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`, `revision`.
-    pub async fn get_repository_space_pages(
-        &self,
-        space_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<PageAttributes>> {
-        let req = self.request(Method::GET, &["spaces", space_id, "pages"], Some(query));
-        self.execute_json(req).await
-    }
-
-    /// Returns a list of Pages from a given Project Space.
-    ///
-    /// `GET /projects/{projectId}/spaces/{spaceId}/pages` (`getSpacePages`)
-    ///
-    /// Query parameters: `page[size]`, `page[number]`, `fields[<type>]`, `include`, `query`, `sort`.
-    pub async fn get_space_pages(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        query: &Query,
-    ) -> Result<ListEnvelope<PageAttributes>> {
-        let req = self.request(
-            Method::GET,
-            &["projects", project_id, "spaces", space_id, "pages"],
-            Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Updates a list of Page Relationships.
-    ///
-    /// `PATCH /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/relationships/{relationshipId}` (`patchPageRelationships`)
-    pub async fn patch_page_relationships(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        relationship_id: &str,
-        data: &RelationshipData,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::PATCH,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "relationships",
-                relationship_id,
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
     /// Updates the specified Page.
     ///
     /// `PATCH /projects/{projectId}/spaces/{spaceId}/pages/{pageName}` (`patchRichPage`)
@@ -2975,53 +1878,6 @@ impl Client {
         );
         req = req.json(&DataRef { data });
         self.execute_empty(req).await
-    }
-
-    /// Creates a list of Rich Page Relationships.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/pages/{pageName}/relationships/{relationshipId}` (`postPageRelationships`)
-    pub async fn post_page_relationships(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        page_name: &str,
-        relationship_id: &str,
-        data: &RelationshipData,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "spaces",
-                space_id,
-                "pages",
-                page_name,
-                "relationships",
-                relationship_id,
-            ],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_empty(req).await
-    }
-
-    /// Creates a list of Pages.
-    ///
-    /// `POST /projects/{projectId}/spaces/{spaceId}/pages` (`postPages`)
-    pub async fn post_pages(
-        &self,
-        project_id: &str,
-        space_id: &str,
-        data: &[Resource<PageAttributes>],
-    ) -> Result<ListEnvelope<PageAttributes>> {
-        let mut req = self.request(
-            Method::POST,
-            &["projects", project_id, "spaces", space_id, "pages"],
-            None,
-        );
-        req = req.json(&DataRef { data });
-        self.execute_json(req).await
     }
 }
 
@@ -3072,29 +1928,6 @@ impl Client {
         let mut req = self.request(Method::DELETE, &["projects", project_id, "plans"], None);
         req = req.json(&DataRef { data });
         self.execute_empty(req).await
-    }
-
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/plans/{planId}/actions/getFieldsMetadata` (`getFieldsMetadataForPlan`)
-    pub async fn get_fields_metadata_for_plan(
-        &self,
-        project_id: &str,
-        plan_id: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "plans",
-                plan_id,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
-        );
-        self.execute_json(req).await
     }
 
     /// Returns the specified Plan.
@@ -3818,36 +2651,6 @@ impl Client {
         self.execute_empty(req).await
     }
 
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/testruns/{testRunId}/testrecords/{testCaseProjectId}/{testCaseId}/{iteration}/actions/getFieldsMetadata` (`getFieldsMetadataForTestRecord`)
-    pub async fn get_fields_metadata_for_test_record(
-        &self,
-        project_id: &str,
-        test_run_id: &str,
-        test_case_project_id: &str,
-        test_case_id: &str,
-        iteration: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "testruns",
-                test_run_id,
-                "testrecords",
-                test_case_project_id,
-                test_case_id,
-                iteration,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
-        );
-        self.execute_json(req).await
-    }
-
     /// Returns the specified Test Record.
     ///
     /// `GET /projects/{projectId}/testruns/{testRunId}/testrecords/{testCaseProjectId}/{testCaseId}/{iteration}` (`getTestRecord`)
@@ -4488,6 +3291,33 @@ impl Client {
 
     /// Exports tests to Excel.
     ///
+    /// **Deprecated** in the Polarion API.
+    ///
+    /// `POST /projects/{projectId}/testruns/{testRunId}/actions/exportTestsToExcel` (`exportExcelTests`)
+    pub async fn export_excel_tests(
+        &self,
+        project_id: &str,
+        test_run_id: &str,
+        body: &ExportTestCasesRequestBody,
+    ) -> Result<SingleEnvelope<JobAttributes>> {
+        let mut req = self.request(
+            Method::POST,
+            &[
+                "projects",
+                project_id,
+                "testruns",
+                test_run_id,
+                "actions",
+                "exportTestsToExcel",
+            ],
+            None,
+        );
+        req = req.json(body);
+        self.execute_json(req).await
+    }
+
+    /// Exports tests to Excel.
+    ///
     /// `GET /projects/{projectId}/testruns/{testRunId}/actions/exportTestsToExcel` (`getExportExcelTests`)
     ///
     /// Query parameters: `query`, `sortBy`, `template`.
@@ -4508,29 +3338,6 @@ impl Client {
                 "exportTestsToExcel",
             ],
             Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/testruns/{testRunId}/actions/getFieldsMetadata` (`getFieldsMetadataForTestRun`)
-    pub async fn get_fields_metadata_for_test_run(
-        &self,
-        project_id: &str,
-        test_run_id: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "testruns",
-                test_run_id,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
         );
         self.execute_json(req).await
     }
@@ -5495,16 +4302,6 @@ impl Client {
         self.execute_bytes(req).await
     }
 
-    /// Returns the current User.
-    ///
-    /// `GET /user` (`getCurrentUser`)
-    ///
-    /// Query parameters: `fields[<type>]`, `include`, `revision`.
-    pub async fn get_current_user(&self, query: &Query) -> Result<SingleEnvelope<UserAttributes>> {
-        let req = self.request(Method::GET, &["user"], Some(query));
-        self.execute_json(req).await
-    }
-
     /// Returns the specified User.
     ///
     /// `GET /users/{userId}` (`getUser`)
@@ -6212,7 +5009,7 @@ impl Client {
         self.execute_empty(req).await
     }
 
-    /// Returns a list of Work Items from all Projects.
+    /// Returns a list of Work Items from the Global context.
     ///
     /// `GET /all/workitems` (`getAllWorkItems`)
     ///
@@ -6306,29 +5103,6 @@ impl Client {
                 "getCurrentOptions",
             ],
             Some(query),
-        );
-        self.execute_json(req).await
-    }
-
-    /// Returns fields for the specified resource.
-    ///
-    /// `GET /projects/{projectId}/workitems/{workItemId}/actions/getFieldsMetadata` (`getFieldsMetadataForWorkItem`)
-    pub async fn get_fields_metadata_for_work_item(
-        &self,
-        project_id: &str,
-        work_item_id: &str,
-    ) -> Result<FieldsMetadataActionResponseBody> {
-        let req = self.request(
-            Method::GET,
-            &[
-                "projects",
-                project_id,
-                "workitems",
-                work_item_id,
-                "actions",
-                "getFieldsMetadata",
-            ],
-            None,
         );
         self.execute_json(req).await
     }
@@ -6510,29 +5284,6 @@ impl Client {
                 project_id,
                 "workitems",
                 work_item_id,
-                "actions",
-                "moveToDocument",
-            ],
-            None,
-        );
-        req = req.json(body);
-        self.execute_empty(req).await
-    }
-
-    /// Moves multiple Work Items to the Document.
-    ///
-    /// `POST /projects/{projectId}/workitems/actions/moveToDocument` (`moveWorkItemsToDocument`)
-    pub async fn move_work_items_to_document(
-        &self,
-        project_id: &str,
-        body: &MoveWorkItemsToDocumentRequestBody,
-    ) -> Result<()> {
-        let mut req = self.request(
-            Method::POST,
-            &[
-                "projects",
-                project_id,
-                "workitems",
                 "actions",
                 "moveToDocument",
             ],

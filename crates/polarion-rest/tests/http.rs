@@ -2,7 +2,8 @@
 
 use polarion_rest::models::{WorkItem, WorkItemAttachmentAttributes, WorkItemAttributes};
 use polarion_rest::{
-    Client, Error, FilePart, Query, Resource, ResourceKind, ResourceRef, TextContent,
+    Client, Error, FilePart, Query, RelationshipData, Resource, ResourceKind, ResourceRef,
+    TextContent,
 };
 use serde_json::{Value, json};
 use wiremock::matchers::{body_json, header, method, path, query_param};
@@ -315,25 +316,31 @@ async fn paginate_follows_next_links() {
 }
 
 #[tokio::test]
-async fn required_query_parameters_are_positional() {
+async fn relationship_post_with_only_default_response_returns_unit() {
+    // Polarion 2410's spec declares no success response for this operation;
+    // the generator falls back to `default` and discards the body.
     let (server, client) = setup().await;
-    Mock::given(method("GET"))
-        .and(path("/polarion/rest/v1/actions/getFieldsMetadata"))
-        .and(query_param("resourceType", "workitems"))
-        .and(query_param("targetType", "task"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": {"attributes": {"title": {"label": "Title", "type": {"kind": "string"}}}}
+    Mock::given(method("POST"))
+        .and(path(
+            "/polarion/rest/v1/projects/PROJ/collections/C1/relationships/documents",
+        ))
+        .and(body_json(json!({
+            "data": [{"type": "documents", "id": "PROJ/_default/Spec"}]
         })))
+        .respond_with(ResponseTemplate::new(204))
         .expect(1)
         .mount(&server)
         .await;
 
-    let meta = client
-        .get_global_fields_metadata("workitems", &Query::new().param("targetType", "task"))
+    client
+        .post_collections_relationships(
+            "PROJ",
+            "C1",
+            "documents",
+            &RelationshipData::ToMany(vec![ResourceRef::new("documents", "PROJ/_default/Spec")]),
+        )
         .await
         .unwrap();
-    let fields = meta.data.unwrap().attributes.unwrap();
-    assert_eq!(fields["title"]["label"], "Title");
 }
 
 #[tokio::test]

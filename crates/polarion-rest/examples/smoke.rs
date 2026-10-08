@@ -9,7 +9,7 @@
 //! ```
 //!
 //! Read-only: the client refuses anything but `GET`, so this is safe to run
-//! against a production server. It sends at most six small `GET` requests and
+//! against a production server. It sends at most five small `GET` requests and
 //! keeps going when one fails, so a single permission error does not hide the
 //! rest.
 //!
@@ -17,13 +17,11 @@
 //! - `POLARION_SAVE_SPEC` (optional): save the server's OpenAPI definition to this path.
 //! - `POLARION_INSECURE=1` (optional): accept self-signed certificates.
 
-use std::fmt::Display;
-
 use polarion_rest::models::WorkItemAttributes;
-use polarion_rest::{Client, Method, Query, ResourceKind};
+use polarion_rest::{Client, Error, Method, Query, ResourceKind, StatusCode};
 
 /// Print the outcome of one request and return its value on success.
-fn report<T, E: Display>(label: &str, result: Result<T, E>) -> Option<T> {
+fn report<T>(label: &str, result: Result<T, Error>) -> Option<T> {
     match result {
         Ok(value) => {
             println!("OK    {label}");
@@ -31,6 +29,12 @@ fn report<T, E: Display>(label: &str, result: Result<T, E>) -> Option<T> {
         }
         Err(e) => {
             println!("FAIL  {label}: {e}");
+            if e.status() == Some(StatusCode::FORBIDDEN) {
+                println!(
+                    "      hint: REST access is a separate permission (REST API endpoint GET/PATCH/POST/DELETE, \
+                     set per role in the Global context; by default only admin and project_admin have it)"
+                );
+            }
             None
         }
     }
@@ -49,10 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_only(true)
         .build()?;
     println!("REST base: {}\n", client.base_url());
-
-    if let Some(me) = report("GET /user", client.get_current_user(&Query::new()).await) {
-        println!("      authenticated as {:?}", me.data.id);
-    }
 
     if let Some(projects) = report(
         "GET /projects",

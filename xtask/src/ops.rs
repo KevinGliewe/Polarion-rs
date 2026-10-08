@@ -394,6 +394,25 @@ fn response(spec: &Spec, reg: &mut Registry, op: &Value) -> Result<Response> {
             kinds.insert(kind);
         }
     }
+    if kinds.is_empty() {
+        // Spec bug seen in Polarion 2410: only a schema-less `default`
+        // response. Use its schema if it has one; otherwise discard the body,
+        // which is correct whether the server sends one or not.
+        if let Some(default) = responses.get("default").map(|r| spec.resolve(r)) {
+            let schema = default
+                .pointer("/content/application~1json/schema")
+                .and_then(ref_name);
+            let kind = match schema {
+                Some(name) => Response::Json(response_type(spec, reg, name)?),
+                None => Response::Unit,
+            };
+            let op_id = op.get("operationId").and_then(Value::as_str).unwrap_or("?");
+            reg.warnings.push(format!(
+                "{op_id}: no success response declared, using `default` ({kind:?})"
+            ));
+            kinds.insert(kind);
+        }
+    }
     let mut kinds: Vec<Response> = kinds.into_iter().collect();
     match kinds.len() {
         0 => bail!("no success response"),

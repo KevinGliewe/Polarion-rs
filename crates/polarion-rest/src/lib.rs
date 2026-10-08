@@ -1,6 +1,6 @@
 //! Low-level async client for the Siemens Polarion ALM REST API (v1).
 //!
-//! All 280+ operations of the API are available as methods on [`Client`],
+//! Every operation of the API is available as a method on [`Client`],
 //! generated from the OpenAPI definition in `spec/polarion-openapi.json`.
 //! Resource attributes are typed per resource in [`models`]; custom fields
 //! end up in each attributes struct's `extra` map.
@@ -34,4 +34,4 @@ pub use jsonapi::{
     SingleEnvelope, TextContent,
 };
 pub use query::Query;
-pub use reqwest::Method;
+pub use reqwest::{Method, StatusCode};

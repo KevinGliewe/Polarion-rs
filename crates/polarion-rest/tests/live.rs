@@ -59,12 +59,6 @@ fn short_id(full: &str) -> &str {
 async fn read_tour() {
     let c = client(true);
 
-    let me = c.get_current_user(&Query::new()).await.expect("GET /user");
-    eprintln!("authenticated as {:?}", me.data.id);
-
-    let meta = c.get_metadata(&Query::new()).await.expect("GET /metadata");
-    eprintln!("server metadata: {:?}", meta.data.attributes);
-
     let projects = c
         .get_projects(
             &Query::new()
@@ -84,9 +78,6 @@ async fn read_tour() {
     c.get_users(&Query::new().page_size(5).all_fields(UserAttributes::TYPE))
         .await
         .expect("GET /users");
-    c.get_documents(&project, &Query::new().page_size(5))
-        .await
-        .expect("GET documents");
     let types = c
         .get_available_enum_options_for_work_item_type(&project, "type", &Query::new())
         .await
@@ -150,9 +141,6 @@ async fn read_tour() {
     c.get_work_item_attachments(&project, id, &Query::new())
         .await
         .expect("GET attachments");
-    c.get_fields_metadata_for_work_item(&project, id)
-        .await
-        .expect("GET fields metadata");
 
     let err = c
         .get_work_item(&project, "POLARION-RS-DOES-NOT-EXIST-0", &Query::new())
@@ -335,10 +323,6 @@ async fn lifecycle(c: &Client, project: &str, created: &mut Vec<String>) -> Test
         })
         .and_then(|l| l.id.clone())
         .ok_or_else(|| format!("link not listed: {:?}", links.data))?;
-    let back = c
-        .get_backlinked_work_items(project, &ids[1], &Query::new())
-        .await?;
-    check!(!back.data.is_empty(), "no backlinks on {}", ids[1]);
     c.delete_linked_work_items(
         project,
         &ids[0],

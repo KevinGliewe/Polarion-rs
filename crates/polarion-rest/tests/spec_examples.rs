@@ -11,21 +11,6 @@ use polarion_rest::{
 };
 
 #[test]
-fn generate_completion_message() {
-    support::roundtrip::<GenerateCompletionMessage>("GenerateCompletionMessage");
-}
-
-#[test]
-fn generate_completion_response_format() {
-    support::roundtrip::<GenerateCompletionResponseFormat>("GenerateCompletionResponseFormat");
-}
-
-#[test]
-fn generate_completion_result() {
-    support::roundtrip::<GenerateCompletionResult>("GenerateCompletionResult");
-}
-
-#[test]
 fn relationship_data_list_request() {
     support::roundtrip::<Envelope<RelationshipData>>("RelationshipDataListRequest");
 }
@@ -43,13 +28,6 @@ fn relationship_data_single_request() {
 #[test]
 fn relationship_data_single_response() {
     support::roundtrip::<Envelope<Option<RelationshipData>>>("RelationshipDataSingleResponse");
-}
-
-#[test]
-fn backlinkedworkitems_list_post_request() {
-    support::roundtrip::<Envelope<Vec<Resource<LinkedWorkItemAttributes>>>>(
-        "backlinkedworkitemsListPostRequest",
-    );
 }
 
 #[test]
@@ -95,11 +73,6 @@ fn collections_single_patch_request() {
 }
 
 #[test]
-fn collections_single_post_response() {
-    support::roundtrip::<SingleEnvelope<CollectionAttributes>>("collectionsSinglePostResponse");
-}
-
-#[test]
 fn copy_document_request_body() {
     support::roundtrip::<CopyDocumentRequestBody>("copyDocumentRequestBody");
 }
@@ -107,30 +80,6 @@ fn copy_document_request_body() {
 #[test]
 fn create_project_request_body() {
     support::roundtrip::<CreateProjectRequestBody>("createProjectRequestBody");
-}
-
-#[test]
-fn customfields_list_post_request() {
-    support::roundtrip::<Envelope<Vec<Resource<CustomFieldAttributes>>>>(
-        "customfieldsListPostRequest",
-    );
-}
-
-#[test]
-fn customfields_list_post_response() {
-    support::roundtrip::<ListEnvelope<CustomFieldAttributes>>("customfieldsListPostResponse");
-}
-
-#[test]
-fn customfields_single_get_response() {
-    support::roundtrip::<SingleEnvelope<CustomFieldAttributes>>("customfieldsSingleGetResponse");
-}
-
-#[test]
-fn customfields_single_patch_request() {
-    support::roundtrip::<Envelope<Resource<CustomFieldAttributes>>>(
-        "customfieldsSinglePatchRequest",
-    );
 }
 
 #[test]
@@ -204,11 +153,6 @@ fn document_comments_single_patch_request() {
 }
 
 #[test]
-fn document_parts_list_delete_request() {
-    support::roundtrip::<Envelope<Vec<ResourceRef>>>("document_partsListDeleteRequest");
-}
-
-#[test]
 fn document_parts_list_get_response() {
     support::roundtrip::<ListEnvelope<DocumentPartAttributes>>("document_partsListGetResponse");
 }
@@ -228,11 +172,6 @@ fn document_parts_list_post_response() {
 #[test]
 fn document_parts_single_get_response() {
     support::roundtrip::<SingleEnvelope<DocumentPartAttributes>>("document_partsSingleGetResponse");
-}
-
-#[test]
-fn documents_list_get_response() {
-    support::roundtrip::<ListEnvelope<DocumentAttributes>>("documentsListGetResponse");
 }
 
 #[test]
@@ -266,11 +205,6 @@ fn enum_options_action_response_body() {
 }
 
 #[test]
-fn enumerations_list_get_response() {
-    support::roundtrip::<ListEnvelope<EnumerationAttributes>>("enumerationsListGetResponse");
-}
-
-#[test]
 fn enumerations_list_post_request() {
     support::roundtrip::<Envelope<Vec<Resource<EnumerationAttributes>>>>(
         "enumerationsListPostRequest",
@@ -295,8 +229,8 @@ fn enumerations_single_patch_request() {
 }
 
 #[test]
-fn execute_job_request_body() {
-    support::roundtrip::<ExecuteJobRequestBody>("executeJobRequestBody");
+fn export_test_cases_request_body() {
+    support::roundtrip::<ExportTestCasesRequestBody>("exportTestCasesRequestBody");
 }
 
 #[test]
@@ -347,21 +281,6 @@ fn featureselections_single_get_response() {
 }
 
 #[test]
-fn fields_metadata_action_response_body() {
-    support::roundtrip::<FieldsMetadataActionResponseBody>("fieldsMetadataActionResponseBody");
-}
-
-#[test]
-fn generate_completion_request_body() {
-    support::roundtrip::<GenerateCompletionRequestBody>("generateCompletionRequestBody");
-}
-
-#[test]
-fn generate_completion_response_body() {
-    support::roundtrip::<GenerateCompletionResponseBody>("generateCompletionResponseBody");
-}
-
-#[test]
 fn globalroles_single_get_response() {
     support::roundtrip::<SingleEnvelope<GlobalRoleAttributes>>("globalrolesSingleGetResponse");
 }
@@ -392,16 +311,6 @@ fn import_test_results_request_body() {
 }
 
 #[test]
-fn import_word_document_parameters() {
-    support::roundtrip::<ImportWordDocumentParameters>("importWordDocumentParameters");
-}
-
-#[test]
-fn jobs_list_get_response() {
-    support::roundtrip::<ListEnvelope<JobAttributes>>("jobsListGetResponse");
-}
-
-#[test]
 fn jobs_single_get_response() {
     support::roundtrip::<SingleEnvelope<JobAttributes>>("jobsSingleGetResponse");
 }
@@ -409,71 +318,6 @@ fn jobs_single_get_response() {
 #[test]
 fn jobs_single_post_response() {
     support::roundtrip::<SingleEnvelope<JobAttributes>>("jobsSinglePostResponse");
-}
-
-#[test]
-fn license_single_get_response() {
-    support::roundtrip::<SingleEnvelope<LicenseAttributes>>("licenseSingleGetResponse");
-}
-
-#[test]
-fn license_single_patch_request() {
-    support::roundtrip::<Envelope<Resource<LicenseAttributes>>>("licenseSinglePatchRequest");
-}
-
-#[test]
-fn license_assignments_list_get_response() {
-    support::roundtrip::<ListEnvelope<LicenseAssignmentAttributes>>(
-        "license_assignmentsListGetResponse",
-    );
-}
-
-#[test]
-fn license_assignments_list_patch_request() {
-    support::roundtrip::<Envelope<Vec<Resource<LicenseAssignmentAttributes>>>>(
-        "license_assignmentsListPatchRequest",
-    );
-}
-
-#[test]
-fn license_assignments_single_get_response() {
-    support::roundtrip::<SingleEnvelope<LicenseAssignmentAttributes>>(
-        "license_assignmentsSingleGetResponse",
-    );
-}
-
-#[test]
-fn license_assignments_single_patch_request() {
-    support::roundtrip::<Envelope<Resource<LicenseAssignmentAttributes>>>(
-        "license_assignmentsSinglePatchRequest",
-    );
-}
-
-#[test]
-fn license_slots_list_delete_request() {
-    support::roundtrip::<Envelope<Vec<ResourceRef>>>("license_slotsListDeleteRequest");
-}
-
-#[test]
-fn license_slots_list_get_response() {
-    support::roundtrip::<ListEnvelope<LicenseSlotAttributes>>("license_slotsListGetResponse");
-}
-
-#[test]
-fn license_slots_list_post_request() {
-    support::roundtrip::<Envelope<Vec<Resource<LicenseSlotAttributes>>>>(
-        "license_slotsListPostRequest",
-    );
-}
-
-#[test]
-fn license_slots_list_post_response() {
-    support::roundtrip::<ListEnvelope<LicenseSlotAttributes>>("license_slotsListPostResponse");
-}
-
-#[test]
-fn license_slots_single_get_response() {
-    support::roundtrip::<SingleEnvelope<LicenseSlotAttributes>>("license_slotsSingleGetResponse");
 }
 
 #[test]
@@ -539,23 +383,8 @@ fn linkedworkitems_single_patch_request() {
 }
 
 #[test]
-fn llms_list_get_response() {
-    support::roundtrip::<ListEnvelope<LlmAttributes>>("llmsListGetResponse");
-}
-
-#[test]
 fn merge_document_request_body() {
     support::roundtrip::<MergeDocumentRequestBody>("mergeDocumentRequestBody");
-}
-
-#[test]
-fn metadata_single_get_response() {
-    support::roundtrip::<SingleEnvelope<MetadataAttributes>>("metadataSingleGetResponse");
-}
-
-#[test]
-fn move_document_part_request_body() {
-    support::roundtrip::<MoveDocumentPartRequestBody>("moveDocumentPartRequestBody");
 }
 
 #[test]
@@ -566,26 +395,6 @@ fn move_project_request_body() {
 #[test]
 fn move_work_item_to_document_request_body() {
     support::roundtrip::<MoveWorkItemToDocumentRequestBody>("moveWorkItemToDocumentRequestBody");
-}
-
-#[test]
-fn move_work_items_to_document_request_body() {
-    support::roundtrip::<MoveWorkItemsToDocumentRequestBody>("moveWorkItemsToDocumentRequestBody");
-}
-
-#[test]
-fn overwrite_document_parts_request_body() {
-    support::roundtrip::<OverwriteDocumentPartsRequestBody>("overwriteDocumentPartsRequestBody");
-}
-
-#[test]
-fn overwrite_document_parts_response_body() {
-    support::roundtrip::<OverwriteDocumentPartsResponseBody>("overwriteDocumentPartsResponseBody");
-}
-
-#[test]
-fn page_attachments_list_get_response() {
-    support::roundtrip::<ListEnvelope<PageAttachmentAttributes>>("page_attachmentsListGetResponse");
 }
 
 #[test]
@@ -607,57 +416,6 @@ fn page_attachments_single_get_response() {
     support::roundtrip::<SingleEnvelope<PageAttachmentAttributes>>(
         "page_attachmentsSingleGetResponse",
     );
-}
-
-#[test]
-fn page_attachments_single_patch_request() {
-    support::roundtrip::<Envelope<Resource<PageAttachmentAttributes>>>(
-        "page_attachmentsSinglePatchRequest",
-    );
-}
-
-#[test]
-fn page_comments_list_get_response() {
-    support::roundtrip::<ListEnvelope<PageCommentAttributes>>("page_commentsListGetResponse");
-}
-
-#[test]
-fn page_comments_list_post_request() {
-    support::roundtrip::<Envelope<Vec<Resource<PageCommentAttributes>>>>(
-        "page_commentsListPostRequest",
-    );
-}
-
-#[test]
-fn page_comments_list_post_response() {
-    support::roundtrip::<ListEnvelope<PageCommentAttributes>>("page_commentsListPostResponse");
-}
-
-#[test]
-fn page_comments_single_get_response() {
-    support::roundtrip::<SingleEnvelope<PageCommentAttributes>>("page_commentsSingleGetResponse");
-}
-
-#[test]
-fn page_comments_single_patch_request() {
-    support::roundtrip::<Envelope<Resource<PageCommentAttributes>>>(
-        "page_commentsSinglePatchRequest",
-    );
-}
-
-#[test]
-fn pages_list_get_response() {
-    support::roundtrip::<ListEnvelope<PageAttributes>>("pagesListGetResponse");
-}
-
-#[test]
-fn pages_list_post_request() {
-    support::roundtrip::<Envelope<Vec<Resource<PageAttributes>>>>("pagesListPostRequest");
-}
-
-#[test]
-fn pages_list_post_response() {
-    support::roundtrip::<ListEnvelope<PageAttributes>>("pagesListPostResponse");
 }
 
 #[test]
@@ -725,11 +483,6 @@ fn projecttemplates_list_get_response() {
 #[test]
 fn relationships_list_delete_request() {
     support::roundtrip::<Envelope<Vec<ResourceRef>>>("relationshipsListDeleteRequest");
-}
-
-#[test]
-fn reuse_collection_request_body() {
-    support::roundtrip::<ReuseCollectionRequestBody>("reuseCollectionRequestBody");
 }
 
 #[test]

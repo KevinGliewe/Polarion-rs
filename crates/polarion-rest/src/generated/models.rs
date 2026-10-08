@@ -180,8 +180,6 @@ pub struct BranchDocumentsRequestBodyDocumentConfiguration {
 /// - `downstreamCollections` (to-many) → `collections`
 /// - `project` (to-one) → `projects`
 /// - `reusedFrom` (to-one) → `collections`
-/// - `richPages` (to-many) → `pages`
-/// - `testRuns` (to-many) → `testruns`
 /// - `upstreamCollections` (to-many) → `collections`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CollectionAttributes {
@@ -275,7 +273,7 @@ pub struct CreateProjectRequestBody {
     /// Example: `MyLocation`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
-    /// Parameters of new Project to be created.
+    /// params of new Project to be created.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub params: Option<Value>,
     /// Id of the new Project to be created.
@@ -301,93 +299,6 @@ pub struct CreateProjectRequestBody {
         skip_serializing_if = "Option::is_none"
     )]
     pub tracker_prefix: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Attributes of a `customfields` resource ([`CustomField`]).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CustomFieldAttributes {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fields: Option<Vec<CustomFieldField>>,
-    /// Example: `id`.
-    #[serde(
-        rename = "resourceType",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub resource_type: Option<String>,
-    /// Example: `id`.
-    #[serde(
-        rename = "targetType",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub target_type: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for CustomFieldAttributes {
-    const TYPE: &'static str = "customfields";
-}
-
-/// A `customfields` resource.
-pub type CustomField = Resource<CustomFieldAttributes>;
-
-/// `CustomFieldField`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CustomFieldField {
-    #[serde(
-        rename = "defaultValue",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub default_value: Option<String>,
-    #[serde(rename = "dependsOn", default, skip_serializing_if = "Option::is_none")]
-    pub depends_on: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Vec<CustomFieldFieldParameter>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub required: Option<bool>,
-    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
-    pub type_: Option<CustomFieldFieldType>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `CustomFieldFieldParameter`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CustomFieldFieldParameter {
-    /// Example: `parameter1`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-    /// Example: `parameter1`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Example: `MyParameter`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `CustomFieldFieldType`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CustomFieldFieldType {
-    /// Example: `string`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -469,7 +380,7 @@ pub struct DocumentAttributes {
         skip_serializing_if = "Option::is_none"
     )]
     pub derived_fields: Option<Vec<String>>,
-    /// Example: `relates_to`.
+    /// Example: `parent`.
     #[serde(
         rename = "derivedFromLinkRole",
         default,
@@ -508,10 +419,10 @@ pub struct DocumentAttributes {
         skip_serializing_if = "Option::is_none"
     )]
     pub rendering_layouts: Option<Vec<DocumentRenderingLayout>>,
-    /// Example: `draft`.
+    /// Example: `open`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// Example: `relates_to`.
+    /// Example: `parent`.
     #[serde(
         rename = "structureLinkRole",
         default,
@@ -521,7 +432,7 @@ pub struct DocumentAttributes {
     /// Example: `Title`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Example: `req_specification`.
+    /// Example: `softwareSuite`.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
     /// Format: `date-time`. Example: `1970-01-01T00:00:00Z`.
@@ -597,54 +508,20 @@ pub struct DocumentOutlineNumbering {
 /// - `workItem` (to-one) → `workitems`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DocumentPartAttributes {
-    /// Editable only for normal and table document parts.
-    ///
     /// Example: `<div id="polarion_wiki macro name=module-workitem;params=id=workitem_MyWorkItemId"></div>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    /// Whether the work item is external to the document. Applicable to: workitem parts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external: Option<bool>,
-    /// Applicable to: heading parts.
-    ///
-    /// Example: `Heading Title`.
-    #[serde(
-        rename = "headingText",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub heading_text: Option<String>,
     /// Example: `workitem_MyWorkItemId`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// Whether the page break switches to landscape orientation. Applicable to: pagebreak parts.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub landscape: Option<bool>,
-    /// Rendering layout index for the part. Applicable to: workitem parts.
-    ///
-    /// Example: `0`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub layout: Option<i32>,
-    /// Outline level/depth of the part in the document hierarchy. Applicable to: heading, workitem parts.
-    ///
     /// Example: `0`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub level: Option<i32>,
-    /// Sequence identifier for table of figures entry. Applicable to: tof parts.
-    ///
-    /// Example: `Table`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sequence: Option<String>,
-    /// Possible values: heading, normal, pagebreak, table, toc, tof, wikiblock, workitem. Required for creation.
-    ///
     /// Example: `workitem`.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
-    /// Wiki markup content for the block. Applicable to: wikiblock parts.
-    ///
-    /// Example: `#documentPanel(true "approved")`.
-    #[serde(rename = "wikiText", default, skip_serializing_if = "Option::is_none")]
-    pub wiki_text: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -742,8 +619,6 @@ pub struct EnumOptionsActionResponseBodyDataItem {
     /// Example: `true`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limited: Option<bool>,
-    #[serde(rename = "linkRules", default, skip_serializing_if = "Option::is_none")]
-    pub link_rules: Option<Vec<EnumOptionsActionResponseBodyDataItemLinkRule>>,
     /// Example: `30.0`.
     #[serde(rename = "minValue", default, skip_serializing_if = "Option::is_none")]
     pub min_value: Option<f64>,
@@ -777,21 +652,6 @@ pub struct EnumOptionsActionResponseBodyDataItem {
     /// Example: `true`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<bool>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `EnumOptionsActionResponseBodyDataItemLinkRule`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct EnumOptionsActionResponseBodyDataItemLinkRule {
-    #[serde(rename = "fromTypes", default, skip_serializing_if = "Option::is_none")]
-    pub from_types: Option<Vec<String>>,
-    /// Example: `false`.
-    #[serde(rename = "sameType", default, skip_serializing_if = "Option::is_none")]
-    pub same_type: Option<bool>,
-    #[serde(rename = "toTypes", default, skip_serializing_if = "Option::is_none")]
-    pub to_types: Option<Vec<String>>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -901,8 +761,6 @@ pub struct EnumerationOption {
     /// Example: `true`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limited: Option<bool>,
-    #[serde(rename = "linkRules", default, skip_serializing_if = "Option::is_none")]
-    pub link_rules: Option<Vec<EnumerationOptionLinkRule>>,
     /// Example: `30.0`.
     #[serde(rename = "minValue", default, skip_serializing_if = "Option::is_none")]
     pub min_value: Option<f64>,
@@ -941,43 +799,18 @@ pub struct EnumerationOption {
     pub extra: BTreeMap<String, Value>,
 }
 
-/// `EnumerationOptionLinkRule`
+/// `ExportTestCasesRequestBody`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct EnumerationOptionLinkRule {
-    #[serde(rename = "fromTypes", default, skip_serializing_if = "Option::is_none")]
-    pub from_types: Option<Vec<String>>,
-    /// Example: `false`.
-    #[serde(rename = "sameType", default, skip_serializing_if = "Option::is_none")]
-    pub same_type: Option<bool>,
-    #[serde(rename = "toTypes", default, skip_serializing_if = "Option::is_none")]
-    pub to_types: Option<Vec<String>>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `ExecuteJobRequestBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ExecuteJobRequestBody {
-    /// Id of job factory, e.g. jobs.cleanup
-    ///
-    /// Example: `MyJobId`.
-    #[serde(rename = "jobId", default, skip_serializing_if = "Option::is_none")]
-    pub job_id: Option<String>,
-    /// Example: `My Job`.
+pub struct ExportTestCasesRequestBody {
+    /// Example: `exportExcelQueryString`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Example: `MyNodeId`.
-    #[serde(rename = "nodeId", default, skip_serializing_if = "Option::is_none")]
-    pub node_id: Option<String>,
-    /// Parameters of Job to be executed.
+    pub query: Option<String>,
+    /// Example: `exportExcelSortByString`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub params: Option<BTreeMap<String, String>>,
-    /// Scope of the job. Accepted formats: 'system', 'project:{projectId}', or 'path:/{path}'.
-    ///
-    /// Example: `system`.
+    pub sortby: Option<String>,
+    /// Example: `exportExcelTemplateName`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
+    pub template: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -986,7 +819,7 @@ pub struct ExecuteJobRequestBody {
 /// Attributes of a `externallylinkedworkitems` resource ([`ExternallyLinkedWorkItem`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExternallyLinkedWorkItemAttributes {
-    /// Example: `relates_to`.
+    /// Example: `parent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(
@@ -1032,115 +865,6 @@ impl ResourceKind for FeatureSelectionAttributes {
 
 /// A `featureselections` resource.
 pub type FeatureSelection = Resource<FeatureSelectionAttributes>;
-
-/// `FieldsMetadataActionResponseBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct FieldsMetadataActionResponseBody {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<FieldsMetadataActionResponseBodyData>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub links: Option<FieldsMetadataActionResponseBodyLinks>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `FieldsMetadataActionResponseBodyData`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct FieldsMetadataActionResponseBodyData {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<BTreeMap<String, Value>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relationships: Option<BTreeMap<String, Value>>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `FieldsMetadataActionResponseBodyLinks`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct FieldsMetadataActionResponseBodyLinks {
-    #[serde(rename = "self", default, skip_serializing_if = "Option::is_none")]
-    pub self_: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// A message in the LLM completion generation request or response.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GenerateCompletionMessage {
-    /// Content of the message.
-    #[serde(default)]
-    pub content: String,
-    /// Role of the message sender, e.g., 'user' or 'assistant.'
-    ///
-    /// Example: `user`.
-    #[serde(default)]
-    pub role: String,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Generate completion parameters.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GenerateCompletionRequestBody {
-    /// Prompt messages.
-    #[serde(default)]
-    pub messages: Vec<GenerateCompletionMessage>,
-    /// Name of the LLM to use. If not specified, the default model will be used, if available.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    /// Response format for LLM completion generation.
-    #[serde(
-        rename = "responseFormat",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub response_format: Option<GenerateCompletionResponseFormat>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Response body for LLM completion generation.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GenerateCompletionResponseBody {
-    /// The result of a completion generation request.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<GenerateCompletionResult>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Response format for LLM completion generation.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GenerateCompletionResponseFormat {
-    /// The JSON schema to use when type is 'jsonSchema'.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub schema: Option<Value>,
-    /// Type of the response format. Defaults to 'text'.
-    ///
-    /// Allowed values: `text`, `json`, `jsonSchema`. Example: `jsonSchema`.
-    #[serde(rename = "type", default)]
-    pub type_: String,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// The result of a completion generation request.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GenerateCompletionResult {
-    /// A message in the LLM completion generation request or response.
-    #[serde(default)]
-    pub message: GenerateCompletionMessage,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
 
 /// Attributes of a `globalroles` resource ([`GlobalRole`]).
 ///
@@ -1203,38 +927,6 @@ pub struct ImportTestResultsRequestBody {
     pub extra: BTreeMap<String, Value>,
 }
 
-/// Parameters for Word document import
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ImportWordDocumentParameters {
-    /// Optional configuration ID referencing a preexisting import configuration template. If not provided, default import behavior will be used.
-    ///
-    /// Example: `Default.xml`.
-    #[serde(
-        rename = "configurationId",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub configuration_id: Option<String>,
-    /// Unique document name/ID for the imported document.
-    ///
-    /// Example: `REQ-001`.
-    #[serde(rename = "documentName", default)]
-    pub document_name: String,
-    /// Document type for the imported document (e.g., 'generic').
-    ///
-    /// Example: `generic`.
-    #[serde(rename = "documentType", default)]
-    pub document_type: String,
-    /// Title for the imported document.
-    ///
-    /// Example: `System Requirements`.
-    #[serde(default)]
-    pub title: String,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
 /// Attributes of a `jobs` resource ([`Job`]).
 ///
 /// # Relationships
@@ -1281,154 +973,6 @@ pub struct JobStatus {
     pub extra: BTreeMap<String, Value>,
 }
 
-/// Attributes of a `license_assignments` resource ([`LicenseAssignment`]).
-///
-/// # Relationships
-///
-/// - `addOnSlots` (to-many) → `license_slots`
-/// - `baseSlot` (to-one) → `license_slots`
-/// - `user` (to-one) → `users`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseAssignmentAttributes {
-    /// Allowed values: `LOGGED_IN`, `EXPIRING`, `INACTIVE`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for LicenseAssignmentAttributes {
-    const TYPE: &'static str = "license_assignments";
-}
-
-/// A `license_assignments` resource.
-pub type LicenseAssignment = Resource<LicenseAssignmentAttributes>;
-
-/// Attributes of a `license` resource ([`License`]).
-///
-/// # Relationships
-///
-/// - `defaultAddOnLicenseSlots` (to-many) → `license_slots`
-/// - `defaultBaseLicenseSlot` (to-one) → `license_slots`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseAttributes {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limits: Option<LicenseLimits>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for LicenseAttributes {
-    const TYPE: &'static str = "license";
-}
-
-/// A `license` resource.
-pub type License = Resource<LicenseAttributes>;
-
-/// `LicenseLimits`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseLimits {
-    #[serde(
-        rename = "documentsAndPages",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub documents_and_pages: Option<LicenseLimitsDocumentsAndPages>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub projects: Option<LicenseLimitsProjects>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workitems: Option<LicenseLimitsWorkitems>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `LicenseLimitsDocumentsAndPages`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseLimitsDocumentsAndPages {
-    #[serde(
-        rename = "currentCount",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub current_count: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<i64>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `LicenseLimitsProjects`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseLimitsProjects {
-    #[serde(
-        rename = "currentCount",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub current_count: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<i64>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `LicenseLimitsWorkitems`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseLimitsWorkitems {
-    #[serde(
-        rename = "currentCount",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub current_count: Option<i64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limit: Option<i64>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Attributes of a `license_slots` resource ([`LicenseSlot`]).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LicenseSlotAttributes {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub configured: Option<i32>,
-    /// Format: `date`.
-    #[serde(
-        rename = "expirationDate",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub expiration_date: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub free: Option<i32>,
-    /// Example: `groupName`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub group: Option<String>,
-    /// Example: `named`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub peak: Option<i32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total: Option<i32>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for LicenseSlotAttributes {
-    const TYPE: &'static str = "license_slots";
-}
-
-/// A `license_slots` resource.
-pub type LicenseSlot = Resource<LicenseSlotAttributes>;
-
 /// Attributes of a `linkedoslcresources` resource ([`LinkedOslcResource`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LinkedOslcResourceAttributes {
@@ -1438,7 +982,7 @@ pub struct LinkedOslcResourceAttributes {
     /// Example: `http://open-services.net/ns/cm#relatedChangeRequest`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Example: `URI`.
+    /// Example: `Uri`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
@@ -1457,14 +1001,13 @@ pub type LinkedOslcResource = Resource<LinkedOslcResourceAttributes>;
 ///
 /// # Relationships
 ///
-/// - `sourceWorkItem` (to-one) → `workitems`
 /// - `workItem` (to-one) → `workitems`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LinkedWorkItemAttributes {
     /// Example: `1234`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
-    /// Example: `relates_to`.
+    /// Example: `parent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1480,24 +1023,6 @@ impl ResourceKind for LinkedWorkItemAttributes {
 
 /// A `linkedworkitems` resource.
 pub type LinkedWorkItem = Resource<LinkedWorkItemAttributes>;
-
-/// Attributes of a `llms` resource ([`Llm`]).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct LlmAttributes {
-    /// Example: `myLlm`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for LlmAttributes {
-    const TYPE: &'static str = "llms";
-}
-
-/// A `llms` resource.
-pub type Llm = Resource<LlmAttributes>;
 
 /// `MergeDocumentRequestBody`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1520,105 +1045,6 @@ pub struct MergeDocumentRequestBody {
         skip_serializing_if = "Option::is_none"
     )]
     pub user_filter: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `MetadataApiProperties`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MetadataApiProperties {
-    /// Example: `2097152`.
-    #[serde(
-        rename = "bodySizeLimit",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub body_size_limit: Option<i64>,
-    /// Example: `100`.
-    #[serde(
-        rename = "defaultPageSize",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub default_page_size: Option<i64>,
-    /// Example: `500`.
-    #[serde(
-        rename = "maxIncludedSize",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub max_included_size: Option<i64>,
-    /// Example: `200`.
-    #[serde(
-        rename = "maxPageSize",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub max_page_size: Option<i64>,
-    /// Example: `100`.
-    #[serde(
-        rename = "maxRelationshipSize",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub max_relationship_size: Option<i64>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// Attributes of a `metadata` resource ([`Metadata`]).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MetadataAttributes {
-    #[serde(
-        rename = "apiProperties",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub api_properties: Option<MetadataApiProperties>,
-    /// Example: `20250613-1404-master-e594c717`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub build: Option<String>,
-    /// Example: `cluster1`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cluster: Option<String>,
-    /// Example: `/images/logos/repo_login_logo.png`.
-    #[serde(rename = "logoUrl", default, skip_serializing_if = "Option::is_none")]
-    pub logo_url: Option<String>,
-    /// Example: `node2`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub node: Option<String>,
-    /// Example: `+05:30`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timezone: Option<String>,
-    /// Example: `3.25.12`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for MetadataAttributes {
-    const TYPE: &'static str = "metadata";
-}
-
-/// A `metadata` resource.
-pub type Metadata = Resource<MetadataAttributes>;
-
-/// `MoveDocumentPartRequestBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MoveDocumentPartRequestBody {
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub after: Option<String>,
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub before: Option<String>,
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -1657,105 +1083,6 @@ pub struct MoveWorkItemToDocumentRequestBody {
         skip_serializing_if = "Option::is_none"
     )]
     pub target_document: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `MoveWorkItemsToDocumentRequestBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MoveWorkItemsToDocumentRequestBody {
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId`.
-    #[serde(
-        rename = "targetDocument",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub target_document: Option<String>,
-    #[serde(
-        rename = "workItemGroups",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub work_item_groups: Option<Vec<MoveWorkItemsToDocumentRequestBodyWorkItemGroup>>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `MoveWorkItemsToDocumentRequestBodyWorkItemGroup`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct MoveWorkItemsToDocumentRequestBodyWorkItemGroup {
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(rename = "nextPart", default, skip_serializing_if = "Option::is_none")]
-    pub next_part: Option<String>,
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(
-        rename = "previousPart",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub previous_part: Option<String>,
-    #[serde(
-        rename = "workItemIds",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub work_item_ids: Option<Vec<String>>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `OverwriteDocumentPartsRequestBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct OverwriteDocumentPartsRequestBody {
-    /// The list of Document Part IDs to overwrite.
-    #[serde(rename = "partIds", default)]
-    pub part_ids: Vec<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `OverwriteDocumentPartsResponseBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct OverwriteDocumentPartsResponseBody {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub data: Option<OverwriteDocumentPartsResponseBodyData>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `OverwriteDocumentPartsResponseBodyData`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct OverwriteDocumentPartsResponseBodyData {
-    /// Array of Part ID mappings showing old and new IDs.
-    #[serde(
-        rename = "overwrittenParts",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub overwritten_parts: Option<Vec<OverwriteDocumentPartsResponseBodyDataOverwrittenPart>>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-/// `OverwriteDocumentPartsResponseBodyDataOverwrittenPart`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct OverwriteDocumentPartsResponseBodyDataOverwrittenPart {
-    /// New Part ID after overwrite operation.
-    ///
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(rename = "newPartId", default, skip_serializing_if = "Option::is_none")]
-    pub new_part_id: Option<String>,
-    /// Original Part ID before overwrite operation.
-    ///
-    /// Example: `MyProjectId/MySpaceId/MyDocumentId/workitem_MyWorkItemId`.
-    #[serde(rename = "oldPartId", default, skip_serializing_if = "Option::is_none")]
-    pub old_part_id: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -1803,18 +1130,11 @@ pub type PageAttachment = Resource<PageAttachmentAttributes>;
 /// - `author` (to-one) → `users`
 /// - `project` (to-one) → `projects`
 /// - `updatedBy` (to-one) → `users`
-/// - `watches` (to-many) → `users`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PageAttributes {
     /// Format: `date-time`. Example: `1970-01-01T00:00:00Z`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
-    #[serde(
-        rename = "homePageContent",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub home_page_content: Option<TextContent>,
     /// Example: `MyRichPageId`.
     #[serde(rename = "pageName", default, skip_serializing_if = "Option::is_none")]
     pub page_name: Option<String>,
@@ -1838,38 +1158,6 @@ impl ResourceKind for PageAttributes {
 
 /// A `pages` resource.
 pub type Page = Resource<PageAttributes>;
-
-/// Attributes of a `page_comments` resource ([`PageComment`]).
-///
-/// # Relationships
-///
-/// - `author` (to-one) → `users`
-/// - `childComments` (to-many) → `page_comments`
-/// - `parentComment` (to-one) → `page_comments`
-/// - `project` (to-one) → `projects`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct PageCommentAttributes {
-    /// Format: `date-time`. Example: `1970-01-01T00:00:00Z`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub created: Option<String>,
-    /// Example: `MyCommentId`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolved: Option<bool>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text: Option<TextContent>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
-
-impl ResourceKind for PageCommentAttributes {
-    const TYPE: &'static str = "page_comments";
-}
-
-/// A `page_comments` resource.
-pub type PageComment = Resource<PageCommentAttributes>;
 
 /// Attributes of a `plans` resource ([`Plan`]).
 ///
@@ -2061,7 +1349,6 @@ pub struct ProjectTemplateAttributes {
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub distributions: Option<Vec<String>>,
-    /// Example: `MyProjectId`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(rename = "isDefault", default, skip_serializing_if = "Option::is_none")]
@@ -2081,32 +1368,6 @@ impl ResourceKind for ProjectTemplateAttributes {
 
 /// A `projecttemplates` resource.
 pub type ProjectTemplate = Resource<ProjectTemplateAttributes>;
-
-/// `ReuseCollectionRequestBody`
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ReuseCollectionRequestBody {
-    /// The name of the new Collection.
-    ///
-    /// Example: `Name`.
-    #[serde(
-        rename = "targetCollectionName",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub target_collection_name: Option<String>,
-    /// Project where new Collection will be created.
-    ///
-    /// Example: `MyProjectId`.
-    #[serde(
-        rename = "targetProjectId",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub target_project_id: Option<String>,
-    /// Members not described by the spec, e.g. custom fields.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
-}
 
 /// Attributes of a `revisions` resource ([`Revision`]).
 ///
@@ -2163,7 +1424,7 @@ pub struct SetLicenseRequestBody {
     pub group: Option<String>,
     /// User's license type
     ///
-    /// Allowed values: `REVIEWER`, `XReviewer`, `XBase`, `XEssentials`, `XPro`, `XStandard`, `XEnterprise`, `XAdvanced`, `XExtended`, `XPremium`, `XAutomotive`, `PRO`, `REQUIREMENTS`, `QA`, `ALM`.
+    /// Allowed values: `REVIEWER`, `XReviewer`, `XBase`, `XPro`, `XEnterprise`, `XPremium`, `XAutomotive`, `PRO`, `REQUIREMENTS`, `QA`, `ALM`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
@@ -2530,8 +1791,6 @@ pub type TestStepResult = Resource<TestStepResultAttributes>;
 ///
 /// # Relationships
 ///
-/// - `addOnLicenseSlots` (to-many) → `license_slots`
-/// - `baseLicenseSlot` (to-one) → `license_slots`
 /// - `globalRoles` (to-many) → `globalroles`
 /// - `projectRoles` (to-many) → `projectroles`
 /// - `userGroups` (to-many) → `usergroups`
@@ -2674,7 +1933,7 @@ pub type WorkItemAttachment = Resource<WorkItemAttachmentAttributes>;
 ///
 /// # Relationships
 ///
-/// - `approvals` (to-many) → `workitem_approvals`
+/// - `approvals` (to-many) → `workrecords`
 /// - `assignee` (to-many) → `users`
 /// - `attachments` (to-many) → `workitem_attachments`
 /// - `author` (to-one) → `users`
@@ -2735,7 +1994,7 @@ pub struct WorkItemAttributes {
         skip_serializing_if = "Option::is_none"
     )]
     pub planned_start: Option<String>,
-    /// Example: `90.0`.
+    /// Example: `50.0`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<String>,
     /// Example: `5 1/2d`.
@@ -2758,7 +2017,7 @@ pub struct WorkItemAttributes {
     /// Example: `blocker`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
-    /// Example: `open`.
+    /// Example: `new`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     /// Example: `5 1/2d`.
@@ -2767,7 +2026,7 @@ pub struct WorkItemAttributes {
     /// Example: `Title`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Example: `task`.
+    /// Example: `heading`.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
     /// Format: `date-time`. Example: `1970-01-01T00:00:00Z`.
@@ -2826,9 +2085,6 @@ pub struct WorkItemHyperlink {
     /// Example: `ref_ext`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Example: `Title`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
     /// Example: `https://polarion.plm.automation.siemens.com`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -2856,7 +2112,7 @@ pub struct WorkRecordAttributes {
     /// Example: `5 1/2d`.
     #[serde(rename = "timeSpent", default, skip_serializing_if = "Option::is_none")]
     pub time_spent: Option<String>,
-    /// Example: `task`.
+    /// Example: `heading`.
     #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
     /// Members not described by the spec, e.g. custom fields.
@@ -2896,7 +2152,6 @@ pub struct WorkflowActionsActionResponseBodyDataItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub cleared_fields: Option<Vec<String>>,
-    /// Example: `0`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     #[serde(
@@ -2911,10 +2166,8 @@ pub struct WorkflowActionsActionResponseBodyDataItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub is_signature_required: Option<bool>,
-    /// Example: `actionName`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Example: `nativeActionId`.
     #[serde(
         rename = "nativeActionId",
         default,
@@ -2933,7 +2186,6 @@ pub struct WorkflowActionsActionResponseBodyDataItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub required_roles: Option<Vec<String>>,
-    /// Example: `done`.
     #[serde(
         rename = "targetStatus",
         default,
