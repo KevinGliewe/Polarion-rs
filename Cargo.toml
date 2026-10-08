@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,8 +11,12 @@ repository = "https://github.com/KevinGliewe/Polarion-rs"
 authors = ["Kevin Gliewe"]
 
 [workspace.dependencies]
+polarion-rest = { path = "crates/polarion-rest", version = "0.1.0" }
 
-reqwest = { version = "0.13", default-features = false, features = ["json", "query", "rustls", "http2"] }
+anyhow = "1"
+heck = "0.5"
+
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "multipart", "rustls", "http2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
