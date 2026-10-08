@@ -279,7 +279,7 @@ impl PlanningService<'_> {
         project_id: &str,
         name: &str,
         id: &str,
-        template_id: &str,
+        template_id: Option<&str>,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("planningi", "createPlanTemplate");
@@ -287,7 +287,12 @@ impl PlanningService<'_> {
         project_id.write_xml(&mut w, "planningi", "projectId");
         name.write_xml(&mut w, "planningi", "name");
         id.write_xml(&mut w, "planningi", "id");
-        template_id.write_xml(&mut w, "planningi", "templateId");
+        match template_id {
+            Some(v) => {
+                v.write_xml(&mut w, "planningi", "templateId");
+            }
+            None => w.nil("planningi", "templateId"),
+        }
         w.close("planningi", "createPlanTemplate");
         self.client
             .call(
@@ -557,14 +562,19 @@ impl PlanningService<'_> {
     /// `PlanningWebService.searchPlanTemplates`
     pub async fn search_plan_templates(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
     ) -> Result<Vec<Plan>> {
         let mut w = XmlWriter::new();
         w.open("planningi", "searchPlanTemplates");
         w.open_end();
-        query.write_xml(&mut w, "planningi", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "planningi", "query");
+            }
+            None => w.nil("planningi", "query"),
+        }
         sort.write_xml(&mut w, "planningi", "sort");
         results_limit.write_xml(&mut w, "planningi", "resultsLimit");
         w.close("planningi", "searchPlanTemplates");
@@ -597,7 +607,7 @@ impl PlanningService<'_> {
     /// `PlanningWebService.searchPlanTemplatesWithFields`
     pub async fn search_plan_templates_with_fields(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
         fields: &[String],
@@ -605,7 +615,12 @@ impl PlanningService<'_> {
         let mut w = XmlWriter::new();
         w.open("planningi", "searchPlanTemplatesWithFields");
         w.open_end();
-        query.write_xml(&mut w, "planningi", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "planningi", "query");
+            }
+            None => w.nil("planningi", "query"),
+        }
         sort.write_xml(&mut w, "planningi", "sort");
         results_limit.write_xml(&mut w, "planningi", "resultsLimit");
         for v in fields {
@@ -641,14 +656,19 @@ impl PlanningService<'_> {
     /// `PlanningWebService.searchPlans`
     pub async fn search_plans(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
     ) -> Result<Vec<Plan>> {
         let mut w = XmlWriter::new();
         w.open("planningi", "searchPlans");
         w.open_end();
-        query.write_xml(&mut w, "planningi", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "planningi", "query");
+            }
+            None => w.nil("planningi", "query"),
+        }
         sort.write_xml(&mut w, "planningi", "sort");
         results_limit.write_xml(&mut w, "planningi", "resultsLimit");
         w.close("planningi", "searchPlans");
@@ -679,7 +699,7 @@ impl PlanningService<'_> {
     /// `PlanningWebService.searchPlansWithFields`
     pub async fn search_plans_with_fields(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
         fields: &[String],
@@ -687,7 +707,12 @@ impl PlanningService<'_> {
         let mut w = XmlWriter::new();
         w.open("planningi", "searchPlansWithFields");
         w.open_end();
-        query.write_xml(&mut w, "planningi", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "planningi", "query");
+            }
+            None => w.nil("planningi", "query"),
+        }
         sort.write_xml(&mut w, "planningi", "sort");
         results_limit.write_xml(&mut w, "planningi", "resultsLimit");
         for v in fields {
@@ -1717,12 +1742,21 @@ impl SecurityService<'_> {
     /// - Returns: an array containing the roles
     ///
     /// `SecurityWebService.getRolesForUser`
-    pub async fn get_roles_for_user(&self, user_id: &str, location: &str) -> Result<Vec<String>> {
+    pub async fn get_roles_for_user(
+        &self,
+        user_id: &str,
+        location: Option<&str>,
+    ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("securityi", "getRolesForUser");
         w.open_end();
         user_id.write_xml(&mut w, "securityi", "userId");
-        location.write_xml(&mut w, "securityi", "location");
+        match location {
+            Some(v) => {
+                v.write_xml(&mut w, "securityi", "location");
+            }
+            None => w.nil("securityi", "location"),
+        }
         w.close("securityi", "getRolesForUser");
         self.client
             .call(
@@ -2421,7 +2455,7 @@ impl TestManagementService<'_> {
         &self,
         project: &str,
         id: &str,
-        title: &str,
+        title: Option<&str>,
         template: &str,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
@@ -2429,7 +2463,12 @@ impl TestManagementService<'_> {
         w.open_end();
         project.write_xml(&mut w, "testmanagementi", "project");
         id.write_xml(&mut w, "testmanagementi", "id");
-        title.write_xml(&mut w, "testmanagementi", "title");
+        match title {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "title");
+            }
+            None => w.nil("testmanagementi", "title"),
+        }
         template.write_xml(&mut w, "testmanagementi", "template");
         w.close("testmanagementi", "createTestRunWithTitle");
         self.client
@@ -2588,12 +2627,17 @@ impl TestManagementService<'_> {
     /// `TestManagementWebService.getDefinedTestRunCustomFieldKeys`
     pub async fn get_defined_test_run_custom_field_keys(
         &self,
-        project_id: &str,
+        project_id: Option<&str>,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("testmanagementi", "getDefinedTestRunCustomFieldKeys");
         w.open_end();
-        project_id.write_xml(&mut w, "testmanagementi", "projectID");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "projectID");
+            }
+            None => w.nil("testmanagementi", "projectID"),
+        }
         w.close("testmanagementi", "getDefinedTestRunCustomFieldKeys");
         self.client
             .call(
@@ -2622,13 +2666,18 @@ impl TestManagementService<'_> {
     /// `TestManagementWebService.getDefinedTestRunCustomFieldType`
     pub async fn get_defined_test_run_custom_field_type(
         &self,
-        project_id: &str,
+        project_id: Option<&str>,
         key: &str,
     ) -> Result<CustomFieldType> {
         let mut w = XmlWriter::new();
         w.open("testmanagementi", "getDefinedTestRunCustomFieldType");
         w.open_end();
-        project_id.write_xml(&mut w, "testmanagementi", "projectID");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "projectID");
+            }
+            None => w.nil("testmanagementi", "projectID"),
+        }
         key.write_xml(&mut w, "testmanagementi", "key");
         w.close("testmanagementi", "getDefinedTestRunCustomFieldType");
         self.client
@@ -2658,12 +2707,17 @@ impl TestManagementService<'_> {
     /// `TestManagementWebService.getDefinedTestRunCustomFieldTypes`
     pub async fn get_defined_test_run_custom_field_types(
         &self,
-        project_id: &str,
+        project_id: Option<&str>,
     ) -> Result<Vec<CustomFieldType>> {
         let mut w = XmlWriter::new();
         w.open("testmanagementi", "getDefinedTestRunCustomFieldTypes");
         w.open_end();
-        project_id.write_xml(&mut w, "testmanagementi", "projectID");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "projectID");
+            }
+            None => w.nil("testmanagementi", "projectID"),
+        }
         w.close("testmanagementi", "getDefinedTestRunCustomFieldTypes");
         self.client
             .call(
@@ -3750,14 +3804,19 @@ impl TestManagementService<'_> {
         &self,
         test_run_uri: &str,
         index: i32,
-        test_record: &TestRecord,
+        test_record: Option<&TestRecord>,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("testmanagementi", "updateTestRecordAtIndex");
         w.open_end();
         test_run_uri.write_xml(&mut w, "testmanagementi", "testRunUri");
         index.write_xml(&mut w, "testmanagementi", "index");
-        test_record.write_xml(&mut w, "testmanagementi", "testRecord");
+        match test_record {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "testRecord");
+            }
+            None => w.nil("testmanagementi", "testRecord"),
+        }
         w.close("testmanagementi", "updateTestRecordAtIndex");
         self.client
             .call(
@@ -3805,16 +3864,26 @@ impl TestManagementService<'_> {
         &self,
         test_run_uri: &str,
         file_name: &str,
-        title: &str,
-        data: &[u8],
+        title: Option<&str>,
+        data: Option<&[u8]>,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("testmanagementi", "updateTestRunAttachment");
         w.open_end();
         test_run_uri.write_xml(&mut w, "testmanagementi", "testRunUri");
         file_name.write_xml(&mut w, "testmanagementi", "fileName");
-        title.write_xml(&mut w, "testmanagementi", "title");
-        data.write_xml(&mut w, "testmanagementi", "data");
+        match title {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "title");
+            }
+            None => w.nil("testmanagementi", "title"),
+        }
+        match data {
+            Some(v) => {
+                v.write_xml(&mut w, "testmanagementi", "data");
+            }
+            None => w.nil("testmanagementi", "data"),
+        }
         w.close("testmanagementi", "updateTestRunAttachment");
         self.client
             .call(
@@ -3972,7 +4041,7 @@ impl TrackerService<'_> {
         &self,
         parent_object_uri: &str,
         title: Option<&str>,
-        content: &Text,
+        content: Option<&Text>,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "addComment");
@@ -3984,7 +4053,12 @@ impl TrackerService<'_> {
             }
             None => w.nil("trackeri", "title"),
         }
-        content.write_xml(&mut w, "trackeri", "content");
+        match content {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "content");
+            }
+            None => w.nil("trackeri", "content"),
+        }
         w.close("trackeri", "addComment");
         self.client
             .call(
@@ -4204,7 +4278,7 @@ impl TrackerService<'_> {
         in0: &str,
         in1: &str,
         in2: &EnumOptionId,
-        in3: &str,
+        in3: Option<&str>,
         in4: bool,
     ) -> Result<bool> {
         let mut w = XmlWriter::new();
@@ -4213,7 +4287,12 @@ impl TrackerService<'_> {
         in0.write_xml(&mut w, "trackeri", "in0");
         in1.write_xml(&mut w, "trackeri", "in1");
         in2.write_xml(&mut w, "trackeri", "in2");
-        in3.write_xml(&mut w, "trackeri", "in3");
+        match in3 {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "in3");
+            }
+            None => w.nil("trackeri", "in3"),
+        }
         in4.write_xml(&mut w, "trackeri", "in4");
         w.close("trackeri", "addLinkedItemWithRev");
         self.client
@@ -4464,16 +4543,26 @@ impl TrackerService<'_> {
         &self,
         project_id: &str,
         name: &str,
-        description: &str,
-        revision: &str,
+        description: Option<&str>,
+        revision: Option<&str>,
     ) -> Result<Baseline> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "createBaseline");
         w.open_end();
         project_id.write_xml(&mut w, "trackeri", "projectId");
         name.write_xml(&mut w, "trackeri", "name");
-        description.write_xml(&mut w, "trackeri", "description");
-        revision.write_xml(&mut w, "trackeri", "revision");
+        match description {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "description");
+            }
+            None => w.nil("trackeri", "description"),
+        }
+        match revision {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "revision");
+            }
+            None => w.nil("trackeri", "revision"),
+        }
         w.close("trackeri", "createBaseline");
         self.client
             .call(
@@ -4580,25 +4669,40 @@ impl TrackerService<'_> {
     pub async fn create_document(
         &self,
         project_id: &str,
-        location: &str,
+        location: Option<&str>,
         document_name: &str,
-        document_title: &str,
+        document_title: Option<&str>,
         allowed_wi_types: &[EnumOptionId],
         structure_link_role: &EnumOptionId,
-        home_page_content: &str,
+        home_page_content: Option<&str>,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "createDocument");
         w.open_end();
         project_id.write_xml(&mut w, "trackeri", "projectId");
-        location.write_xml(&mut w, "trackeri", "location");
+        match location {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "location");
+            }
+            None => w.nil("trackeri", "location"),
+        }
         document_name.write_xml(&mut w, "trackeri", "documentName");
-        document_title.write_xml(&mut w, "trackeri", "documentTitle");
+        match document_title {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "documentTitle");
+            }
+            None => w.nil("trackeri", "documentTitle"),
+        }
         for v in allowed_wi_types {
             v.write_xml(&mut w, "trackeri", "allowedWITypes");
         }
         structure_link_role.write_xml(&mut w, "trackeri", "structureLinkRole");
-        home_page_content.write_xml(&mut w, "trackeri", "homePageContent");
+        match home_page_content {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "homePageContent");
+            }
+            None => w.nil("trackeri", "homePageContent"),
+        }
         w.close("trackeri", "createDocument");
         self.client
             .call(
@@ -4743,7 +4847,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.createFolder` (modifies data; refused by read-only clients)
     pub async fn create_folder(
         &self,
-        project_id: &str,
+        project_id: Option<&str>,
         parent_name: &str,
         name: &str,
         title: &str,
@@ -4751,7 +4855,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "createFolder");
         w.open_end();
-        project_id.write_xml(&mut w, "trackeri", "projectId");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "projectId");
+            }
+            None => w.nil("trackeri", "projectId"),
+        }
         parent_name.write_xml(&mut w, "trackeri", "parentName");
         name.write_xml(&mut w, "trackeri", "name");
         title.write_xml(&mut w, "trackeri", "title");
@@ -4791,25 +4900,35 @@ impl TrackerService<'_> {
     pub async fn create_module(
         &self,
         project_id: &str,
-        location: &str,
+        location: Option<&str>,
         module_name: &str,
         allowed_wi_types: &[EnumOptionId],
         structure_link_role: &EnumOptionId,
         parent_to_child: bool,
-        home_page_content: &str,
+        home_page_content: Option<&str>,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "createModule");
         w.open_end();
         project_id.write_xml(&mut w, "trackeri", "projectId");
-        location.write_xml(&mut w, "trackeri", "location");
+        match location {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "location");
+            }
+            None => w.nil("trackeri", "location"),
+        }
         module_name.write_xml(&mut w, "trackeri", "moduleName");
         for v in allowed_wi_types {
             v.write_xml(&mut w, "trackeri", "allowedWITypes");
         }
         structure_link_role.write_xml(&mut w, "trackeri", "structureLinkRole");
         parent_to_child.write_xml(&mut w, "trackeri", "parentToChild");
-        home_page_content.write_xml(&mut w, "trackeri", "homePageContent");
+        match home_page_content {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "homePageContent");
+            }
+            None => w.nil("trackeri", "homePageContent"),
+        }
         w.close("trackeri", "createModule");
         self.client
             .call(
@@ -4881,14 +5000,19 @@ impl TrackerService<'_> {
     pub async fn create_work_item_in_module(
         &self,
         module_uri: &str,
-        parent_work_item_uri: &str,
+        parent_work_item_uri: Option<&str>,
         work_item: &WorkItem,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "createWorkItemInModule");
         w.open_end();
         module_uri.write_xml(&mut w, "trackeri", "moduleURI");
-        parent_work_item_uri.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+        match parent_work_item_uri {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+            }
+            None => w.nil("trackeri", "parentWorkItemURI"),
+        }
         work_item.write_xml(&mut w, "trackeri", "workItem");
         w.close("trackeri", "createWorkItemInModule");
         self.client
@@ -5221,7 +5345,7 @@ impl TrackerService<'_> {
     /// - `fieldOrder`: The order of fields (can be null).
     /// - Since Polarion 3.3.0
     ///
-    /// `TrackerWebService.generateHistory` (modifies data; refused by read-only clients)
+    /// `TrackerWebService.generateHistory`
     pub async fn generate_history(
         &self,
         workitem_uri: &str,
@@ -5243,7 +5367,7 @@ impl TrackerService<'_> {
             .call(
                 "TrackerWebService",
                 "generateHistory",
-                false,
+                true,
                 w.into_string(),
                 |node| {
                     node.children()
@@ -5686,13 +5810,18 @@ impl TrackerService<'_> {
     /// `TrackerWebService.getChildFolders`
     pub async fn get_child_folders(
         &self,
-        project_id: &str,
+        project_id: Option<&str>,
         parent_folder_id: &str,
     ) -> Result<Vec<Folder>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getChildFolders");
         w.open_end();
-        project_id.write_xml(&mut w, "trackeri", "projectId");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "projectId");
+            }
+            None => w.nil("trackeri", "projectId"),
+        }
         parent_folder_id.write_xml(&mut w, "trackeri", "parentFolderId");
         w.close("trackeri", "getChildFolders");
         self.client
@@ -6426,14 +6555,19 @@ impl TrackerService<'_> {
         &self,
         uri: &str,
         key: &str,
-        filter: &str,
+        filter: Option<&str>,
     ) -> Result<Vec<EnumOption>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getFilteredEnumOptionsForKey");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
         key.write_xml(&mut w, "trackeri", "key");
-        filter.write_xml(&mut w, "trackeri", "filter");
+        match filter {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "filter");
+            }
+            None => w.nil("trackeri", "filter"),
+        }
         w.close("trackeri", "getFilteredEnumOptionsForKey");
         self.client
             .call(
@@ -6461,11 +6595,16 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.8.3
     ///
     /// `TrackerWebService.getFolder`
-    pub async fn get_folder(&self, project_id: &str, folder_name: &str) -> Result<Folder> {
+    pub async fn get_folder(&self, project_id: Option<&str>, folder_name: &str) -> Result<Folder> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getFolder");
         w.open_end();
-        project_id.write_xml(&mut w, "trackeri", "projectId");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "projectId");
+            }
+            None => w.nil("trackeri", "projectId"),
+        }
         folder_name.write_xml(&mut w, "trackeri", "folderName");
         w.close("trackeri", "getFolder");
         self.client
@@ -6526,11 +6665,16 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.8.3
     ///
     /// `TrackerWebService.getFolders`
-    pub async fn get_folders(&self, project_id: &str) -> Result<Vec<Folder>> {
+    pub async fn get_folders(&self, project_id: Option<&str>) -> Result<Vec<Folder>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getFolders");
         w.open_end();
-        project_id.write_xml(&mut w, "trackeri", "projectId");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "projectId");
+            }
+            None => w.nil("trackeri", "projectId"),
+        }
         w.close("trackeri", "getFolders");
         self.client
             .call(
@@ -6734,13 +6878,18 @@ impl TrackerService<'_> {
     pub async fn get_localized_work_item_description(
         &self,
         uri: &str,
-        language: &str,
+        language: Option<&str>,
     ) -> Result<Text> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getLocalizedWorkItemDescription");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        language.write_xml(&mut w, "trackeri", "language");
+        match language {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "language");
+            }
+            None => w.nil("trackeri", "language"),
+        }
         w.close("trackeri", "getLocalizedWorkItemDescription");
         self.client
             .call(
@@ -6809,12 +6958,21 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.6.1
     ///
     /// `TrackerWebService.getLocalizedWorkItemTitle`
-    pub async fn get_localized_work_item_title(&self, uri: &str, language: &str) -> Result<String> {
+    pub async fn get_localized_work_item_title(
+        &self,
+        uri: &str,
+        language: Option<&str>,
+    ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getLocalizedWorkItemTitle");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        language.write_xml(&mut w, "trackeri", "language");
+        match language {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "language");
+            }
+            None => w.nil("trackeri", "language"),
+        }
         w.close("trackeri", "getLocalizedWorkItemTitle");
         self.client
             .call(
@@ -7381,11 +7539,16 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.18.1
     ///
     /// `TrackerWebService.getRootFolders`
-    pub async fn get_root_folders(&self, project_id: &str) -> Result<Vec<Folder>> {
+    pub async fn get_root_folders(&self, project_id: Option<&str>) -> Result<Vec<Folder>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "getRootFolders");
         w.open_end();
-        project_id.write_xml(&mut w, "trackeri", "projectId");
+        match project_id {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "projectId");
+            }
+            None => w.nil("trackeri", "projectId"),
+        }
         w.close("trackeri", "getRootFolders");
         self.client
             .call(
@@ -8099,11 +8262,20 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.7.0
     ///
     /// `TrackerWebService.listAllActivities`
-    pub async fn list_all_activities(&self, query: &str, count: i32) -> Result<Vec<Activity>> {
+    pub async fn list_all_activities(
+        &self,
+        query: Option<&str>,
+        count: i32,
+    ) -> Result<Vec<Activity>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listAllActivities");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listAllActivities");
         self.client
@@ -8133,13 +8305,18 @@ impl TrackerService<'_> {
     /// `TrackerWebService.listAllActivitiesGlobalIds`
     pub async fn list_all_activities_global_ids(
         &self,
-        query: &str,
+        query: Option<&str>,
         count: i32,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listAllActivitiesGlobalIds");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listAllActivitiesGlobalIds");
         self.client
@@ -8172,14 +8349,19 @@ impl TrackerService<'_> {
     pub async fn list_group_activities(
         &self,
         uri: &str,
-        query: &str,
+        query: Option<&str>,
         count: i32,
     ) -> Result<Vec<Activity>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listGroupActivities");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listGroupActivities");
         self.client
@@ -8211,14 +8393,19 @@ impl TrackerService<'_> {
     pub async fn list_group_activities_global_ids(
         &self,
         uri: &str,
-        query: &str,
+        query: Option<&str>,
         count: i32,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listGroupActivitiesGlobalIds");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listGroupActivitiesGlobalIds");
         self.client
@@ -8251,14 +8438,19 @@ impl TrackerService<'_> {
     pub async fn list_project_activities(
         &self,
         project_id: &str,
-        query: &str,
+        query: Option<&str>,
         count: i32,
     ) -> Result<Vec<Activity>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listProjectActivities");
         w.open_end();
         project_id.write_xml(&mut w, "trackeri", "projectId");
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listProjectActivities");
         self.client
@@ -8290,14 +8482,19 @@ impl TrackerService<'_> {
     pub async fn list_project_activities_global_ids(
         &self,
         project_id: &str,
-        query: &str,
+        query: Option<&str>,
         count: i32,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "listProjectActivitiesGlobalIds");
         w.open_end();
         project_id.write_xml(&mut w, "trackeri", "projectId");
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         count.write_xml(&mut w, "trackeri", "count");
         w.close("trackeri", "listProjectActivitiesGlobalIds");
         self.client
@@ -8381,7 +8578,7 @@ impl TrackerService<'_> {
         &self,
         work_item_uri: &str,
         module_uri: &str,
-        parent_work_item_uri: &str,
+        parent_work_item_uri: Option<&str>,
         position: i32,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
@@ -8389,7 +8586,12 @@ impl TrackerService<'_> {
         w.open_end();
         work_item_uri.write_xml(&mut w, "trackeri", "workItemURI");
         module_uri.write_xml(&mut w, "trackeri", "moduleURI");
-        parent_work_item_uri.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+        match parent_work_item_uri {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "parentWorkItemURI");
+            }
+            None => w.nil("trackeri", "parentWorkItemURI"),
+        }
         position.write_xml(&mut w, "trackeri", "position");
         w.close("trackeri", "moveWorkItemToModule");
         self.client
@@ -8471,14 +8673,19 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryModuleUris`
     pub async fn query_module_uris(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryModuleUris");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         results_limit.write_xml(&mut w, "trackeri", "resultsLimit");
         w.close("trackeri", "queryModuleUris");
@@ -8541,7 +8748,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryModuleUrisInBaseline`
     pub async fn query_module_uris_in_baseline(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         baseline_revision: &str,
         results_limit: i32,
@@ -8549,7 +8756,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryModuleUrisInBaseline");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         baseline_revision.write_xml(&mut w, "trackeri", "baselineRevision");
         results_limit.write_xml(&mut w, "trackeri", "resultsLimit");
@@ -8622,7 +8834,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryModules`
     pub async fn query_modules(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         fields: &[String],
         results_limit: i32,
@@ -8630,7 +8842,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryModules");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         for v in fields {
             v.write_xml(&mut w, "trackeri", "fields");
@@ -8705,7 +8922,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryModulesInBaseline`
     pub async fn query_modules_in_baseline(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         baseline_revision: &str,
         fields: &[String],
@@ -8714,7 +8931,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryModulesInBaseline");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         baseline_revision.write_xml(&mut w, "trackeri", "baselineRevision");
         for v in fields {
@@ -8869,14 +9091,19 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryWikiPageUris`
     pub async fn query_wiki_page_uris(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         results_limit: i32,
     ) -> Result<Vec<String>> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryWikiPageUris");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         results_limit.write_xml(&mut w, "trackeri", "resultsLimit");
         w.close("trackeri", "queryWikiPageUris");
@@ -8939,7 +9166,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryWikiPageUrisInBaseline`
     pub async fn query_wiki_page_uris_in_baseline(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         baseline_revision: &str,
         results_limit: i32,
@@ -8947,7 +9174,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryWikiPageUrisInBaseline");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         baseline_revision.write_xml(&mut w, "trackeri", "baselineRevision");
         results_limit.write_xml(&mut w, "trackeri", "resultsLimit");
@@ -9019,7 +9251,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryWikiPages`
     pub async fn query_wiki_pages(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         fields: &[String],
         results_limit: i32,
@@ -9027,7 +9259,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryWikiPages");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         for v in fields {
             v.write_xml(&mut w, "trackeri", "fields");
@@ -9100,7 +9337,7 @@ impl TrackerService<'_> {
     /// `TrackerWebService.queryWikiPagesInBaseline`
     pub async fn query_wiki_pages_in_baseline(
         &self,
-        query: &str,
+        query: Option<&str>,
         sort: &str,
         baseline_revision: &str,
         fields: &[String],
@@ -9109,7 +9346,12 @@ impl TrackerService<'_> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "queryWikiPagesInBaseline");
         w.open_end();
-        query.write_xml(&mut w, "trackeri", "query");
+        match query {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "query");
+            }
+            None => w.nil("trackeri", "query"),
+        }
         sort.write_xml(&mut w, "trackeri", "sort");
         baseline_revision.write_xml(&mut w, "trackeri", "baselineRevision");
         for v in fields {
@@ -10095,9 +10337,9 @@ impl TrackerService<'_> {
         &self,
         source_uri: &str,
         target_project_id: &str,
-        target_location: &str,
+        target_location: Option<&str>,
         target_name: &str,
-        target_title: &str,
+        target_title: Option<&str>,
         update_title_in_document: bool,
         link_role: Option<&EnumOptionId>,
         derived_fields: &[String],
@@ -10107,9 +10349,19 @@ impl TrackerService<'_> {
         w.open_end();
         source_uri.write_xml(&mut w, "trackeri", "sourceURI");
         target_project_id.write_xml(&mut w, "trackeri", "targetProjectId");
-        target_location.write_xml(&mut w, "trackeri", "targetLocation");
+        match target_location {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "targetLocation");
+            }
+            None => w.nil("trackeri", "targetLocation"),
+        }
         target_name.write_xml(&mut w, "trackeri", "targetName");
-        target_title.write_xml(&mut w, "trackeri", "targetTitle");
+        match target_title {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "targetTitle");
+            }
+            None => w.nil("trackeri", "targetTitle"),
+        }
         update_title_in_document.write_xml(&mut w, "trackeri", "updateTitleInDocument");
         match link_role {
             Some(v) => {
@@ -10161,7 +10413,7 @@ impl TrackerService<'_> {
         target_project_id: &str,
         target_location: &str,
         target_name: &str,
-        link_role: &EnumOptionId,
+        link_role: Option<&EnumOptionId>,
         fields: &[String],
         except_fields: &[String],
         derived_fields: &[String],
@@ -10173,7 +10425,12 @@ impl TrackerService<'_> {
         target_project_id.write_xml(&mut w, "trackeri", "targetProjectId");
         target_location.write_xml(&mut w, "trackeri", "targetLocation");
         target_name.write_xml(&mut w, "trackeri", "targetName");
-        link_role.write_xml(&mut w, "trackeri", "linkRole");
+        match link_role {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "linkRole");
+            }
+            None => w.nil("trackeri", "linkRole"),
+        }
         for v in fields {
             v.write_xml(&mut w, "trackeri", "fields");
         }
@@ -10286,15 +10543,25 @@ impl TrackerService<'_> {
     pub async fn set_localized_work_item_description(
         &self,
         uri: &str,
-        language: &str,
-        description: &Text,
+        language: Option<&str>,
+        description: Option<&Text>,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "setLocalizedWorkItemDescription");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        language.write_xml(&mut w, "trackeri", "language");
-        description.write_xml(&mut w, "trackeri", "description");
+        match language {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "language");
+            }
+            None => w.nil("trackeri", "language"),
+        }
+        match description {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "description");
+            }
+            None => w.nil("trackeri", "description"),
+        }
         w.close("trackeri", "setLocalizedWorkItemDescription");
         self.client
             .call(
@@ -10317,15 +10584,25 @@ impl TrackerService<'_> {
     pub async fn set_localized_work_item_title(
         &self,
         uri: &str,
-        language: &str,
-        title: &str,
+        language: Option<&str>,
+        title: Option<&str>,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "setLocalizedWorkItemTitle");
         w.open_end();
         uri.write_xml(&mut w, "trackeri", "uri");
-        language.write_xml(&mut w, "trackeri", "language");
-        title.write_xml(&mut w, "trackeri", "title");
+        match language {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "language");
+            }
+            None => w.nil("trackeri", "language"),
+        }
+        match title {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "title");
+            }
+            None => w.nil("trackeri", "title"),
+        }
         w.close("trackeri", "setLocalizedWorkItemTitle");
         self.client
             .call(
@@ -10375,18 +10652,33 @@ impl TrackerService<'_> {
         &self,
         workitem_uri: &str,
         id: &str,
-        file_name: &str,
-        title: &str,
-        data: &[u8],
+        file_name: Option<&str>,
+        title: Option<&str>,
+        data: Option<&[u8]>,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "updateAttachment");
         w.open_end();
         workitem_uri.write_xml(&mut w, "trackeri", "workitemURI");
         id.write_xml(&mut w, "trackeri", "id");
-        file_name.write_xml(&mut w, "trackeri", "fileName");
-        title.write_xml(&mut w, "trackeri", "title");
-        data.write_xml(&mut w, "trackeri", "data");
+        match file_name {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "fileName");
+            }
+            None => w.nil("trackeri", "fileName"),
+        }
+        match title {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "title");
+            }
+            None => w.nil("trackeri", "title"),
+        }
+        match data {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "data");
+            }
+            None => w.nil("trackeri", "data"),
+        }
         w.close("trackeri", "updateAttachment");
         self.client
             .call(
@@ -10431,14 +10723,19 @@ impl TrackerService<'_> {
     pub async fn update_derived_document(
         &self,
         document_uri: &str,
-        revision: &str,
+        revision: Option<&str>,
         auto_suspect: bool,
     ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "updateDerivedDocument");
         w.open_end();
         document_uri.write_xml(&mut w, "trackeri", "documentURI");
-        revision.write_xml(&mut w, "trackeri", "revision");
+        match revision {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "revision");
+            }
+            None => w.nil("trackeri", "revision"),
+        }
         auto_suspect.write_xml(&mut w, "trackeri", "autoSuspect");
         w.close("trackeri", "updateDerivedDocument");
         self.client
@@ -10458,12 +10755,21 @@ impl TrackerService<'_> {
     /// - Since Polarion 3.4.1
     ///
     /// `TrackerWebService.updateDerivedModule` (modifies data; refused by read-only clients)
-    pub async fn update_derived_module(&self, module_uri: &str, revision: &str) -> Result<()> {
+    pub async fn update_derived_module(
+        &self,
+        module_uri: &str,
+        revision: Option<&str>,
+    ) -> Result<()> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "updateDerivedModule");
         w.open_end();
         module_uri.write_xml(&mut w, "trackeri", "moduleURI");
-        revision.write_xml(&mut w, "trackeri", "revision");
+        match revision {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "revision");
+            }
+            None => w.nil("trackeri", "revision"),
+        }
         w.close("trackeri", "updateDerivedModule");
         self.client
             .call(
@@ -10509,13 +10815,18 @@ impl TrackerService<'_> {
     pub async fn update_title_heading_in_document(
         &self,
         document_uri: &str,
-        title: &str,
+        title: Option<&str>,
     ) -> Result<String> {
         let mut w = XmlWriter::new();
         w.open("trackeri", "updateTitleHeadingInDocument");
         w.open_end();
         document_uri.write_xml(&mut w, "trackeri", "documentURI");
-        title.write_xml(&mut w, "trackeri", "title");
+        match title {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "title");
+            }
+            None => w.nil("trackeri", "title"),
+        }
         w.close("trackeri", "updateTitleHeadingInDocument");
         self.client
             .call(

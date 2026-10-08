@@ -43,6 +43,8 @@ const READ_PREFIXES: &[&str] = &[
     "get", "query", "list", "search", "has", "can", "is", "was", "export",
 ];
 const SESSION_OPS: &[&str] = &["logIn", "logInWithToken", "endSession", "transactionExists"];
+/// Read-only operations whose name does not start with a read prefix.
+const OTHER_READS: &[&str] = &["generateHistory"];
 
 /// Names of the primitive `AnyValue` variants; generated variants must not collide.
 const PRIMITIVE_VARIANTS: &[&str] = &[
@@ -52,6 +54,7 @@ const PRIMITIVE_VARIANTS: &[&str] = &[
 
 pub fn is_read(op: &str) -> bool {
     SESSION_OPS.contains(&op)
+        || OTHER_READS.contains(&op)
         || READ_PREFIXES.iter().any(|p| {
             op.strip_prefix(p).is_some_and(|rest| {
                 rest.is_empty() || rest.starts_with(|c: char| c.is_ascii_uppercase())
@@ -233,6 +236,20 @@ impl<'m> Gen<'m> {
         Ok(out)
     }
 
+    /// Own elements of the types that extend `base`, with the extending type's name.
+    ///
+    /// The server sends such a subtype where the WSDL declares the base type
+    /// (e.g. `EnumCustomFieldType` for `CustomFieldType`); these elements are
+    /// decoded into the base struct as optional fields so they are not lost.
+    fn subtype_elements(&self, base: &QName) -> Vec<(&'m ElemDef, &'m str)> {
+        self.model
+            .complex
+            .values()
+            .filter(|d| d.base.as_ref() == Some(base))
+            .flat_map(|d| d.elements.iter().map(|e| (e, d.qname.name.as_str())))
+            .collect()
+    }
+
     fn structs(&self) -> impl Iterator<Item = (&'m ComplexDef, &String)> {
         self.model
             .complex
@@ -361,6 +378,34 @@ impl<'m> Gen<'m> {
             let _ = writeln!(out, "    pub {ident}: {full},");
             fields.push((*el, ident, ty, card));
         }
+        let mut subtype_fields = Vec::new();
+        for (el, subtype) in self.subtype_elements(&def.qname) {
+            let ident = snake(&el.name);
+            if idents.contains(&ident) {
+                continue;
+            }
+            idents.insert(ident.clone());
+            let ty = self.ty(&el.ty)?;
+            if el.unbounded
+                || !matches!(
+                    ty,
+                    Ty::Str | Ty::Bool | Ty::I32 | Ty::I64 | Ty::F32 | Ty::F64
+                )
+            {
+                bail!(
+                    "{name}: subtype field {}.{} is not a single scalar",
+                    subtype,
+                    el.name
+                );
+            }
+            let _ = writeln!(
+                out,
+                "    /// `{}`: only set when the server sends the subtype `{subtype}` (read-only, not serialized).",
+                el.name
+            );
+            let _ = writeln!(out, "    pub {ident}: Option<{}>,", self.rust(&ty));
+            subtype_fields.push((el, ident));
+        }
         let mut attr_fields = Vec::new();
         for a in &attrs {
             let mut ident = snake(&a.name);
@@ -438,7 +483,7 @@ impl<'m> Gen<'m> {
             };
             let _ = writeln!(out, "        out.{ident} = {expr};");
         }
-        if !fields.is_empty() {
+        if !fields.is_empty() || !subtype_fields.is_empty() {
             out.push_str("        for c in node.children().filter(Node::is_element) {\n            match c.tag_name().name() {\n");
             for (el, ident, ty, card) in &fields {
                 let read = match (ty, card) {
@@ -456,6 +501,13 @@ impl<'m> Gen<'m> {
                     (_, Card::Repeated) => format!("out.{ident}.push(xml::read_req(c)?)"),
                 };
                 let _ = writeln!(out, "                {:?} => {read},", el.name);
+            }
+            for (el, ident) in &subtype_fields {
+                let _ = writeln!(
+                    out,
+                    "                {:?} => out.{ident} = xml::read_opt(c)?,",
+                    el.name
+                );
             }
             out.push_str("                _ => {}\n            }\n        }\n");
         }
@@ -674,6 +726,7 @@ impl<'m> Gen<'m> {
         }
 
         let p = self.prefix(&op.ns).to_owned();
+        let doc_nullable = op.doc.as_deref().map(nullable_params).unwrap_or_default();
         let mut args = vec!["&self".to_owned()];
         let mut body = String::new();
         let mut idents = BTreeSet::new();
@@ -683,13 +736,25 @@ impl<'m> Gen<'m> {
                 bail!("{}: duplicate parameter `{ident}`", op.name);
             }
             let key = (service.name.as_str(), op.name.as_str(), param.name.as_str());
-            let nil_override = NILLABLE_PARAMS.contains(&key);
+            let nil_override = NILLABLE_PARAMS.contains(&key) || doc_nullable.contains(&param.name);
             let mut card = Self::card(param);
             if (nil_override || OPTIONAL_PARAMS.contains(&key)) && card == Card::Required {
                 card = Card::Optional;
             }
             let nillable = param.nillable || nil_override;
             let ty = self.ty(&param.ty)?;
+            if let Ty::Struct(_) = &ty {
+                if let TypeRef::Named(q) = &param.ty {
+                    if !self.subtype_elements(q).is_empty() {
+                        bail!(
+                            "{}.{}: parameter type {} has read-only subtype fields that would not be sent",
+                            service.name,
+                            op.name,
+                            q.name
+                        );
+                    }
+                }
+            }
             let (one, many) = match &ty {
                 Ty::Str => ("&str".to_owned(), "&[String]".to_owned()),
                 Ty::Bool | Ty::I32 | Ty::I64 | Ty::F32 | Ty::F64 => {
@@ -917,6 +982,34 @@ fn namespace_label(ns: &str) -> String {
 }
 
 /// Javadoc → rustdoc lines.
+/// Parameters whose `@param` documentation says `null` is accepted
+/// ("or null", "can be null", "if null", ...; "not null" does not count).
+fn nullable_params(doc: &str) -> BTreeSet<String> {
+    const PHRASES: &[&str] = &[
+        "or null",
+        "or {code null}",
+        "can be null",
+        "if null",
+        "when null",
+        "null refers",
+        "null value",
+        "pass null",
+    ];
+    // Inline tags would otherwise end a block tag's text at their `@`.
+    let doc = doc.replace("{@", "{");
+    doc.split('@')
+        .filter_map(|tag| {
+            let rest = tag.strip_prefix("param")?.trim_start();
+            let (name, text) = rest.split_once(char::is_whitespace)?;
+            let text = text.to_lowercase();
+            PHRASES
+                .iter()
+                .any(|phrase| text.contains(phrase))
+                .then(|| name.to_owned())
+        })
+        .collect()
+}
+
 fn javadoc(text: &str) -> Vec<String> {
     let mut s = text.to_owned();
     for tag in ["{@link ", "{@code ", "{@linkplain "] {
@@ -987,7 +1080,22 @@ mod tests {
         assert!(!is_read("createWorkItem"));
         assert!(!is_read("isolate"));
         assert!(!is_read("updateWorkItem"));
-        assert!(!is_read("generateHistory"));
+        assert!(is_read("generateHistory"));
+        assert!(!is_read("doAutoSuspect"));
+    }
+
+    #[test]
+    fn nullable_params_from_docs() {
+        let doc = "Moves it.\n@param workItemURI The URI (not null).\n@param parentWorkItemURI The parent or {@code null} to insert it as the root.\n@param title The title (can be null).\n@param fields The keys of the fields to set null for.\n@return Nothing or null.";
+        assert_eq!(
+            nullable_params(doc),
+            BTreeSet::from(["parentWorkItemURI".to_owned(), "title".to_owned()])
+        );
+        assert!(nullable_params("@param language The language Id (Not null).").is_empty());
+        assert_eq!(
+            nullable_params("@param revision The revision or a null value for the HEAD."),
+            BTreeSet::from(["revision".to_owned()])
+        );
     }
 
     #[test]

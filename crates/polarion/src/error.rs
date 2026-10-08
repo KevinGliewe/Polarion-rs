@@ -8,6 +8,23 @@ pub enum Error {
     /// The requested object does not exist or the user may not see it.
     #[error("{kind} `{id}` not found")]
     NotFound { kind: &'static str, id: String },
+
+    /// A write was refused before anything was sent: writes are not enabled for
+    /// the project (see [`crate::PolarionBuilder::allow_writes`]), or the project
+    /// of the target could not be determined.
+    #[error("{operation} refused: {}", match project {
+        Some(p) => format!("writes to project `{p}` are not allowed"),
+        None => "the target's project is unknown, so the write allowlist cannot be checked".to_owned(),
+    })]
+    WriteNotAllowed {
+        operation: &'static str,
+        project: Option<String>,
+    },
+
+    /// Invalid input, e.g. a value that does not fit a field's type, or no workflow action
+    /// leading to the requested status.
+    #[error("{0}")]
+    Invalid(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

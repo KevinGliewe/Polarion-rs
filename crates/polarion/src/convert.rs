@@ -1,11 +1,17 @@
-//! Mappings from the generated SOAP types to the domain types.
+//! Mappings between the generated SOAP types and the domain types.
 
 use std::collections::BTreeMap;
 
 use polarion_soap::types::{self as soap, AnyValue};
 
-use crate::model::{Document, FieldValue, Hyperlink, Link, Project, Text, User, WorkItem};
+use crate::error::{Error, Result};
+use crate::model::{
+    Approval, Attachment, Category, Change, Comment, Document, EnumOption, FieldChange,
+    FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Project, Text, TimePoint, User,
+    WorkItem, WorkRecord, WorkflowAction,
+};
 use crate::uri::{self, DocumentRef, ItemRef};
+use crate::write::{NewWorkItem, WorkItemUpdate};
 
 fn enum_id(e: Option<soap::EnumOptionId>) -> Option<String> {
     e.and_then(|e| e.id)
@@ -162,9 +168,335 @@ impl From<soap::WorkItem> for WorkItem {
                     })
                 })
                 .collect(),
+            external_links: w
+                .externally_linked_work_items
+                .into_iter()
+                .flatten()
+                .filter_map(|h| {
+                    Some(Hyperlink {
+                        role: enum_id(h.role),
+                        url: h.work_item_uri?,
+                    })
+                })
+                .collect(),
+            linked_revisions: w
+                .linked_revisions
+                .into_iter()
+                .flatten()
+                .filter_map(|r| {
+                    Some(LinkedRevision {
+                        repository: r.repository_name,
+                        revision: r.name?,
+                    })
+                })
+                .collect(),
+            comments: w
+                .comments
+                .into_iter()
+                .flatten()
+                .map(Comment::from)
+                .collect(),
+            attachments: w
+                .attachments
+                .into_iter()
+                .flatten()
+                .map(Attachment::from)
+                .collect(),
+            approvals: w
+                .approvals
+                .into_iter()
+                .flatten()
+                .map(|a| Approval {
+                    user: user_id(a.user),
+                    status: enum_id(a.status),
+                })
+                .collect(),
+            work_records: w
+                .work_records
+                .into_iter()
+                .flatten()
+                .map(WorkRecord::from)
+                .collect(),
+            time_point: w.time_point.and_then(|t| t.id),
+            planned_in: w.planned_in_ur_is.unwrap_or_default(),
+            initial_estimate: w.initial_estimate,
+            remaining_estimate: w.remaining_estimate,
+            time_spent: w.time_spent,
+            previous_status: enum_id(w.previous_status),
+            location: w.location,
             custom_fields: custom_fields(w.custom_fields),
             uri: w.uri,
         }
+    }
+}
+
+impl From<soap::Comment> for Comment {
+    fn from(c: soap::Comment) -> Self {
+        Self {
+            id: c.id,
+            author: user_id(c.author),
+            created: c.created,
+            title: c.title,
+            text: text(c.text),
+            resolved: c.resolved.unwrap_or(false),
+            tags: c.tags.into_iter().flatten().filter_map(|t| t.id).collect(),
+            parent: c.parent_comment_uri,
+            replies: c.child_comment_ur_is.unwrap_or_default(),
+            uri: c.uri,
+        }
+    }
+}
+
+impl From<soap::Attachment> for Attachment {
+    fn from(a: soap::Attachment) -> Self {
+        Self {
+            id: a.id,
+            file_name: a.file_name,
+            title: a.title,
+            length: a.length,
+            author: user_id(a.author),
+            updated: a.updated,
+            url: a.url,
+        }
+    }
+}
+
+impl From<soap::WorkRecord> for WorkRecord {
+    fn from(r: soap::WorkRecord) -> Self {
+        Self {
+            id: r.id,
+            user: user_id(r.user),
+            date: r.date,
+            time_spent: r.time_spent,
+            kind: enum_id(r.type_),
+            comment: r.comment,
+            uri: r.uri,
+        }
+    }
+}
+
+impl From<soap::WorkflowAction> for WorkflowAction {
+    fn from(a: soap::WorkflowAction) -> Self {
+        Self {
+            id: a.action_id,
+            name: a.action_name,
+            native_id: a.native_action_id,
+            target_status: enum_id(a.target_status),
+            required_fields: a.required_features.unwrap_or_default(),
+            message: a.unavailability_message.filter(|m| !m.is_empty()),
+        }
+    }
+}
+
+impl From<soap::Change> for Change {
+    fn from(c: soap::Change) -> Self {
+        Self {
+            revision: c.revision,
+            date: c.date,
+            user: c.user,
+            creation: c.creation,
+            changes: c
+                .diffs
+                .into_iter()
+                .flatten()
+                .map(|d| FieldChange {
+                    field: d.field_name.unwrap_or_default(),
+                    before: d.before.and_then(field_value),
+                    after: d.after.and_then(field_value),
+                    added: d
+                        .added
+                        .into_iter()
+                        .flatten()
+                        .filter_map(field_value)
+                        .collect(),
+                    removed: d
+                        .removed
+                        .into_iter()
+                        .flatten()
+                        .filter_map(field_value)
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<soap::CustomFieldType> for FieldDefinition {
+    fn from(f: soap::CustomFieldType) -> Self {
+        Self {
+            id: f.id.unwrap_or_default(),
+            name: f.name,
+            // An `xsd:QName` such as `ns2:EnumOptionId`: the prefix is meaningless here.
+            kind: f
+                .type_
+                .map(|t| t.rsplit([':', '}']).next().unwrap_or(&t).to_owned()),
+            multi: f.multi,
+            required: f.required,
+            enum_id: f.enum_id,
+            description: f.description,
+            depends_on: f.depends_on,
+            default_value: f.default_value.and_then(field_value),
+        }
+    }
+}
+
+impl From<soap::EnumOption> for EnumOption {
+    fn from(o: soap::EnumOption) -> Self {
+        Self {
+            id: o.id.unwrap_or_default(),
+            name: o.name,
+            default: o.default_,
+            hidden: o.hidden,
+            sequence: o.sequence_number,
+            properties: o
+                .properties
+                .into_iter()
+                .flatten()
+                .filter_map(|p| Some((p.key, p.value?)))
+                .collect(),
+        }
+    }
+}
+
+impl From<soap::Category> for Category {
+    fn from(c: soap::Category) -> Self {
+        Self {
+            id: c.id,
+            name: c.name,
+            description: text(c.description),
+        }
+    }
+}
+
+impl From<soap::TimePoint> for TimePoint {
+    fn from(t: soap::TimePoint) -> Self {
+        Self {
+            id: t.id,
+            name: t.name,
+            time: t.time,
+            closed: t.closed.unwrap_or(false),
+            description: text(t.description),
+        }
+    }
+}
+
+// ---- domain → SOAP (writes) ----
+
+pub(crate) fn soap_text(t: &Text) -> soap::Text {
+    soap::Text {
+        type_: t.content_type.clone(),
+        content: t.content.clone(),
+        content_lossy: false,
+    }
+}
+
+pub(crate) fn option_id(id: &str) -> soap::EnumOptionId {
+    soap::EnumOptionId {
+        id: Some(id.to_owned()),
+    }
+}
+
+/// The SOAP form of a custom field value.
+pub(crate) fn any_value(value: &FieldValue) -> Result<AnyValue> {
+    Ok(match value {
+        FieldValue::String(s) => AnyValue::String(s.clone()),
+        FieldValue::Bool(b) => AnyValue::Boolean(*b),
+        FieldValue::Int(i) => match i32::try_from(*i) {
+            Ok(i) => AnyValue::Int(i),
+            Err(_) => AnyValue::Long(*i),
+        },
+        // Polarion's float custom fields are `xsd:float`.
+        FieldValue::Float(f) => AnyValue::Float(*f as f32),
+        FieldValue::Decimal(s) => AnyValue::Decimal(s.clone()),
+        FieldValue::Date(s) => AnyValue::Date(s.clone()),
+        FieldValue::DateTime(s) => AnyValue::DateTime(s.clone()),
+        FieldValue::Time(s) => AnyValue::Time(s.clone()),
+        FieldValue::Enum(id) => AnyValue::EnumOptionId(Box::new(option_id(id))),
+        FieldValue::Text(t) => AnyValue::Text(Box::new(soap_text(t))),
+        FieldValue::List(items) => {
+            if items.iter().all(|v| matches!(v, FieldValue::Enum(_))) {
+                AnyValue::ArrayOfEnumOptionId(
+                    items
+                        .iter()
+                        .filter_map(|v| match v {
+                            FieldValue::Enum(id) => Some(option_id(id)),
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            } else if items.iter().all(|v| matches!(v, FieldValue::String(_))) {
+                AnyValue::ArrayOfXsdString(
+                    items
+                        .iter()
+                        .filter_map(|v| v.as_str().map(str::to_owned))
+                        .collect(),
+                )
+            } else {
+                AnyValue::ArrayOfXsdAnyType(items.iter().map(any_value).collect::<Result<_>>()?)
+            }
+        }
+        FieldValue::Other { xsi_type, .. } => {
+            return Err(Error::Invalid(format!(
+                "values of type {} cannot be written",
+                xsi_type.as_deref().unwrap_or("unknown")
+            )));
+        }
+    })
+}
+
+/// The `createWorkItem` content. `project` is the project as returned by the server.
+pub(crate) fn new_work_item(n: &NewWorkItem, project: soap::Project) -> Result<soap::WorkItem> {
+    Ok(soap::WorkItem {
+        project: Some(soap::Project {
+            id: project.id,
+            uri: project.uri,
+            ..soap::Project::default()
+        }),
+        type_: Some(option_id(&n.kind)),
+        title: n.title.clone(),
+        description: n.description.as_ref().map(soap_text),
+        priority: n.priority.as_ref().map(|p| soap::PriorityOptionId {
+            id: Some(p.clone()),
+        }),
+        severity: n.severity.as_deref().map(option_id),
+        due_date: n.due_date.clone(),
+        initial_estimate: n.initial_estimate.clone(),
+        remaining_estimate: n.remaining_estimate.clone(),
+        custom_fields: if n.custom_fields.is_empty() {
+            None
+        } else {
+            Some(
+                n.custom_fields
+                    .iter()
+                    .map(|(key, value)| {
+                        Ok(soap::Custom {
+                            key: key.clone(),
+                            value: Some(any_value(value)?),
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            )
+        },
+        ..soap::WorkItem::default()
+    })
+}
+
+/// The `updateWorkItem` content: the URI plus the standard fields that are set.
+pub(crate) fn work_item_update(uri: &str, u: &WorkItemUpdate) -> soap::WorkItem {
+    soap::WorkItem {
+        uri: Some(uri.to_owned()),
+        title: u.title.clone(),
+        description: u.description.as_ref().map(soap_text),
+        priority: u.priority.as_ref().map(|p| soap::PriorityOptionId {
+            id: Some(p.clone()),
+        }),
+        severity: u.severity.as_deref().map(option_id),
+        resolution: u.resolution.as_deref().map(option_id),
+        due_date: u.due_date.clone(),
+        initial_estimate: u.initial_estimate.clone(),
+        remaining_estimate: u.remaining_estimate.clone(),
+        time_spent: u.time_spent.clone(),
+        ..soap::WorkItem::default()
     }
 }
 

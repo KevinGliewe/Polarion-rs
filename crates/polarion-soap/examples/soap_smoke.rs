@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Tracker.queryModules (5)",
             client
                 .tracker()
-                .query_modules(&format!("project.id:{project}"), "title", &fields, 5)
+                .query_modules(Some(&format!("project.id:{project}")), "title", &fields, 5)
                 .await,
         ) {
             for d in &docs {

@@ -8,8 +8,9 @@
 //! ```
 //!
 //! Read-only: the client refuses every operation that may modify data, so this
-//! is safe to run against a production server. It sends about a dozen small
-//! requests and keeps going when one fails.
+//! is safe to run against a production server. It sends about twenty small
+//! requests and keeps going when one fails. Lines starting with `CHECK` compare
+//! an assumption the write operations rely on with what the server returns.
 //!
 //! Optional:
 //! - `POLARION_DOCUMENT=space/name`: the document to read (default: the first one found).
@@ -17,7 +18,7 @@
 //! - `POLARION_LIST_PROJECTS=1`: also list all projects (two requests per project group).
 //! - `POLARION_INSECURE=1`: accept self-signed certificates.
 
-use polarion::{Auth, Error, Fields, Polarion, WorkItemQuery};
+use polarion::{Auth, DocumentRef, Error, Fields, ItemRef, Polarion, WorkItemQuery};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -66,59 +67,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let url = var("POLARION_URL").ok_or("POLARION_URL is not set")?;
     let token = var("POLARION_TOKEN").ok_or("POLARION_TOKEN is not set")?;
     let project = var("POLARION_PROJECT").ok_or("POLARION_PROJECT is not set")?;
-    let soap = polarion::soap::Client::builder(&url, Auth::Token(token))
+    // Read-only: no `allow_writes`.
+    let polarion = Polarion::builder(&url, Auth::Token(token))
         .danger_accept_invalid_certs(var("POLARION_INSECURE").as_deref() == Some("1"))
-        .read_only(true)
         .build()?;
-    let polarion = Polarion::from_client(soap);
+    let (items, documents, schema) = (polarion.items(), polarion.documents(), polarion.schema());
 
     if let Some(p) = report(
-        &format!("project({project})"),
-        polarion.project(&project).await,
+        &format!("projects().get({project})"),
+        polarion.projects().get(&project).await,
     ) {
         show(&p);
     }
 
     if var("POLARION_LIST_PROJECTS").as_deref() == Some("1") {
-        if let Some(projects) = report("projects()", polarion.projects().await) {
+        if let Some(projects) = report("projects().list()", polarion.projects().list().await) {
             let ids: Vec<_> = projects.iter().filter_map(|p| p.id.as_deref()).collect();
             println!("      {} projects: {:?}", ids.len(), ids);
         }
     }
 
-    if let Some(spaces) = report("spaces", polarion.spaces(&project).await) {
+    if let Some(spaces) = report("documents().spaces", documents.spaces(&project).await) {
         println!("      {} spaces", spaces.len());
     }
 
     // Documents: list, one with its body, and its work items.
-    let documents = report(
-        "documents (all spaces)",
-        polarion.documents(&project, None).await,
+    let docs = report(
+        "documents().list (all spaces)",
+        documents.list(&project, None).await,
     )
     .unwrap_or_default();
-    println!("      {} documents, first 3:", documents.len());
-    show(&documents.iter().take(3).collect::<Vec<_>>());
+    println!("      {} documents, first 3:", docs.len());
+    show(&docs.iter().take(3).collect::<Vec<_>>());
 
     let location = var("POLARION_DOCUMENT").or_else(|| {
-        let d = documents.first()?;
+        let d = docs.first()?;
         Some(format!("{}/{}", d.space.as_deref()?, d.name.as_deref()?))
     });
     if let Some((space, name)) = location.as_deref().and_then(|l| l.split_once('/')) {
         if let Some(mut doc) = report(
-            &format!("document({space}/{name})"),
-            polarion.document(&project, space, name, true).await,
+            &format!("documents().get({space}/{name}, with body)"),
+            documents.get(&project, space, name, true).await,
         ) {
             let body = doc.body.take().map(|b| b.content.chars().count());
             show(&doc);
             println!("      body: {body:?} chars");
+            check_uri(
+                "DocumentRef::new",
+                doc.uri.as_deref(),
+                &DocumentRef::new(&project, space, name).uri,
+            );
 
-            if let Some(uri) = &doc.uri {
-                if let Some(items) = report(
-                    "document_work_items (standard fields)",
-                    polarion.document_work_items(uri, &Fields::standard()).await,
+            if let Some(reference) = doc.reference() {
+                if let Some(list) = report(
+                    "documents().work_items (standard fields)",
+                    documents.work_items(&reference, &Fields::standard()).await,
                 ) {
-                    println!("      {} work items, first 3:", items.len());
-                    show(&items.iter().take(3).collect::<Vec<_>>());
+                    println!("      {} work items, first 3:", list.len());
+                    show(&list.iter().take(3).collect::<Vec<_>>());
                 }
             }
         }
@@ -127,27 +133,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Work items: query with the standard fields, then probes for wider field sets.
     let base = WorkItemQuery::new("").project(&project).sort("~updated");
     let recent = report(
-        "query_work_items (5 most recently updated, standard fields)",
-        polarion.query_work_items(&base.clone().limit(5)).await,
+        "items().query (5 most recently updated, standard fields)",
+        items.query(&base.clone().limit(5)).await,
     );
-    if let Some(items) = &recent {
-        show(items);
+    if let Some(list) = &recent {
+        show(list);
     }
-    if let Some(count) = report("count_work_items", polarion.count_work_items(&base).await) {
+    if let Some(count) = report("items().count", items.count(&base).await) {
         println!("      {count} work items in {project}");
     }
-    if let Some(items) = report(
-        "PROBE query_work_items with Fields::all() (1)",
-        polarion
-            .query_work_items(&base.clone().limit(1).fields(Fields::all()))
+    if let Some(refs) = report(
+        "items().query_refs (3)",
+        items.query_refs(&base.clone().limit(3)).await,
+    ) {
+        let refs: Vec<String> = refs.iter().map(ToString::to_string).collect();
+        println!("      {refs:?}");
+    }
+    if let Some(list) = report(
+        "PROBE items().query with Fields::all() (1)",
+        items
+            .query(&base.clone().limit(1).fields(Fields::all()))
             .await,
     ) {
-        show(&items);
+        show(&list);
     }
-    if let Some(items) = report(
-        "PROBE query_work_items with fields [id, customFields] (3)",
-        polarion
-            .query_work_items(
+    if let Some(list) = report(
+        "PROBE items().query with fields [id, customFields] (3)",
+        items
+            .query(
                 &base
                     .clone()
                     .limit(3)
@@ -155,7 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await,
     ) {
-        for item in &items {
+        for item in &list {
             println!(
                 "      {:?}: {} custom fields",
                 item.id.as_deref().unwrap_or("?"),
@@ -164,28 +177,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // One work item with everything, and its back links.
+    // One work item with everything, its links, history, workflow and field definitions.
     let id = var("POLARION_WORK_ITEM").or_else(|| recent.as_ref()?.first()?.id.clone());
     if let Some(id) = id {
-        if let Some(item) = report(
-            &format!("work_item({id})"),
-            polarion.work_item(&project, &id).await,
-        ) {
+        let reference = ItemRef::new(&project, &id);
+        if let Some(item) = report(&format!("items().get({id})"), items.get(&reference).await) {
             show(&item);
-            if let Some(uri) = &item.uri {
-                if let Some(links) = report("back_links", polarion.back_links(uri).await) {
-                    show(&links);
+            check_uri("ItemRef::new", item.uri.as_deref(), &reference.uri);
+            if let Some(kind) = &item.kind {
+                if let Some(fields) = report(
+                    &format!("schema().custom_fields({kind})"),
+                    schema.custom_fields(&project, kind).await,
+                ) {
+                    show(&fields);
                 }
             }
         }
+        // These use the URI built by `ItemRef::new`, like every write does.
+        if let Some(links) = report("items().back_links", items.back_links(&reference).await) {
+            show(&links);
+        }
+        if let Some(changes) = report("items().history", items.history(&reference).await) {
+            println!("      {} revisions, last 2:", changes.len());
+            show(&changes.iter().rev().take(2).collect::<Vec<_>>());
+        }
+        if let Some(actions) = report("items().actions", items.actions(&reference).await) {
+            show(&actions);
+        }
+        if let Some(actions) = report(
+            "items().unavailable_actions",
+            items.unavailable_actions(&reference).await,
+        ) {
+            show(&actions);
+        }
     }
 
-    match polarion.work_item(&project, "SMOKE-DOES-NOT-EXIST-1").await {
-        Err(Error::NotFound { .. }) => println!("OK    work_item(missing) -> NotFound"),
-        Err(e) => println!("FAIL  work_item(missing) -> expected NotFound, got: {e}"),
-        Ok(_) => println!("FAIL  work_item(missing) -> expected NotFound, got a work item"),
+    for key in ["type", "status"] {
+        if let Some(options) = report(
+            &format!("schema().field_options({key})"),
+            schema.field_options(&project, key).await,
+        ) {
+            let ids: Vec<&str> = options.iter().map(|o| o.id.as_str()).collect();
+            println!("      {ids:?}");
+        }
+    }
+
+    match items
+        .get(&ItemRef::new(&project, "SMOKE-DOES-NOT-EXIST-1"))
+        .await
+    {
+        Err(Error::NotFound { .. }) => println!("OK    items().get(missing) -> NotFound"),
+        Err(e) => println!("FAIL  items().get(missing) -> expected NotFound, got: {e}"),
+        Ok(_) => println!("FAIL  items().get(missing) -> expected NotFound, got a work item"),
     }
 
     report("logout", polarion.logout().await);
     Ok(())
+}
+
+/// Compare a URI built by the library with the one the server returned.
+fn check_uri(what: &str, server: Option<&str>, built: &str) {
+    match server {
+        Some(server) if server == built => println!("CHECK {what} builds the server's URI"),
+        Some(server) => println!("CHECK {what} MISMATCH: server `{server}`, built `{built}`"),
+        None => println!("CHECK {what}: the server returned no URI"),
+    }
 }

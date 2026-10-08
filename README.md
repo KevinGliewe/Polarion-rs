@@ -6,7 +6,7 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 |---|---|---|
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
-| [`polarion`](crates/polarion) | usable (reads) | Convenient, JSON-serializable view of projects, work items and documents, on top of `polarion-soap` |
+| [`polarion`](crates/polarion) | usable (work item writes mock-tested only) | Convenient, JSON-serializable API by area (work items, schema, documents, projects, users), on top of `polarion-soap` |
 | [`polarion-cli`](crates/polarion-cli) | usable (reads) | `polarion` command-line tool, with JSON output for automation |
 | `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
 
@@ -58,8 +58,18 @@ The library the CLI and MCP server build on. It uses the SOAP services (so it wo
 and returns flat domain types that serialize to compact JSON: enum options, users and linked work items are reduced
 to their ids, custom fields become a `key → value` map, and empty fields are left out.
 
+Operations are grouped by area. Phase 1 covers work items and the schema completely; documents, test management,
+planning, baselines and wiki follow.
+
+| Area | Reads | Writes |
+|---|---|---|
+| `items()` | `get`, `get_fields`, `get_in_revision`, `query` (Lucene, optionally in a baseline), `query_refs`, `query_sql`, `count`, `back_links`, `history`, `actions`, `unavailable_actions`, `allowed_assignees`, `allowed_approvers`, `field_options`, `attachment`, `localized_title/description` | `create`, `create_in_document`, `update`, `set_custom_field`, `clear_fields`, `delete`, `move_to_document`, `perform_action`, `transition`, `reset_workflow`, comments (`add_comment`, `reply_to_comment`, `set_comment_resolved`, `set_comment_tags`), links (`add/remove_link`, `_hyperlink`, `_external_link`, `_linked_revision`), `add/remove_assignee`, `add/remove_category`, approvals (`add/remove_approvee`, `set_approval`), attachments (`add/update/delete_attachment`), work records, localized title/description, `auto_suspect`, `auto_assign` |
+| `schema()` | `custom_fields`, `custom_field`, `custom_fields_of`, `field_options`, `enum_options`, `categories`, `time_points` | |
+| `documents()` | `spaces`, `list`, `get` (optionally with body), `work_items` | phase 2 |
+| `projects()`, `users()` | `get`, `list`, `of_project` | |
+
 ```rust
-use polarion::{Auth, Fields, Polarion, WorkItemQuery};
+use polarion::{Auth, Fields, ItemRef, Polarion, WorkItemQuery};
 
 // Read-only: operations that may modify data are refused before they are sent.
 let polarion = Polarion::new("https://polarion.example.com/polarion", Auth::Token("<token>".into()))?;
@@ -69,15 +79,18 @@ let query = WorkItemQuery::new("type:requirement AND status:open")
     .sort("~updated")
     .limit(20)
     .fields(Fields::standard().with("description").with_custom("asil"));
-let open = polarion.query_work_items(&query).await?;
+let open = polarion.items().query(&query).await?;
 println!("{}", serde_json::to_string_pretty(&open)?);
 
-let item = polarion.work_item("MyProject", "MP-42").await?;   // all fields, outgoing links
-let back_links = polarion.back_links(item.uri.as_deref().unwrap()).await?;
+let item = ItemRef::new("MyProject", "MP-42");
+let full = polarion.items().get(&item).await?;              // all fields, outgoing links, comments, ...
+let back_links = polarion.items().back_links(&item).await?;
+let history = polarion.items().history(&item).await?;
+let fields = polarion.schema().custom_fields("MyProject", "requirement").await?;
 
-let docs = polarion.documents("MyProject", None).await?;      // all spaces, without bodies
-let srs = polarion.document("MyProject", "Specs", "SRS", true).await?; // with body
-let items = polarion.document_work_items(srs.uri.as_deref().unwrap(), &Fields::standard()).await?;
+let docs = polarion.documents().list("MyProject", None).await?;            // all spaces, without bodies
+let srs = polarion.documents().get("MyProject", "Specs", "SRS", true).await?; // with body
+let items = polarion.documents().work_items(&srs.reference().unwrap(), &Fields::standard()).await?;
 ```
 
 ```json
@@ -87,7 +100,44 @@ let items = polarion.document_work_items(srs.uri.as_deref().unwrap(), &Fields::s
  "customFields": {"asil": "D", "platforms": ["a", "b"], "reviewed": "2024-01-31"}}
 ```
 
-Anything not covered is reachable through `Polarion::soap()`. Try it against a real server (read-only, about a dozen
+### Writes
+
+Writes are enabled per project. Every write method checks the target's project against the allowlist and fails with
+`Error::WriteNotAllowed` before anything is sent; a client built with `Polarion::new` or `Polarion::from_client`
+writes nothing. (`Polarion::soap()` is the raw client and is not checked.)
+
+```rust
+use polarion::{Auth, FieldValue, ItemRef, NewWorkItem, Polarion, WorkItemUpdate};
+
+let polarion = Polarion::builder("https://polarion.example.com/polarion", Auth::Token("<token>".into()))
+    .allow_writes(["Sandbox"])
+    .build()?;
+let items = polarion.items();
+
+let mut new = NewWorkItem::new("Sandbox", "requirement", "Brakes must work");
+new.custom_fields.insert("asil".into(), FieldValue::Enum("D".into()));
+let item = items.create(&new).await?;
+
+items.update(&item, &WorkItemUpdate { title: Some("Brakes must always work".into()), ..Default::default() }).await?;
+items.add_link(&item, "relates_to", &ItemRef::new("Sandbox", "SB-1")).await?;
+items.transition(&item, "reviewed").await?;   // status changes go through workflow actions
+```
+
+`FieldValue::coerce(&json, &field_definition)` types JSON input (from a CLI or an agent) for a custom field using its
+definition from `schema()`.
+
+**Not yet verified against a real server.** The writes are tested against a mock server only. These assumptions
+need one run against a sandbox project (the smoke example checks the first two read-only, see `CHECK` lines):
+
+- Work item and document URIs built from ids (`ItemRef::new`, `DocumentRef::new`):
+  `subterra:data-service:objects:/default/PROJECT${WorkItem}ID` and `...PROJECT${Module}{moduleFolder}SPACE/NAME`.
+- Field keys accepted by `fields` selections (`moduleURI`, bare `customFields`).
+- `setFieldsNull` taking a custom field's key to clear it.
+- Custom field values: floats sent as `xsd:float`, currency as `xsd:decimal`, rich text as `types:Text`.
+- `createWorkItem` honouring custom fields given at creation.
+- Work records: the user sent by id only.
+
+Anything not covered is reachable through `Polarion::soap()`. Try it against a real server (read-only, about twenty
 small requests, prints the JSON of each result):
 
 ```sh
@@ -177,7 +227,7 @@ for field in item.custom_fields.unwrap_or_default() {
   dropped.
 - **Errors:** SOAP faults surface with their code and message (`Error::Fault`).
 - **Read-only mode:** `read_only(true)` refuses every operation not named `get…`, `query…`, `list…`, `search…`,
-  `has…`, `can…`, `is…`, `was…` or `export…` (plus login/logout) before anything is sent.
+  `has…`, `can…`, `is…`, `was…` or `export…` (plus `generateHistory` and login/logout) before anything is sent.
 
 Try it against a real server (read-only, at most seven small requests, each reported as OK or FAIL):
 

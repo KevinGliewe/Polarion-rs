@@ -2872,6 +2872,8 @@ pub struct CustomFieldType {
     pub required: bool,
     /// `type`
     pub type_: Option<String>,
+    /// `enumId`: only set when the server sends the subtype `EnumCustomFieldType` (read-only, not serialized).
+    pub enum_id: Option<String>,
 }
 
 impl ToXml for CustomFieldType {
@@ -2918,6 +2920,7 @@ impl FromXml for CustomFieldType {
                 "name" => out.name = xml::read_opt(c)?,
                 "required" => out.required = xml::read_req(c)?,
                 "type" => out.type_ = xml::read_opt(c)?,
+                "enumId" => out.enum_id = xml::read_opt(c)?,
                 _ => {}
             }
         }
@@ -3022,6 +3025,8 @@ pub struct EnumOption {
     pub properties: Option<Vec<Property>>,
     /// `sequenceNumber`
     pub sequence_number: i32,
+    /// `float`: only set when the server sends the subtype `PriorityOpt` (read-only, not serialized).
+    pub float: Option<f32>,
 }
 
 impl ToXml for EnumOption {
@@ -3065,6 +3070,7 @@ impl FromXml for EnumOption {
                 "phantom" => out.phantom = xml::read_req(c)?,
                 "properties" => out.properties = xml::read_opt_array(c, "property")?,
                 "sequenceNumber" => out.sequence_number = xml::read_req(c)?,
+                "float" => out.float = xml::read_opt(c)?,
                 _ => {}
             }
         }

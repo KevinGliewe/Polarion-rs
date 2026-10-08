@@ -286,8 +286,8 @@ impl ClientBuilder {
     /// Refuse every operation that may modify data, before it is sent.
     ///
     /// Allowed: operations named `get…`, `query…`, `list…`, `search…`,
-    /// `has…`, `can…`, `is…`, `was…`, `export…` and login/logout. Everything
-    /// else fails with [`Error::ReadOnly`].
+    /// `has…`, `can…`, `is…`, `was…`, `export…`, plus `generateHistory` and
+    /// login/logout. Everything else fails with [`Error::ReadOnly`].
     pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
         self

@@ -6,6 +6,8 @@
 
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
+/// Prefix of object URIs in the default repository.
+const OBJECTS: &str = "subterra:data-service:objects:/default/";
 const WORK_ITEM: &str = "${WorkItem}";
 const MODULE: &str = "${Module}";
 const MODULE_FOLDER: &str = "{moduleFolder}";
@@ -22,6 +24,20 @@ pub struct ItemRef {
 }
 
 impl ItemRef {
+    /// A work item by project and id.
+    ///
+    /// Builds the URI `subterra:data-service:objects:/default/PROJECT${WorkItem}ID`
+    /// (the format Polarion uses for the default repository; not yet verified
+    /// against a real server for writes).
+    pub fn new(project: impl Into<String>, id: impl Into<String>) -> Self {
+        let (project, id) = (project.into(), id.into());
+        Self {
+            uri: format!("{OBJECTS}{project}{WORK_ITEM}{id}"),
+            project: Some(project),
+            id: Some(id),
+        }
+    }
+
     pub fn from_uri(uri: impl Into<String>) -> Self {
         let uri = uri.into();
         let (project, id) = match split(&uri, WORK_ITEM) {
@@ -31,6 +47,16 @@ impl ItemRef {
             _ => (None, None),
         };
         Self { project, id, uri }
+    }
+}
+
+/// `PROJECT/ID`, or the URI if it could not be parsed.
+impl std::fmt::Display for ItemRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.project, &self.id) {
+            (Some(project), Some(id)) => write!(f, "{project}/{id}"),
+            _ => f.write_str(&self.uri),
+        }
     }
 }
 
@@ -64,6 +90,24 @@ pub struct DocumentRef {
 }
 
 impl DocumentRef {
+    /// A document by project, space and name.
+    ///
+    /// Builds the URI `subterra:data-service:objects:/default/PROJECT${Module}{moduleFolder}SPACE/NAME`
+    /// (not yet verified against a real server for writes; prefer the `uri` of a fetched [`crate::Document`]).
+    pub fn new(
+        project: impl Into<String>,
+        space: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
+        let (project, space, name) = (project.into(), space.into(), name.into());
+        Self {
+            uri: format!("{OBJECTS}{project}{MODULE}{MODULE_FOLDER}{space}/{name}"),
+            project: Some(project),
+            space: Some(space),
+            name: Some(name),
+        }
+    }
+
     pub fn from_uri(uri: impl Into<String>) -> Self {
         let uri = uri.into();
         let parsed = split(&uri, MODULE).and_then(|(project, rest)| {
@@ -90,6 +134,16 @@ impl DocumentRef {
     /// `space/name`, the location `getModuleByLocation` expects.
     pub fn location(&self) -> Option<String> {
         Some(format!("{}/{}", self.space.as_ref()?, self.name.as_ref()?))
+    }
+}
+
+/// `PROJECT/SPACE/NAME`, or the URI if it could not be parsed.
+impl std::fmt::Display for DocumentRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (&self.project, &self.space, &self.name) {
+            (Some(project), Some(space), Some(name)) => write!(f, "{project}/{space}/{name}"),
+            _ => f.write_str(&self.uri),
+        }
     }
 }
 
@@ -165,6 +219,18 @@ mod tests {
 
         let r = DocumentRef::from_uri(format!("{BASE}PROJ${{Module}}Specs"));
         assert_eq!((r.project, r.space, r.name), (None, None, None));
+    }
+
+    #[test]
+    fn built_refs_parse_back() {
+        let r = ItemRef::new("P", "P-1");
+        assert_eq!(r.uri, format!("{BASE}P${{WorkItem}}P-1"));
+        assert_eq!(ItemRef::from_uri(r.uri.clone()), r);
+        assert_eq!(r.to_string(), "P/P-1");
+
+        let d = DocumentRef::new("P", "Specs", "SRS");
+        assert_eq!(DocumentRef::from_uri(d.uri.clone()), d);
+        assert_eq!(d.to_string(), "P/Specs/SRS");
     }
 
     #[test]

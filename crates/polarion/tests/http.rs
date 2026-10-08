@@ -1,6 +1,6 @@
 //! The library's request composition and result mapping against a mock SOAP server.
 
-use polarion::{Auth, Error, FieldValue, Fields, Polarion, WorkItemQuery};
+use polarion::{Auth, Error, FieldValue, Fields, ItemRef, Polarion, WorkItemQuery};
 use wiremock::matchers::{body_string_contains, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -79,7 +79,11 @@ async fn work_item_is_mapped_and_missing_ones_are_not_found() {
     )
     .await;
 
-    let item = polarion.work_item("P", "P-1").await.unwrap();
+    let item = polarion
+        .items()
+        .get(&ItemRef::new("P", "P-1"))
+        .await
+        .unwrap();
     assert_eq!(item.project.as_deref(), Some("P"));
     assert_eq!(item.status.as_deref(), Some("open"));
     assert_eq!(
@@ -93,7 +97,11 @@ async fn work_item_is_mapped_and_missing_ones_are_not_found() {
         Some("Specs/SRS")
     );
 
-    let err = polarion.work_item("P", "P-404").await.unwrap_err();
+    let err = polarion
+        .items()
+        .get(&ItemRef::new("P", "P-404"))
+        .await
+        .unwrap_err();
     assert!(
         matches!(&err, Error::NotFound { kind: "work item", id } if id == "P/P-404"),
         "{err:?}"
@@ -130,10 +138,10 @@ async fn query_sends_project_filter_limit_and_fields() {
         .sort("~updated")
         .limit(5)
         .fields(Fields::new(["id", "title"]).with_custom("asil"));
-    let items = polarion.query_work_items(&query).await.unwrap();
+    let items = polarion.items().query(&query).await.unwrap();
     let ids: Vec<_> = items.iter().filter_map(|i| i.id.as_deref()).collect();
     assert_eq!(ids, ["P-1", "P-2"]);
-    assert_eq!(polarion.count_work_items(&query).await.unwrap(), 42);
+    assert_eq!(polarion.items().count(&query).await.unwrap(), 42);
 }
 
 #[tokio::test]
@@ -201,7 +209,7 @@ async fn documents_and_their_work_items() {
     )
     .await;
 
-    let all = polarion.documents("P", None).await.unwrap();
+    let all = polarion.documents().list("P", None).await.unwrap();
     let names: Vec<_> = all
         .iter()
         .map(|d| {
@@ -215,19 +223,28 @@ async fn documents_and_their_work_items() {
     assert_eq!(names, ["Specs/SRS", "_default/Plan"]);
     assert!(all.iter().all(|d| d.body.is_none()));
 
-    let in_space = polarion.documents("P", Some("Specs")).await.unwrap();
+    let in_space = polarion.documents().list("P", Some("Specs")).await.unwrap();
     assert_eq!(in_space.len(), 1);
 
-    let doc = polarion.document("P", "Specs", "SRS", true).await.unwrap();
+    let doc = polarion
+        .documents()
+        .get("P", "Specs", "SRS", true)
+        .await
+        .unwrap();
     assert_eq!(doc.body.as_ref().unwrap().content, "<h1>SRS</h1>");
-    let meta = polarion.document("P", "Specs", "SRS", false).await.unwrap();
+    let meta = polarion
+        .documents()
+        .get("P", "Specs", "SRS", false)
+        .await
+        .unwrap();
     assert_eq!(
         (meta.title.as_deref(), meta.body),
         (Some("SRS title"), None)
     );
 
     let items = polarion
-        .document_work_items(doc.uri.as_deref().unwrap(), &Fields::standard())
+        .documents()
+        .work_items(&doc.reference().unwrap(), &Fields::standard())
         .await
         .unwrap();
     assert_eq!(items[0].outline_number.as_deref(), Some("1.1"));
@@ -283,6 +300,7 @@ async fn projects_walk_the_group_tree() {
 
     let ids: Vec<_> = polarion
         .projects()
+        .list()
         .await
         .unwrap()
         .into_iter()

@@ -1,7 +1,7 @@
 //! Command execution: arguments in, a JSON value and how to show it out.
 
 use polarion::soap::Error as SoapError;
-use polarion::{Auth, Polarion, WorkItemQuery};
+use polarion::{Auth, ItemRef, Polarion, WorkItemQuery};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -52,6 +52,8 @@ impl Failure {
         match self {
             Failure::Config(_) => "config",
             Failure::Polarion(polarion::Error::NotFound { .. }) => "notFound",
+            Failure::Polarion(polarion::Error::WriteNotAllowed { .. }) => "readOnly",
+            Failure::Polarion(polarion::Error::Invalid(_)) => "invalid",
             Failure::Polarion(polarion::Error::Soap(e)) => match e {
                 SoapError::Fault { .. } => "fault",
                 SoapError::Login(_) => "login",
@@ -156,17 +158,21 @@ async fn dispatch(cli: &Cli, polarion: &Polarion) -> Result<Output, Failure> {
                 Some(id) => id.as_str(),
                 None => project(cli)?,
             };
-            Output::new(polarion.project(id).await?, View::Object)
+            Output::new(polarion.projects().get(id).await?, View::Object)
         }
-        Command::Project(ProjectCommand::List) => {
-            Output::new(polarion.projects().await?, View::Table(PROJECT_COLUMNS))
-        }
+        Command::Project(ProjectCommand::List) => Output::new(
+            polarion.projects().list().await?,
+            View::Table(PROJECT_COLUMNS),
+        ),
         Command::User(UserCommand::Show { id }) => {
-            Output::new(polarion.user(id).await?, View::Object)
+            Output::new(polarion.users().get(id).await?, View::Object)
         }
         Command::Item(ItemCommand::Show { id }) => {
             let (project, id) = item_id(cli, id)?;
-            Output::new(polarion.work_item(project, id).await?, View::Object)
+            Output::new(
+                polarion.items().get(&ItemRef::new(project, id)).await?,
+                View::Object,
+            )
         }
         Command::Item(ItemCommand::Query {
             query,
@@ -182,7 +188,7 @@ async fn dispatch(cli: &Cli, polarion: &Polarion) -> Result<Output, Failure> {
                 q = q.project(p.as_str());
             }
             q = if *all { q.unlimited() } else { q.limit(*limit) };
-            let items = polarion.query_work_items(&q).await?;
+            let items = polarion.items().query(&q).await?;
             let truncated = !all && items.len() == *limit as usize;
             let mut out = Output::new(items, View::Table(ITEM_COLUMNS));
             if truncated {
@@ -197,13 +203,13 @@ async fn dispatch(cli: &Cli, polarion: &Polarion) -> Result<Output, Failure> {
             if let Some(p) = &cli.project {
                 q = q.project(p.as_str());
             }
-            Output::new(polarion.count_work_items(&q).await?, View::Scalar)
+            Output::new(polarion.items().count(&q).await?, View::Scalar)
         }
         Command::Item(ItemCommand::Links { id }) => {
             let (project, id) = item_id(cli, id)?;
-            let item = polarion.work_item(project, id).await?;
-            let incoming = match &item.uri {
-                Some(uri) => polarion.back_links(uri).await?,
+            let item = polarion.items().get(&ItemRef::new(project, id)).await?;
+            let incoming = match item.reference() {
+                Some(reference) => polarion.items().back_links(&reference).await?,
                 None => Vec::new(),
             };
             Output::new(
@@ -211,29 +217,40 @@ async fn dispatch(cli: &Cli, polarion: &Polarion) -> Result<Output, Failure> {
                 View::Links,
             )
         }
-        Command::Doc(DocCommand::Spaces) => {
-            Output::new(polarion.spaces(project(cli)?).await?, View::Lines)
-        }
+        Command::Doc(DocCommand::Spaces) => Output::new(
+            polarion.documents().spaces(project(cli)?).await?,
+            View::Lines,
+        ),
         Command::Doc(DocCommand::List { space }) => Output::new(
-            polarion.documents(project(cli)?, space.as_deref()).await?,
+            polarion
+                .documents()
+                .list(project(cli)?, space.as_deref())
+                .await?,
             View::Table(DOCUMENT_COLUMNS),
         ),
         Command::Doc(DocCommand::Show { document, body }) => {
             let (project, space, name) = document_ref(cli, document)?;
             Output::new(
-                polarion.document(project, space, name, *body).await?,
+                polarion
+                    .documents()
+                    .get(project, space, name, *body)
+                    .await?,
                 View::Object,
             )
         }
         Command::Doc(DocCommand::Items { document, fields }) => {
             let (project, space, name) = document_ref(cli, document)?;
-            let doc = polarion.document(project, space, name, false).await?;
-            let uri = doc.uri.ok_or_else(|| polarion::Error::NotFound {
+            let doc = polarion
+                .documents()
+                .get(project, space, name, false)
+                .await?;
+            let reference = doc.reference().ok_or_else(|| polarion::Error::NotFound {
                 kind: "document",
                 id: document.clone(),
             })?;
             let items = polarion
-                .document_work_items(&uri, &fields.to_fields())
+                .documents()
+                .work_items(&reference, &fields.to_fields())
                 .await?;
             Output::new(items, View::Table(DOCUMENT_ITEM_COLUMNS))
         }

@@ -138,6 +138,7 @@ pub struct WorkItemQuery {
     sort: String,
     limit: Option<u32>,
     fields: Fields,
+    baseline: Option<String>,
 }
 
 impl WorkItemQuery {
@@ -149,6 +150,7 @@ impl WorkItemQuery {
             sort: "id".to_owned(),
             limit: Some(DEFAULT_LIMIT),
             fields: Fields::standard(),
+            baseline: None,
         }
     }
 
@@ -179,6 +181,17 @@ impl WorkItemQuery {
     pub fn fields(mut self, fields: Fields) -> Self {
         self.fields = fields;
         self
+    }
+
+    /// Query the work items as they were in a baseline (repository revision).
+    /// Ignored by counting.
+    pub fn baseline(mut self, revision: impl Into<String>) -> Self {
+        self.baseline = Some(revision.into());
+        self
+    }
+
+    pub(crate) fn baseline_revision(&self) -> Option<&str> {
+        self.baseline.as_deref()
     }
 
     /// The Lucene query sent to the server, including the project restriction.

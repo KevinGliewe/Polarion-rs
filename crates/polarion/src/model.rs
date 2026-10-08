@@ -143,11 +143,263 @@ pub struct WorkItem {
     pub links: Vec<Link>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hyperlinks: Vec<Hyperlink>,
+    /// Links to work items on other servers (OSLC).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub external_links: Vec<Hyperlink>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_revisions: Vec<LinkedRevision>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<Comment>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub approvals: Vec<Approval>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub work_records: Vec<WorkRecord>,
+    /// Time point id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_point: Option<String>,
+    /// URIs of the plans the work item is planned in.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub planned_in: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_estimate: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remaining_estimate: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_spent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
     /// Custom fields with a value; empty fields are left out.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_fields: BTreeMap<String, FieldValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
+}
+
+impl WorkItem {
+    /// A reference to this work item for further calls (from its URI).
+    pub fn reference(&self) -> Option<ItemRef> {
+        self.uri.as_deref().map(ItemRef::from_uri)
+    }
+}
+
+/// A revision in a source repository linked to a work item.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LinkedRevision {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    pub revision: String,
+}
+
+/// A comment on a work item.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<Text>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub resolved: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    /// URI of the comment this one replies to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// URIs of the replies.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub replies: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// Attachment metadata; the content is fetched with [`crate::WorkItems::attachment`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Size in bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub length: Option<i64>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// An approval of a work item.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Approval {
+    /// User id of the approver.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    /// Approval status id, e.g. `waiting`, `approved`, `disapproved`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+/// Time booked on a work item.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_spent: Option<String>,
+    /// Work record type id; `type` in JSON.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// A workflow action (status transition) of a work item.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowAction {
+    /// The id to pass to [`crate::WorkItems::perform_action`].
+    pub id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The action id in the workflow configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_id: Option<String>,
+    /// The status the work item gets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_status: Option<String>,
+    /// Fields that must have a value before the action can be performed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub required_fields: Vec<String>,
+    /// Why the action is not available (for [`crate::WorkItems::unavailable_actions`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+/// One revision in the history of a work item.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Change {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    /// The revision that created the work item.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub creation: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<FieldChange>,
+}
+
+/// The change of one field in a [`Change`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct FieldChange {
+    pub field: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<FieldValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<FieldValue>,
+    /// For multi-valued fields: values added.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub added: Vec<FieldValue>,
+    /// For multi-valued fields: values removed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<FieldValue>,
+}
+
+/// The definition of a custom field.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldDefinition {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Value type: the local name of the schema type, e.g. `string`, `boolean`, `date`,
+    /// `EnumOptionId`, `Text`; `type` in JSON.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub multi: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub required: bool,
+    /// For enum fields: the enumeration id (see [`crate::Schema::enum_options`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enum_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depends_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<FieldValue>,
+}
+
+/// An option of an enumeration (types, statuses, priorities, enum custom fields, ...).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EnumOption {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub default: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+    pub sequence: i32,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, String>,
+}
+
+/// A work item category.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Category {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<Text>,
+}
+
+/// A time point (milestone) of a project.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct TimePoint {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub closed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<Text>,
 }
 
 /// A document (called "module" in the SOAP API).
@@ -182,6 +434,13 @@ pub struct Document {
     pub body: Option<Text>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
+}
+
+impl Document {
+    /// A reference to this document for further calls (from its URI).
+    pub fn reference(&self) -> Option<DocumentRef> {
+        self.uri.as_deref().map(DocumentRef::from_uri)
+    }
 }
 
 /// A project.
