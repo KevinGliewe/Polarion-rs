@@ -127,16 +127,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .as_ref()
             .and_then(|i| i.first())
             .and_then(|i| i.id.clone());
-        if let Some(id) = first {
-            if let Some(item) = report(
+        if let Some(id) = first
+            && let Some(item) = report(
                 &format!("Tracker.getWorkItemById({id}) (all fields)"),
                 client.tracker().get_work_item_by_id(project, &id).await,
-            ) {
-                let custom = item.custom_fields.unwrap_or_default();
-                println!("      {} custom fields:", custom.len());
-                for c in &custom {
-                    println!("        {} = {}", c.key, describe(c.value.as_ref()));
-                }
+            )
+        {
+            let custom = item.custom_fields.unwrap_or_default();
+            println!("      {} custom fields:", custom.len());
+            for c in &custom {
+                println!("        {} = {}", c.key, describe(c.value.as_ref()));
             }
         }
     }

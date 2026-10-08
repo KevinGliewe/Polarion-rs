@@ -5,7 +5,7 @@ members = ["crates/*", "xtask"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/KevinGliewe/Polarion-rs"
 authors = ["Kevin Gliewe"]
@@ -23,11 +23,13 @@ clap = { version = "4", features = ["env", "string"] }
 heck = "0.5"
 
 roxmltree = "0.21"
+rmcp = { version = "3.5", default-features = false, features = ["server", "transport-io", "transport-streamable-http-server"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "query", "multipart", "rustls", "http2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio-util = "0.7"
 url = "2"
 wiremock = "0.6"
 

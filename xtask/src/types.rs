@@ -316,10 +316,10 @@ impl<'a> Registry<'a> {
                 kind: Kind::Plain,
                 relationships: BTreeMap::new(),
             });
-        if def.doc.is_empty() {
-            if let Some(d) = schema.get("description").and_then(Value::as_str) {
-                def.doc = doc_lines(d);
-            }
+        if def.doc.is_empty()
+            && let Some(d) = schema.get("description").and_then(Value::as_str)
+        {
+            def.doc = doc_lines(d);
         }
         for field in fields {
             match def.fields.get_mut(&field.json) {
@@ -379,10 +379,10 @@ fn field_doc(schema: &Value) -> Vec<String> {
             .collect();
         notes.push(format!("Allowed values: {}.", values.join(", ")));
     }
-    if let Some(format) = schema.get("format").and_then(Value::as_str) {
-        if matches!(format, "date" | "date-time" | "time") {
-            notes.push(format!("Format: `{format}`."));
-        }
+    if let Some(format) = schema.get("format").and_then(Value::as_str)
+        && matches!(format, "date" | "date-time" | "time")
+    {
+        notes.push(format!("Format: `{format}`."));
     }
     if let Some(ex) = schema.get("example").and_then(example) {
         notes.push(format!("Example: {ex}."));

@@ -80,11 +80,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         show(&p);
     }
 
-    if var("POLARION_LIST_PROJECTS").as_deref() == Some("1") {
-        if let Some(projects) = report("projects().list()", polarion.projects().list().await) {
-            let ids: Vec<_> = projects.iter().filter_map(|p| p.id.as_deref()).collect();
-            println!("      {} projects: {:?}", ids.len(), ids);
-        }
+    if var("POLARION_LIST_PROJECTS").as_deref() == Some("1")
+        && let Some(projects) = report("projects().list()", polarion.projects().list().await)
+    {
+        let ids: Vec<_> = projects.iter().filter_map(|p| p.id.as_deref()).collect();
+        println!("      {} projects: {:?}", ids.len(), ids);
     }
 
     if let Some(spaces) = report("documents().spaces", documents.spaces(&project).await) {
@@ -104,29 +104,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let d = docs.first()?;
         Some(format!("{}/{}", d.space.as_deref()?, d.name.as_deref()?))
     });
-    if let Some((space, name)) = location.as_deref().and_then(|l| l.split_once('/')) {
-        if let Some(mut doc) = report(
+    if let Some((space, name)) = location.as_deref().and_then(|l| l.split_once('/'))
+        && let Some(mut doc) = report(
             &format!("documents().get({space}/{name}, with body)"),
             documents.get(&project, space, name, true).await,
-        ) {
-            let body = doc.body.take().map(|b| b.content.chars().count());
-            show(&doc);
-            println!("      body: {body:?} chars");
-            check_uri(
-                "DocumentRef::new",
-                doc.uri.as_deref(),
-                &DocumentRef::new(&project, space, name).uri,
-            );
+        )
+    {
+        let body = doc.body.take().map(|b| b.content.chars().count());
+        show(&doc);
+        println!("      body: {body:?} chars");
+        check_uri(
+            "DocumentRef::new",
+            doc.uri.as_deref(),
+            &DocumentRef::new(&project, space, name).uri,
+        );
 
-            if let Some(reference) = doc.reference() {
-                if let Some(list) = report(
-                    "documents().work_items (standard fields)",
-                    documents.work_items(&reference, &Fields::standard()).await,
-                ) {
-                    println!("      {} work items, first 3:", list.len());
-                    show(&list.iter().take(3).collect::<Vec<_>>());
-                }
-            }
+        if let Some(reference) = doc.reference()
+            && let Some(list) = report(
+                "documents().work_items (standard fields)",
+                documents.work_items(&reference, &Fields::standard()).await,
+            )
+        {
+            println!("      {} work items, first 3:", list.len());
+            show(&list.iter().take(3).collect::<Vec<_>>());
         }
     }
 
@@ -184,13 +184,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(item) = report(&format!("items().get({id})"), items.get(&reference).await) {
             show(&item);
             check_uri("ItemRef::new", item.uri.as_deref(), &reference.uri);
-            if let Some(kind) = &item.kind {
-                if let Some(fields) = report(
+            if let Some(kind) = &item.kind
+                && let Some(fields) = report(
                     &format!("schema().custom_fields({kind})"),
                     schema.custom_fields(&project, kind).await,
-                ) {
-                    show(&fields);
-                }
+                )
+            {
+                show(&fields);
             }
         }
         // These use the URI built by `ItemRef::new`, like every write does.

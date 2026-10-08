@@ -156,7 +156,7 @@ impl Mcp {
         let result = &json.unwrap()["result"];
         (
             result["content"][0]["text"].as_str().unwrap().to_owned(),
-            result["isError"].as_bool().unwrap(),
+            result["isError"].as_bool().unwrap_or(false),
         )
     }
 }
@@ -229,13 +229,41 @@ async fn requests_need_the_token_and_an_allowed_origin() {
         .http
         .post(&mcp.url)
         .bearer_auth(TOKEN)
+        .header("Accept", "application/json, text/event-stream")
+        .header("Content-Type", "application/json")
         .body("{not json")
         .send()
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body: Value = response.json().await.unwrap();
-    assert_eq!(body["error"]["code"], -32700);
+    assert!(response.status().is_client_error(), "{response:?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn only_allowed_hosts_are_served() {
+    // Default: loopback names only (DNS rebinding).
+    let mcp = start(None, &[]);
+    let response = mcp
+        .post(&ping())
+        .bearer_auth(TOKEN)
+        .header("Host", "polarion-mcp.example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+    // Behind a proxy: its host name.
+    let mcp = start(
+        None,
+        &[("POLARION_MCP_ALLOWED_HOSTS", "polarion-mcp.example.com")],
+    );
+    let response = mcp
+        .post(&ping())
+        .bearer_auth(TOKEN)
+        .header("Host", "polarion-mcp.example.com")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -252,7 +280,9 @@ async fn clients_share_one_polarion_session() {
     let mcp = start(Some(&server), &[("POLARION_PROJECT", "P")]);
 
     let (status, init) = mcp
-        .send(&json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}))
+        .send(&json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}
+        }}))
         .await;
     assert_eq!(status, StatusCode::OK);
     let instructions = init.unwrap()["result"]["instructions"]
@@ -278,24 +308,6 @@ async fn clients_share_one_polarion_session() {
         let item: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(item["title"], "Brakes");
     }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn batches_get_an_array_of_responses() {
-    let mcp = start(None, &[]);
-    let (status, body) = mcp
-        .send(&json!([
-            {"jsonrpc": "2.0", "id": 1, "method": "ping"},
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-        ]))
-        .await;
-    assert_eq!(status, StatusCode::OK);
-    let body = body.unwrap();
-    let replies = body.as_array().unwrap();
-    assert_eq!(replies.len(), 2);
-    assert_eq!(replies[0]["id"], 1);
-    assert_eq!(replies[1]["result"]["tools"].as_array().unwrap().len(), 18);
 }
 
 #[tokio::test(flavor = "multi_thread")]

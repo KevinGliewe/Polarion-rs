@@ -809,17 +809,16 @@ impl<'m> Gen<'m> {
             }
             let nillable = param.nillable || nil_override;
             let ty = self.ty(&param.ty)?;
-            if let Ty::Struct(_) = &ty {
-                if let TypeRef::Named(q) = &param.ty {
-                    if !self.subtype_elements(q).is_empty() {
-                        bail!(
-                            "{}.{}: parameter type {} has read-only subtype fields that would not be sent",
-                            service.name,
-                            op.name,
-                            q.name
-                        );
-                    }
-                }
+            if let Ty::Struct(_) = &ty
+                && let TypeRef::Named(q) = &param.ty
+                && !self.subtype_elements(q).is_empty()
+            {
+                bail!(
+                    "{}.{}: parameter type {} has read-only subtype fields that would not be sent",
+                    service.name,
+                    op.name,
+                    q.name
+                );
             }
             let (one, many) = match &ty {
                 Ty::Str => ("&str".to_owned(), "&[String]".to_owned()),

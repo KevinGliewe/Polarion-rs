@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 use polarion_commands::Config;
 
-use crate::server::{Server, Transport};
+use crate::server::{PolarionMcp, Transport};
 
 const USAGE: &str = "\
 Usage: polarion-mcp [--http ADDR]
@@ -29,7 +29,10 @@ Environment:
   POLARION_MCP_TOOLS=all          every command as its own tool
   POLARION_MCP_HTTP=ADDR          same as --http ADDR
   POLARION_MCP_AUTH_TOKEN         HTTP: required bearer token for clients (16+ characters)
-  POLARION_MCP_ALLOWED_ORIGINS    HTTP: browser origins allowed to connect (comma-separated)
+  POLARION_MCP_ALLOWED_ORIGINS    HTTP: browser origins allowed to connect, with scheme and port
+                                  (comma-separated, e.g. http://localhost:3000; default: none)
+  POLARION_MCP_ALLOWED_HOSTS      HTTP: Host names the server answers to (comma-separated;
+                                  default: localhost, 127.0.0.1, ::1); behind a proxy, its name
 ";
 
 fn main() -> ExitCode {
@@ -61,8 +64,13 @@ fn main() -> ExitCode {
     let config = Config::from_env();
     let all_tools = std::env::var("POLARION_MCP_TOOLS").is_ok_and(|v| v.trim() == "all");
     let Some(addr) = http_addr else {
-        stdio::run(&Server::new(config, all_tools, Transport::Stdio));
-        return ExitCode::SUCCESS;
+        return match stdio::run(PolarionMcp::new(config, all_tools, Transport::Stdio)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("polarion-mcp: {message}");
+                ExitCode::FAILURE
+            }
+        };
     };
     let settings = match http::Settings::from_env() {
         Ok(settings) => settings,
@@ -75,7 +83,7 @@ fn main() -> ExitCode {
         .enable_all()
         .build()
         .expect("tokio runtime");
-    let server = Server::new(config, all_tools, Transport::Http);
+    let server = PolarionMcp::new(config, all_tools, Transport::Http);
     match runtime.block_on(http::run(&addr, server, settings)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

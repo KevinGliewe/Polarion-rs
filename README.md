@@ -79,7 +79,8 @@ cargo install --path crates/polarion-mcp    # installs the `polarion-mcp` binary
 ```
 
 An [MCP](https://modelcontextprotocol.io) server over stdio (default) or Streamable HTTP (`--http`, see below),
-configured by the same environment variables as the CLI. It offers:
+built on the official Rust SDK ([`rmcp`](https://github.com/modelcontextprotocol/rust-sdk)), which negotiates the
+protocol version (up to `2026-07-28`). It is configured by the same environment variables as the CLI and offers:
 
 - **Dedicated tools for everyday reads:** `get_work_item`, `query_work_items`, `count_work_items`,
   `work_item_links`, `work_item_history`, `list_documents`, `get_document`, `document_work_items`, `custom_fields`,
@@ -146,17 +147,19 @@ claude mcp add --transport http polarion https://mcp.example.com/mcp \
 ```
 
 - **Access:** `POLARION_MCP_AUTH_TOKEN` (at least 16 characters) is required; requests without it get 401.
-  Requests from browsers (with an `Origin` header) are refused unless the origin is listed in
-  `POLARION_MCP_ALLOWED_ORIGINS`. The server speaks plain HTTP: bind it to localhost and put a TLS reverse proxy in
-  front for anything else.
+  Requests from browsers (with an `Origin` header) are refused unless the origin is listed, with scheme and port,
+  in `POLARION_MCP_ALLOWED_ORIGINS` (e.g. `http://localhost:3000`). The server answers only to the `Host` names
+  in `POLARION_MCP_ALLOWED_HOSTS` (default: `localhost`, `127.0.0.1`, `::1`); behind a reverse proxy, list its
+  public name. The server speaks plain HTTP: bind it to localhost and put a TLS reverse proxy in front for
+  anything else.
 - **One identity:** everyone with the bearer token acts as the service account; Polarion's history shows that
   account, not the person. Give it the narrowest Polarion role that works (read-only for production), and enable
   writes with `POLARION_WRITE_PROJECTS` only where they are meant to happen.
 - **One Polarion session** for all clients (logged in again when it expires, ended on Ctrl-C/SIGTERM). Explicit
   transactions (`session.begin-transaction`, `commit`, `rollback`) are therefore refused over HTTP; use stdio for
   them.
-- **Not included:** OAuth (so no claude.ai web connectors), server-initiated SSE streams, `Mcp-Session-Id`
-  sessions. Every request is answered with plain JSON.
+- **Stateless:** no `Mcp-Session-Id` sessions and no server-initiated SSE streams; every request is answered with
+  plain JSON. OAuth is not included (so no claude.ai web connectors).
 
 ## polarion-commands
 

@@ -45,7 +45,8 @@ async fn server() -> MockServer {
                 "<logInWithTokenResponse/>",
             ),
             "text/xml",
-        ))
+        ).set_delay(std::time::Duration::from_millis(200)))
+        // Slow on purpose: stdin closes while calls are still running, and they must finish.
         .expect(1)
         .mount(&server)
         .await;
@@ -66,8 +67,18 @@ async fn mock(server: &MockServer, needles: &[&str], body: &str) {
     m.respond_with(xml(body)).expect(1).mount(server).await;
 }
 
-/// Run a session: send `requests` (numbered from 1), close stdin, return the responses by id.
+/// Run a session at protocol 2025-06-18: send `requests` (numbered from 1), close stdin, return
+/// the responses by id (the `initialize` response first).
 async fn session(
+    server: Option<&MockServer>,
+    env: &[(&str, &str)],
+    requests: &[Value],
+) -> Vec<Value> {
+    session_at("2025-06-18", server, env, requests).await
+}
+
+async fn session_at(
+    version: &str,
     server: Option<&MockServer>,
     env: &[(&str, &str)],
     requests: &[Value],
@@ -87,7 +98,7 @@ async fn session(
     let mut input = String::new();
     input.push_str(
         &json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
-            "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}
+            "protocolVersion": version, "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}
         }})
         .to_string(),
     );
@@ -114,12 +125,14 @@ async fn session(
     .await
     .unwrap();
     assert!(out.status.success());
-    let responses: Vec<Value> = String::from_utf8(out.stdout)
+    let mut responses: Vec<Value> = String::from_utf8(out.stdout)
         .unwrap()
         .lines()
         .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("not JSON ({e}): {l}")))
         .collect();
-    // One response per request (the notification has none), in order.
+    // One response per request (the notification has none); requests run concurrently, so
+    // responses may come in any order.
+    responses.sort_by_key(|r| r["id"].as_u64());
     assert_eq!(responses.len(), requests.len() + 1, "{responses:#?}");
     for (i, r) in responses.iter().enumerate() {
         assert_eq!(r["id"], json!(i), "{r}");
@@ -136,7 +149,7 @@ fn tool_text(response: &Value) -> (String, bool) {
     let result = &response["result"];
     (
         result["content"][0]["text"].as_str().unwrap().to_owned(),
-        result["isError"].as_bool().unwrap(),
+        result["isError"].as_bool().unwrap_or(false),
     )
 }
 
@@ -148,7 +161,7 @@ async fn initialize_and_list_tools() {
         &[
             json!({"method": "tools/list"}),
             json!({"method": "ping"}),
-            json!({"method": "resources/list"}),
+            json!({"method": "frobnicate/everything"}),
         ],
     )
     .await;
@@ -183,18 +196,18 @@ async fn initialize_and_list_tools() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn older_protocol_versions_are_accepted() {
-    let r = session(
-        None,
-        &[],
-        &[
-            json!({"method": "initialize", "params": {"protocolVersion": "2024-11-05"}}),
-            json!({"method": "initialize", "params": {"protocolVersion": "1999-01-01"}}),
-        ],
-    )
-    .await;
-    assert_eq!(r[1]["result"]["protocolVersion"], "2024-11-05");
-    assert_eq!(r[2]["result"]["protocolVersion"], "2025-06-18");
+async fn protocol_versions_are_negotiated() {
+    for version in ["2024-11-05", "2025-03-26", "2025-11-25"] {
+        let r = session_at(version, None, &[], &[json!({"method": "ping"})]).await;
+        assert_eq!(r[0]["result"]["protocolVersion"], version);
+    }
+    // An unknown version gets one the server speaks.
+    let r = session_at("1999-01-01", None, &[], &[json!({"method": "ping"})]).await;
+    let chosen = r[0]["result"]["protocolVersion"].as_str().unwrap();
+    assert!(
+        chosen.starts_with("20") && chosen != "1999-01-01",
+        "{chosen}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
