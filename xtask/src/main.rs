@@ -5,6 +5,7 @@ mod docs;
 mod emit;
 mod names;
 mod ops;
+mod soap;
 mod spec;
 mod types;
 
@@ -115,7 +116,7 @@ fn codegen(check: bool) -> Result<()> {
     }
 
     let out_dir = root.join("crates/polarion-rest");
-    let files = [
+    let mut files = vec![
         (out_dir.join("src/generated/models.rs"), emit::models(&reg)?),
         (
             out_dir.join("src/generated/operations.rs"),
@@ -126,6 +127,8 @@ fn codegen(check: bool) -> Result<()> {
             emit::spec_tests(&tests),
         ),
     ];
+    let (soap_files, soap_summary) = soap::generate(&root)?;
+    files.extend(soap_files);
 
     let mut stale = Vec::new();
     for (path, source) in &files {
@@ -158,12 +161,15 @@ fn codegen(check: bool) -> Result<()> {
         );
     }
     println!(
-        "{} operations, {} types, {} spec round-trip tests{}",
+        "REST: {} operations, {} types, {} spec round-trip tests",
         ops.len(),
         reg.structs.len(),
         tests.len(),
-        if check { " (up to date)" } else { "" }
     );
+    println!("{soap_summary}");
+    if check {
+        println!("generated code is up to date");
+    }
     Ok(())
 }
 

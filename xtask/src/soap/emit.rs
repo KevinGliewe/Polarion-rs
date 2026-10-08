@@ -1,0 +1,1008 @@
+//! Rust emission for the SOAP client.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write;
+
+use anyhow::{Context, Result, bail};
+
+use super::wsdl::{ComplexDef, ElemDef, Model, OpDef, QName, Service, TypeRef, XSD};
+use crate::docs::{escape_word, strip_html};
+use crate::emit::HEADER;
+use crate::names::{pascal, snake};
+
+/// Request parameters the WSDL declares as required but Polarion accepts as
+/// `xsi:nil` (python-polarion patches the same ones).
+const NILLABLE_PARAMS: &[(&str, &str, &str)] = &[
+    ("TrackerWebService", "addComment", "title"),
+    (
+        "TrackerWebService",
+        "getModuleWorkItemUris",
+        "parentWorkItemURI",
+    ),
+    (
+        "TrackerWebService",
+        "moveWorkItemToDocument",
+        "parentWorkItemURI",
+    ),
+    ("TrackerWebService", "reuseDocument", "linkRole"),
+    ("TrackerWebService", "reuseDocument", "derivedFields"),
+    ("PlanningWebService", "createPlan", "parentId"),
+];
+
+/// Request parameters the WSDL declares as required but that may be omitted.
+const OPTIONAL_PARAMS: &[(&str, &str, &str)] =
+    &[("TestManagementWebService", "setTestSteps", "testSteps")];
+
+/// Operation name prefixes that only read data.
+const READ_PREFIXES: &[&str] = &[
+    "get", "query", "list", "search", "has", "can", "is", "was", "export",
+];
+const SESSION_OPS: &[&str] = &["logIn", "logInWithToken", "endSession", "transactionExists"];
+
+/// Names of the primitive `AnyValue` variants; generated variants must not collide.
+const PRIMITIVE_VARIANTS: &[&str] = &[
+    "Nil", "String", "Boolean", "Int", "Long", "Float", "Double", "Decimal", "Date", "DateTime",
+    "Time", "QName", "Base64", "Unknown",
+];
+
+pub fn is_read(op: &str) -> bool {
+    SESSION_OPS.contains(&op)
+        || READ_PREFIXES.iter().any(|p| {
+            op.strip_prefix(p).is_some_and(|rest| {
+                rest.is_empty() || rest.starts_with(|c: char| c.is_ascii_uppercase())
+            })
+        })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Ty {
+    Str,
+    Bool,
+    I32,
+    I64,
+    F32,
+    F64,
+    Bytes,
+    Any,
+    Struct(String),
+    Array {
+        item: Box<Ty>,
+        item_name: String,
+        item_prefix: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Card {
+    Required,
+    Optional,
+    Repeated,
+}
+
+struct ArrayDef {
+    name: String,
+    item: ElemDef,
+}
+
+pub struct Gen<'m> {
+    model: &'m Model,
+    /// Rust names of struct types.
+    names: BTreeMap<QName, String>,
+    arrays: BTreeMap<QName, ArrayDef>,
+    prefixes: BTreeMap<String, String>,
+    /// (struct, field) pairs that need a `Box` to break type cycles.
+    boxed: BTreeSet<(String, String)>,
+}
+
+impl<'m> Gen<'m> {
+    pub fn new(model: &'m Model) -> Result<Self> {
+        let mut this = Gen {
+            model,
+            names: BTreeMap::new(),
+            arrays: BTreeMap::new(),
+            prefixes: BTreeMap::new(),
+            boxed: BTreeSet::new(),
+        };
+
+        // Namespace prefixes, derived from the URI so they stay stable.
+        let mut namespaces: BTreeSet<&str> = BTreeSet::new();
+        for def in model.complex.values() {
+            namespaces.insert(&def.qname.ns);
+        }
+        for q in model.simple.keys() {
+            namespaces.insert(&q.ns);
+        }
+        for op in model.services.iter().flat_map(|s| &s.ops) {
+            namespaces.insert(&op.ns);
+        }
+        let mut used = BTreeSet::new();
+        for ns in namespaces {
+            let prefix = prefix_for(ns);
+            if !used.insert(prefix.clone())
+                || ["xsi", "xsd", "soapenv", "ses"].contains(&prefix.as_str())
+            {
+                bail!("namespace prefix collision on `{prefix}` ({ns})");
+            }
+            this.prefixes.insert(ns.to_owned(), prefix);
+        }
+
+        // Arrays vs structs; names are disambiguated by namespace on collision.
+        let mut by_name: BTreeMap<String, Vec<(&QName, bool)>> = BTreeMap::new();
+        for def in model.complex.values() {
+            let is_array = matches!(def.elements.as_slice(), [item] if def.base.is_none() && def.attrs.is_empty() && item.unbounded);
+            by_name
+                .entry(pascal(&def.qname.name))
+                .or_default()
+                .push((&def.qname, is_array));
+        }
+        for (name, entries) in by_name {
+            for (q, is_array) in &entries {
+                let rust = if entries.len() == 1 || q.ns == "http://ws.polarion.com/types" {
+                    name.clone()
+                } else {
+                    format!("{}{name}", namespace_label(&q.ns))
+                };
+                if *is_array {
+                    let def = &model.complex[*q];
+                    this.arrays.insert(
+                        (*q).clone(),
+                        ArrayDef {
+                            name: rust,
+                            item: def.elements[0].clone(),
+                        },
+                    );
+                } else {
+                    this.names.insert((*q).clone(), rust);
+                }
+            }
+        }
+        let mut all: Vec<&String> = this
+            .names
+            .values()
+            .chain(this.arrays.values().map(|a| &a.name))
+            .collect();
+        all.sort();
+        if let Some(w) = all.windows(2).find(|w| w[0] == w[1]) {
+            bail!("type name collision on `{}`", w[0]);
+        }
+        if let Some(n) = all
+            .iter()
+            .find(|n| PRIMITIVE_VARIANTS.contains(&n.as_str()))
+        {
+            bail!("type `{n}` collides with a primitive AnyValue variant");
+        }
+
+        this.compute_boxing()?;
+        Ok(this)
+    }
+
+    fn prefix(&self, ns: &str) -> &str {
+        &self.prefixes[ns]
+    }
+
+    fn ty(&self, r: &TypeRef) -> Result<Ty> {
+        Ok(match r {
+            TypeRef::Any => Ty::Any,
+            TypeRef::Xsd(name) => xsd_ty(name)?,
+            TypeRef::Named(q) => {
+                if let Some(base) = self.model.simple.get(q) {
+                    xsd_ty(base)?
+                } else if let Some(arr) = self.arrays.get(q) {
+                    Ty::Array {
+                        item: Box::new(self.ty(&arr.item.ty)?),
+                        item_name: arr.item.name.clone(),
+                        item_prefix: self.prefix(&arr.item.ns).to_owned(),
+                    }
+                } else if let Some(name) = self.names.get(q) {
+                    Ty::Struct(name.clone())
+                } else {
+                    bail!("unknown type {q:?}")
+                }
+            }
+        })
+    }
+
+    /// Elements of a struct including inherited ones (base first).
+    fn elements(&self, def: &'m ComplexDef) -> Result<Vec<&'m ElemDef>> {
+        let mut out = match &def.base {
+            Some(base) => {
+                let base = self
+                    .model
+                    .complex
+                    .get(base)
+                    .with_context(|| format!("unknown base {base:?}"))?;
+                self.elements(base)?
+            }
+            None => Vec::new(),
+        };
+        out.extend(&def.elements);
+        Ok(out)
+    }
+
+    fn attrs(&self, def: &'m ComplexDef) -> Result<Vec<&'m super::wsdl::AttrDef>> {
+        let mut out = match &def.base {
+            Some(base) => self.attrs(&self.model.complex[base])?,
+            None => Vec::new(),
+        };
+        out.extend(&def.attrs);
+        Ok(out)
+    }
+
+    fn structs(&self) -> impl Iterator<Item = (&'m ComplexDef, &String)> {
+        self.model
+            .complex
+            .values()
+            .filter_map(|d| self.names.get(&d.qname).map(|n| (d, n)))
+    }
+
+    /// Box every by-value struct field whose type can reach its owner again.
+    fn compute_boxing(&mut self) -> Result<()> {
+        let mut edges: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+        for (def, name) in self.structs() {
+            for el in self.elements(def)? {
+                if let (Ty::Struct(target), false) = (self.ty(&el.ty)?, el.unbounded) {
+                    edges
+                        .entry(name.clone())
+                        .or_default()
+                        .push((snake(&el.name), target));
+                }
+            }
+        }
+        let reaches = |from: &str, to: &str| {
+            let mut stack = vec![from.to_owned()];
+            let mut seen = BTreeSet::new();
+            while let Some(n) = stack.pop() {
+                if n == to {
+                    return true;
+                }
+                if seen.insert(n.clone()) {
+                    stack.extend(edges.get(&n).into_iter().flatten().map(|(_, t)| t.clone()));
+                }
+            }
+            false
+        };
+        let mut boxed = BTreeSet::new();
+        for (owner, fields) in &edges {
+            for (field, target) in fields {
+                if reaches(target, owner) {
+                    boxed.insert((owner.clone(), field.clone()));
+                }
+            }
+        }
+        self.boxed = boxed;
+        Ok(())
+    }
+
+    fn rust(&self, ty: &Ty) -> String {
+        match ty {
+            Ty::Str => "String".into(),
+            Ty::Bool => "bool".into(),
+            Ty::I32 => "i32".into(),
+            Ty::I64 => "i64".into(),
+            Ty::F32 => "f32".into(),
+            Ty::F64 => "f64".into(),
+            Ty::Bytes => "Vec<u8>".into(),
+            Ty::Any => "AnyValue".into(),
+            Ty::Struct(n) => n.clone(),
+            Ty::Array { item, .. } => format!("Vec<{}>", self.rust(item)),
+        }
+    }
+
+    // ---------------------------------------------------------------- types
+
+    pub fn types(&self) -> Result<String> {
+        let mut out = String::from(HEADER);
+        out.push_str(
+            "//! Data types of the Polarion SOAP web services.\n\
+             //!\n\
+             //! `ArrayOf…` wrappers are plain `Vec`s. Untyped values (custom field\n\
+             //! values, field diffs) are [`AnyValue`], decoded from their `xsi:type`.\n\n\
+             #![allow(clippy::all, unused_mut, unused_variables, unused_imports)]\n\n\
+             use roxmltree::Node;\n\n\
+             use crate::error::Result;\n\
+             use crate::xml::{self, FromXml, ToXml, XmlWriter};\n\n",
+        );
+        out.push_str("/// Namespace prefixes declared on every request envelope.\npub const NAMESPACES: &[(&str, &str)] = &[\n");
+        for (ns, prefix) in &self.prefixes {
+            let _ = writeln!(out, "    ({prefix:?}, {ns:?}),");
+        }
+        out.push_str("];\n\n");
+
+        for (def, name) in self.structs() {
+            self.emit_struct(&mut out, def, name)?;
+        }
+        self.emit_any(&mut out)?;
+        Ok(out)
+    }
+
+    fn card(el: &ElemDef) -> Card {
+        if el.unbounded {
+            Card::Repeated
+        } else if el.min == 0 || el.nillable {
+            Card::Optional
+        } else {
+            Card::Required
+        }
+    }
+
+    fn emit_struct(&self, out: &mut String, def: &ComplexDef, name: &str) -> Result<()> {
+        let elements = self.elements(def)?;
+        let attrs = self.attrs(def)?;
+        let mut idents = BTreeSet::new();
+
+        let _ = writeln!(out, "/// `{}` in `{}`.", def.qname.name, def.qname.ns);
+        let _ = writeln!(
+            out,
+            "#[derive(Debug, Clone, Default, PartialEq)]\npub struct {name} {{"
+        );
+        let mut fields = Vec::new();
+        for el in &elements {
+            let ident = snake(&el.name);
+            if !idents.insert(ident.clone()) {
+                bail!("{name}: duplicate field `{ident}`");
+            }
+            let ty = self.ty(&el.ty)?;
+            let mut rust = self.rust(&ty);
+            if self.boxed.contains(&(name.to_owned(), ident.clone())) {
+                rust = format!("Box<{rust}>");
+            }
+            let card = Self::card(el);
+            let full = match card {
+                Card::Required => rust,
+                Card::Optional => format!("Option<{rust}>"),
+                Card::Repeated => format!("Vec<{rust}>"),
+            };
+            let _ = writeln!(out, "    /// `{}`", el.name);
+            let _ = writeln!(out, "    pub {ident}: {full},");
+            fields.push((*el, ident, ty, card));
+        }
+        let mut attr_fields = Vec::new();
+        for a in &attrs {
+            let mut ident = snake(&a.name);
+            if idents.contains(&ident) {
+                ident.push_str("_attr");
+            }
+            if !idents.insert(ident.clone()) {
+                bail!("{name}: duplicate field `{ident}`");
+            }
+            let ty = self.ty(&a.ty)?;
+            if !matches!(
+                ty,
+                Ty::Str | Ty::Bool | Ty::I32 | Ty::I64 | Ty::F32 | Ty::F64
+            ) {
+                bail!("{name}: attribute {} has non-scalar type", a.name);
+            }
+            let _ = writeln!(out, "    /// Attribute `{}`", a.name);
+            let _ = writeln!(out, "    pub {ident}: Option<{}>,", self.rust(&ty));
+            attr_fields.push((a.name.clone(), ident, ty));
+        }
+        out.push_str("}\n\n");
+
+        // ToXml
+        let _ = writeln!(
+            out,
+            "impl ToXml for {name} {{\n    fn write_xml_typed(&self, w: &mut XmlWriter, prefix: &str, name: &str, xsi_type: Option<&str>) {{\n        w.open(prefix, name);\n        if let Some(t) = xsi_type {{\n            w.attr(\"xsi:type\", t);\n        }}"
+        );
+        for (xml_name, ident, ty) in &attr_fields {
+            let value = match ty {
+                Ty::Str => "v".to_owned(),
+                Ty::Bool => "if *v { \"true\" } else { \"false\" }".to_owned(),
+                _ => "&v.to_string()".to_owned(),
+            };
+            let _ = writeln!(
+                out,
+                "        if let Some(v) = &self.{ident} {{\n            w.attr({xml_name:?}, {value});\n        }}"
+            );
+        }
+        out.push_str("        w.open_end();\n");
+        for (el, ident, ty, card) in &fields {
+            let p = self.prefix(&el.ns);
+            let write = |v: &str| match ty {
+                Ty::Array {
+                    item_name,
+                    item_prefix,
+                    ..
+                } => format!(
+                    "xml::write_array(w, {p:?}, {:?}, {item_prefix:?}, {item_name:?}, {v});",
+                    el.name
+                ),
+                _ => format!("{v}.write_xml(w, {p:?}, {:?});", el.name),
+            };
+            let line = match card {
+                Card::Required => match ty {
+                    Ty::Array { .. } => write(&format!("&self.{ident}")),
+                    _ => write(&format!("self.{ident}")),
+                },
+                Card::Optional => format!("if let Some(v) = &self.{ident} {{ {} }}", write("v")),
+                Card::Repeated => format!("for v in &self.{ident} {{ {} }}", write("v")),
+            };
+            let _ = writeln!(out, "        {line}");
+        }
+        out.push_str("        w.close(prefix, name);\n    }\n}\n\n");
+
+        // FromXml
+        let _ = writeln!(
+            out,
+            "impl FromXml for {name} {{\n    fn read_xml(node: Node<'_, '_>) -> Result<Self> {{\n        let mut out = Self::default();"
+        );
+        for (xml_name, ident, ty) in &attr_fields {
+            let expr = match ty {
+                Ty::Str => format!("node.attribute({xml_name:?}).map(str::to_owned)"),
+                Ty::Bool => format!("xml::attr_bool(node, {xml_name:?})?"),
+                _ => format!("xml::attr(node, {xml_name:?})?"),
+            };
+            let _ = writeln!(out, "        out.{ident} = {expr};");
+        }
+        if !fields.is_empty() {
+            out.push_str("        for c in node.children().filter(Node::is_element) {\n            match c.tag_name().name() {\n");
+            for (el, ident, ty, card) in &fields {
+                let read = match (ty, card) {
+                    (Ty::Array { item_name, .. }, Card::Required) => {
+                        format!("out.{ident} = xml::read_array(c, {item_name:?})?")
+                    }
+                    (Ty::Array { item_name, .. }, Card::Optional) => {
+                        format!("out.{ident} = xml::read_opt_array(c, {item_name:?})?")
+                    }
+                    (Ty::Array { item_name, .. }, Card::Repeated) => {
+                        format!("out.{ident}.push(xml::read_array(c, {item_name:?})?)")
+                    }
+                    (_, Card::Required) => format!("out.{ident} = xml::read_req(c)?"),
+                    (_, Card::Optional) => format!("out.{ident} = xml::read_opt(c)?"),
+                    (_, Card::Repeated) => format!("out.{ident}.push(xml::read_req(c)?)"),
+                };
+                let _ = writeln!(out, "                {:?} => {read},", el.name);
+            }
+            out.push_str("                _ => {}\n            }\n        }\n");
+        }
+        out.push_str("        Ok(out)\n    }\n}\n\n");
+        Ok(())
+    }
+
+    fn emit_any(&self, out: &mut String) -> Result<()> {
+        out.push_str(
+            "/// A value of an element without a fixed type (custom field values, field diffs),\n\
+             /// decoded according to its `xsi:type`.\n\
+             ///\n\
+             /// Values with an `xsi:type` the WSDLs do not define are kept as raw XML in\n\
+             /// [`AnyValue::Unknown`] rather than dropped.\n\
+             #[derive(Debug, Clone, Default, PartialEq)]\n\
+             pub enum AnyValue {\n\
+             \x20   /// `xsi:nil=\"true\"`.\n    #[default]\n    Nil,\n\
+             \x20   String(String),\n    Boolean(bool),\n    Int(i32),\n    Long(i64),\n    Float(f32),\n    Double(f64),\n\
+             \x20   /// `xsd:decimal`, kept as text to avoid rounding.\n    Decimal(String),\n\
+             \x20   Date(String),\n    DateTime(String),\n    Time(String),\n    QName(String),\n    Base64(Vec<u8>),\n",
+        );
+        for (def, name) in self.structs() {
+            let _ = writeln!(out, "    /// `{}`", def.qname.name);
+            let _ = writeln!(out, "    {name}(Box<{name}>),");
+        }
+        for (q, arr) in &self.arrays {
+            let item = self.ty(&arr.item.ty)?;
+            let _ = writeln!(out, "    /// `{}`", q.name);
+            let _ = writeln!(out, "    {}(Vec<{}>),", arr.name, self.rust(&item));
+        }
+        out.push_str(
+            "    /// A type not described by the WSDLs; the element's original XML.\n    Unknown { xsi_type: Option<String>, xml: String },\n}\n\n",
+        );
+
+        // FromXml
+        out.push_str(
+            "impl FromXml for AnyValue {\n    fn read_xml(node: Node<'_, '_>) -> Result<Self> {\n        if xml::is_nil(node) {\n            return Ok(AnyValue::Nil);\n        }\n        let Some((ns, local)) = xml::xsi_type(node) else {\n            return Ok(if xml::has_element_children(node) {\n                AnyValue::Unknown { xsi_type: None, xml: xml::raw_xml(node) }\n            } else {\n                AnyValue::String(xml::text(node))\n            });\n        };\n        Ok(match (ns.unwrap_or(\"\"), local) {\n",
+        );
+        for (local, variant) in XSD_VARIANTS {
+            let _ = writeln!(
+                out,
+                "            ({XSD:?}, {local:?}) => AnyValue::{variant}(FromXml::read_xml(node)?),"
+            );
+        }
+        for (q, base) in &self.model.simple {
+            if let Some((_, variant)) = XSD_VARIANTS.iter().find(|(l, _)| l == base) {
+                let _ = writeln!(
+                    out,
+                    "            ({:?}, {:?}) => AnyValue::{variant}(FromXml::read_xml(node)?),",
+                    q.ns, q.name
+                );
+            }
+        }
+        for (def, name) in self.structs() {
+            let _ = writeln!(
+                out,
+                "            ({:?}, {:?}) => AnyValue::{name}(Box::new(FromXml::read_xml(node)?)),",
+                def.qname.ns, def.qname.name
+            );
+        }
+        for (q, arr) in &self.arrays {
+            let _ = writeln!(
+                out,
+                "            ({:?}, {:?}) => AnyValue::{}(xml::read_array(node, {:?})?),",
+                q.ns, q.name, arr.name, arr.item.name
+            );
+        }
+        out.push_str(
+            "            (ns, local) => AnyValue::Unknown {\n                xsi_type: Some(format!(\"{{{ns}}}{local}\")),\n                xml: xml::raw_xml(node),\n            },\n        })\n    }\n}\n\n",
+        );
+
+        // ToXml
+        out.push_str(
+            "impl ToXml for AnyValue {\n    fn write_xml_typed(&self, w: &mut XmlWriter, prefix: &str, name: &str, _xsi_type: Option<&str>) {\n        match self {\n            AnyValue::Nil => w.nil(prefix, name),\n",
+        );
+        for (local, variant) in XSD_CANONICAL {
+            let v = if *variant == "Base64" {
+                "v.as_slice()"
+            } else {
+                "v"
+            };
+            let _ = writeln!(
+                out,
+                "            AnyValue::{variant}(v) => {v}.write_xml_typed(w, prefix, name, Some(\"xsd:{local}\")),"
+            );
+        }
+        for (def, name) in self.structs() {
+            let _ = writeln!(
+                out,
+                "            AnyValue::{name}(v) => v.write_xml_typed(w, prefix, name, Some(\"{}:{}\")),",
+                self.prefix(&def.qname.ns),
+                def.qname.name
+            );
+        }
+        for (q, arr) in &self.arrays {
+            let _ = writeln!(
+                out,
+                "            AnyValue::{}(items) => {{\n                w.open(prefix, name);\n                w.attr(\"xsi:type\", \"{}:{}\");\n                w.open_end();\n                for v in items {{\n                    v.write_xml(w, {:?}, {:?});\n                }}\n                w.close(prefix, name);\n            }}",
+                arr.name,
+                self.prefix(&q.ns),
+                q.name,
+                self.prefix(&arr.item.ns),
+                arr.item.name
+            );
+        }
+        out.push_str(
+            "            AnyValue::Unknown { xml, .. } => w.raw(xml),\n        }\n    }\n}\n",
+        );
+        Ok(())
+    }
+
+    // ------------------------------------------------------------- services
+
+    pub fn services(&self) -> Result<String> {
+        let mut out = String::from(HEADER);
+        out.push_str(
+            "//! One accessor per web service on [`Client`], one method per WSDL operation.\n\n\
+             #![allow(clippy::all, unused_mut, unused_variables, unused_imports)]\n\n\
+             use roxmltree::Node;\n\n\
+             use super::types::*;\n\
+             use crate::client::Client;\n\
+             use crate::error::{Error, Result};\n\
+             use crate::xml::{self, ToXml, XmlWriter};\n\n",
+        );
+        self.check_overrides()?;
+        for service in &self.model.services {
+            self.emit_service(&mut out, service)?;
+        }
+        Ok(out)
+    }
+
+    fn check_overrides(&self) -> Result<()> {
+        for (service, op, param) in NILLABLE_PARAMS.iter().chain(OPTIONAL_PARAMS) {
+            let found = self
+                .model
+                .services
+                .iter()
+                .filter(|s| s.name == *service)
+                .flat_map(|s| &s.ops)
+                .filter(|o| o.name == *op)
+                .flat_map(|o| &o.params)
+                .any(|p| p.name == *param);
+            if !found {
+                bail!(
+                    "override for {service}.{op}({param}) matches no parameter; update xtask/src/soap/emit.rs"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_service(&self, out: &mut String, service: &Service) -> Result<()> {
+        let base = service
+            .name
+            .strip_suffix("WebService")
+            .unwrap_or(&service.name);
+        let struct_name = format!("{}Service", pascal(base));
+        let accessor = match snake(base).as_str() {
+            // `Client::builder()` is the constructor.
+            "builder" => "builds".to_owned(),
+            other => other.to_owned(),
+        };
+        let mut doc = vec![format!("The `{}`.", service.name)];
+        if let Some(d) = &service.doc {
+            doc.push(String::new());
+            doc.extend(javadoc(d));
+        }
+        for line in &doc {
+            let _ = writeln!(out, "///{}{line}", if line.is_empty() { "" } else { " " });
+        }
+        let _ = writeln!(
+            out,
+            "#[derive(Debug, Clone, Copy)]\npub struct {struct_name}<'a> {{\n    client: &'a Client,\n}}\n\nimpl Client {{\n    /// The `{}`.\n    pub fn {accessor}(&self) -> {struct_name}<'_> {{\n        {struct_name} {{ client: self }}\n    }}\n}}\n\nimpl {struct_name}<'_> {{",
+            service.name
+        );
+        let mut names = BTreeSet::new();
+        for op in &service.ops {
+            let fn_name = snake(&op.name);
+            if !names.insert(fn_name.clone()) {
+                bail!("{}: duplicate method `{fn_name}`", service.name);
+            }
+            self.emit_op(out, service, op, &fn_name)?;
+        }
+        out.push_str("}\n\n");
+        Ok(())
+    }
+
+    fn emit_op(
+        &self,
+        out: &mut String,
+        service: &Service,
+        op: &OpDef,
+        fn_name: &str,
+    ) -> Result<()> {
+        let read = is_read(&op.name);
+        let mut doc = op.doc.as_deref().map(javadoc).unwrap_or_default();
+        if !doc.is_empty() {
+            doc.push(String::new());
+        }
+        doc.push(format!(
+            "`{}.{}`{}",
+            service.name,
+            op.name,
+            if read {
+                ""
+            } else {
+                " (modifies data; refused by read-only clients)"
+            }
+        ));
+        for line in &doc {
+            let _ = writeln!(
+                out,
+                "    ///{}{line}",
+                if line.is_empty() { "" } else { " " }
+            );
+        }
+
+        let p = self.prefix(&op.ns).to_owned();
+        let mut args = vec!["&self".to_owned()];
+        let mut body = String::new();
+        let mut idents = BTreeSet::new();
+        for param in &op.params {
+            let ident = snake(&param.name);
+            if !idents.insert(ident.clone()) {
+                bail!("{}: duplicate parameter `{ident}`", op.name);
+            }
+            let key = (service.name.as_str(), op.name.as_str(), param.name.as_str());
+            let nil_override = NILLABLE_PARAMS.contains(&key);
+            let mut card = Self::card(param);
+            if (nil_override || OPTIONAL_PARAMS.contains(&key)) && card == Card::Required {
+                card = Card::Optional;
+            }
+            let nillable = param.nillable || nil_override;
+            let ty = self.ty(&param.ty)?;
+            let (one, many) = match &ty {
+                Ty::Str => ("&str".to_owned(), "&[String]".to_owned()),
+                Ty::Bool | Ty::I32 | Ty::I64 | Ty::F32 | Ty::F64 => {
+                    let r = self.rust(&ty);
+                    (r.clone(), format!("&[{r}]"))
+                }
+                Ty::Bytes => ("&[u8]".to_owned(), "&[Vec<u8>]".to_owned()),
+                Ty::Any | Ty::Struct(_) => {
+                    let r = self.rust(&ty);
+                    (format!("&{r}"), format!("&[{r}]"))
+                }
+                Ty::Array { item, .. } => {
+                    let r = self.rust(item);
+                    (format!("&[{r}]"), format!("&[Vec<{r}>]"))
+                }
+            };
+            let arg = match card {
+                Card::Required => one,
+                Card::Optional => format!("Option<{one}>"),
+                Card::Repeated => many,
+            };
+            args.push(format!("{ident}: {arg}"));
+
+            let write = |v: &str| match &ty {
+                Ty::Array {
+                    item_name,
+                    item_prefix,
+                    ..
+                } => format!(
+                    "xml::write_array(&mut w, {p:?}, {:?}, {item_prefix:?}, {item_name:?}, {v});",
+                    param.name
+                ),
+                _ => format!("{v}.write_xml(&mut w, {p:?}, {:?});", param.name),
+            };
+            let line = match card {
+                Card::Required => write(&ident),
+                Card::Optional => {
+                    let none = if nillable {
+                        format!("w.nil({p:?}, {:?})", param.name)
+                    } else {
+                        "{}".to_owned()
+                    };
+                    format!(
+                        "match {ident} {{ Some(v) => {{ {} }} None => {none}, }}",
+                        write("v")
+                    )
+                }
+                Card::Repeated => format!("for v in {ident} {{ {} }}", write("v")),
+            };
+            let _ = writeln!(body, "        {line}");
+        }
+
+        let (ret, decode) = match &op.ret {
+            None => ("()".to_owned(), "|_| Ok(())".to_owned()),
+            Some(r) => {
+                let ty = self.ty(&r.ty)?;
+                let find = format!(
+                    "node.children().find(|c| c.is_element() && c.tag_name().name() == {:?})",
+                    r.name
+                );
+                match (&ty, Self::card(r)) {
+                    (
+                        Ty::Array {
+                            item, item_name, ..
+                        },
+                        _,
+                    ) => (
+                        format!("Vec<{}>", self.rust(item)),
+                        format!(
+                            "|node| match {find} {{ Some(c) if !xml::is_nil(c) => xml::read_array(c, {item_name:?}), _ => Ok(Vec::new()) }}"
+                        ),
+                    ),
+                    (_, Card::Repeated) => (
+                        format!("Vec<{}>", self.rust(&ty)),
+                        format!(
+                            "|node| node.children().filter(|c| c.is_element() && c.tag_name().name() == {:?}).map(xml::read_req).collect()",
+                            r.name
+                        ),
+                    ),
+                    (_, Card::Optional) => (
+                        format!("Option<{}>", self.rust(&ty)),
+                        format!(
+                            "|node| match {find} {{ Some(c) => xml::read_opt(c), None => Ok(None) }}"
+                        ),
+                    ),
+                    (_, Card::Required) => (
+                        self.rust(&ty),
+                        format!(
+                            "|node| match {find} {{ Some(c) => xml::read_req(c), None => Err(Error::Decode {{ element: {:?}.into(), message: \"missing {}\".into() }}) }}",
+                            format!("{}Response", op.name),
+                            r.name
+                        ),
+                    ),
+                }
+            }
+        };
+
+        let _ = writeln!(
+            out,
+            "    pub async fn {fn_name}({}) -> Result<{ret}> {{",
+            args.join(", ")
+        );
+        let _ = writeln!(out, "        let mut w = XmlWriter::new();");
+        let _ = writeln!(
+            out,
+            "        w.open({p:?}, {:?});\n        w.open_end();",
+            op.name
+        );
+        out.push_str(&body);
+        let _ = writeln!(out, "        w.close({p:?}, {:?});", op.name);
+        let _ = writeln!(
+            out,
+            "        self.client.call({:?}, {:?}, {read}, w.into_string(), {decode}).await\n    }}\n",
+            service.name, op.name
+        );
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------- tests
+
+    pub fn tests(&self) -> String {
+        let mut out = String::from(HEADER);
+        out.push_str(
+            "//! Every WSDL type's example (synthesized from the WSDLs) must round-trip through its Rust type,\n\
+             //! both directly and as an `xsi:type`-tagged `AnyValue`.\n\n\
+             mod support;\n\n\
+             use polarion_soap::types::*;\n\n",
+        );
+        for (def, name) in self.structs() {
+            let _ = writeln!(
+                out,
+                "#[test]\nfn {}() {{\n    support::roundtrip::<{name}>({:?}, {:?});\n}}\n",
+                snake(name),
+                def.qname.ns,
+                def.qname.name
+            );
+        }
+        for (def, name) in self
+            .structs()
+            .map(|(d, n)| (&d.qname, n))
+            .chain(self.arrays.iter().map(|(q, a)| (q, &a.name)))
+        {
+            let _ = writeln!(
+                out,
+                "#[test]\nfn any_{}() {{\n    support::roundtrip_any({:?}, {:?}, |v| matches!(v, AnyValue::{name}(_)));\n}}\n",
+                snake(name),
+                def.ns,
+                def.name
+            );
+        }
+        out
+    }
+}
+
+const XSD_VARIANTS: &[(&str, &str)] = &[
+    ("string", "String"),
+    ("anyURI", "String"),
+    ("boolean", "Boolean"),
+    ("int", "Int"),
+    ("short", "Int"),
+    ("long", "Long"),
+    ("integer", "Long"),
+    ("float", "Float"),
+    ("double", "Double"),
+    ("decimal", "Decimal"),
+    ("date", "Date"),
+    ("dateTime", "DateTime"),
+    ("time", "Time"),
+    ("QName", "QName"),
+    ("base64Binary", "Base64"),
+];
+
+/// The `xsi:type` written for each primitive variant.
+const XSD_CANONICAL: &[(&str, &str)] = &[
+    ("string", "String"),
+    ("boolean", "Boolean"),
+    ("int", "Int"),
+    ("long", "Long"),
+    ("float", "Float"),
+    ("double", "Double"),
+    ("decimal", "Decimal"),
+    ("date", "Date"),
+    ("dateTime", "DateTime"),
+    ("time", "Time"),
+    ("QName", "QName"),
+    ("base64Binary", "Base64"),
+];
+
+fn xsd_ty(name: &str) -> Result<Ty> {
+    Ok(match name {
+        "string" | "date" | "dateTime" | "time" | "QName" | "anyURI" | "decimal" | "duration"
+        | "token" | "normalizedString" => Ty::Str,
+        "boolean" => Ty::Bool,
+        "int" | "short" | "byte" | "unsignedShort" | "unsignedByte" => Ty::I32,
+        "long" | "integer" | "unsignedInt" => Ty::I64,
+        "float" => Ty::F32,
+        "double" => Ty::F64,
+        "base64Binary" => Ty::Bytes,
+        "anyType" => Ty::Any,
+        other => bail!("unsupported XML Schema type xsd:{other}"),
+    })
+}
+
+/// `http://ws.polarion.com/TrackerWebService-types` → `trackert`.
+fn prefix_for(ns: &str) -> String {
+    let tail = ns.trim_end_matches('/').rsplit('/').next().unwrap_or(ns);
+    let (base, suffix) = match tail.split_once('-') {
+        Some((b, "types")) => (b, "t"),
+        Some((b, "impl")) => (b, "i"),
+        Some((b, other)) => (b, other),
+        None => (tail, ""),
+    };
+    let base = base.strip_suffix("WebService").unwrap_or(base);
+    format!("{}{suffix}", base.to_ascii_lowercase())
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect()
+}
+
+/// `http://ws.polarion.com/TestManagementWebService-types` → `TestManagement`.
+fn namespace_label(ns: &str) -> String {
+    let tail = ns.trim_end_matches('/').rsplit('/').next().unwrap_or(ns);
+    let base = tail.split('-').next().unwrap_or(tail);
+    pascal(base.strip_suffix("WebService").unwrap_or(base))
+}
+
+/// Javadoc → rustdoc lines.
+fn javadoc(text: &str) -> Vec<String> {
+    let mut s = text.to_owned();
+    for tag in ["{@link ", "{@code ", "{@linkplain "] {
+        while let Some(start) = s.find(tag) {
+            let Some(len) = s[start..].find('}') else {
+                break;
+            };
+            let inner = s[start + tag.len()..start + len].trim().to_owned();
+            s.replace_range(start..start + len + 1, &format!("`{inner}`"));
+        }
+    }
+    let s = strip_html(&s);
+    let mut out: Vec<String> = Vec::new();
+    for raw in s.lines() {
+        let line = raw.trim();
+        let line = if let Some(rest) = line.strip_prefix("@param ") {
+            let (name, desc) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+            format!("- `{name}`: {}", desc.trim())
+        } else if let Some(rest) = line.strip_prefix("@return") {
+            format!("- Returns: {}", rest.trim())
+        } else if let Some(rest) = line.strip_prefix("@since") {
+            format!("- Since Polarion {}", rest.trim())
+        } else if let Some(rest) = line.strip_prefix("@deprecated") {
+            format!("- **Deprecated** {}", rest.trim())
+        } else if let Some(rest) = line.strip_prefix("@throws") {
+            format!("- Throws {}", rest.trim())
+        } else {
+            line.to_owned()
+        };
+        // Escape markdown/HTML outside code spans only.
+        let escaped: Vec<String> = line
+            .split('`')
+            .enumerate()
+            .map(|(i, part)| {
+                if i % 2 == 1 {
+                    part.to_owned()
+                } else {
+                    part.split(' ')
+                        .map(escape_word)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                }
+            })
+            .collect();
+        let line = escaped.join("`");
+        let line = line.trim_end().to_owned();
+        if line.is_empty() && out.last().is_none_or(String::is_empty) {
+            continue;
+        }
+        out.push(line);
+    }
+    while out.last().is_some_and(String::is_empty) {
+        out.pop();
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_classification() {
+        assert!(is_read("getWorkItemById"));
+        assert!(is_read("queryWorkItems"));
+        assert!(is_read("logInWithToken"));
+        assert!(is_read("canDeleteInstance"));
+        assert!(!is_read("createWorkItem"));
+        assert!(!is_read("isolate"));
+        assert!(!is_read("updateWorkItem"));
+        assert!(!is_read("generateHistory"));
+    }
+
+    #[test]
+    fn prefixes() {
+        assert_eq!(
+            prefix_for("http://ws.polarion.com/TrackerWebService-types"),
+            "trackert"
+        );
+        assert_eq!(
+            prefix_for("http://ws.polarion.com/TrackerWebService-impl"),
+            "trackeri"
+        );
+        assert_eq!(
+            prefix_for("http://ws.polarion.com/TrackerWebService"),
+            "tracker"
+        );
+        assert_eq!(prefix_for("http://ws.polarion.com/types"), "types");
+        assert_eq!(
+            namespace_label("http://ws.polarion.com/TestManagementWebService-types"),
+            "TestManagement"
+        );
+    }
+}

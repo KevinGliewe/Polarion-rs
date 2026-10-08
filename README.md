@@ -5,6 +5,7 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 | Crate | Status | Purpose |
 |---|---|---|
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
+| [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
 | `polarion` | planned | Ergonomic library on top of `polarion-rest` |
 | `polarion-cli` | planned | Command-line interface, with JSON output for automation |
 | `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
@@ -54,6 +55,52 @@ POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_P
   cargo run -p polarion-rest --example smoke
 ```
 
+## polarion-soap
+
+Polarion's older SOAP web services are not subject to the REST API permissions (see below) and cover things the
+2410 REST API lacks, such as listing documents, SQL queries, baselines and wiki pages.
+
+```rust
+use polarion_soap::types::AnyValue;
+use polarion_soap::{Auth, Client};
+
+let client = Client::builder("https://polarion.example.com/polarion", Auth::Token("<token>".into()))
+    .read_only(true)
+    .build()?;
+
+// One accessor per service, one method per WSDL operation (queryWorkItemsLimited → query_work_items_limited).
+let items = client
+    .tracker()
+    .query_work_items_limited("project.id:MyProject AND type:requirement", "id", &["id".into(), "title".into()], 10)
+    .await?;
+let item = client.tracker().get_work_item_by_id("MyProject", "MP-1").await?;
+for field in item.custom_fields.unwrap_or_default() {
+    match field.value {
+        Some(AnyValue::EnumOptionId(e)) => println!("{} = enum {:?}", field.key, e.id),
+        Some(AnyValue::Text(t)) => println!("{} = text {}", field.key, t.content),
+        other => println!("{} = {other:?}", field.key),
+    }
+}
+```
+
+- **Coverage:** all 302 operations of the 7 services (Session, Project, Tracker, TestManagement, Planning, Security,
+  Builder), with Javadoc from the WSDLs as method docs.
+- **Session:** logs in lazily with a personal access token (`logInWithToken`) or user/password and keeps the
+  session (`sessionID` header plus cookie) for all services.
+- **Untyped values:** custom field values and other untyped elements are `AnyValue`, decoded from the `xsi:type` the
+  server sends (enum options, rich text, dates, numbers, arrays, ...). Unknown types are kept as raw XML, never
+  dropped.
+- **Errors:** SOAP faults surface with their code and message (`Error::Fault`).
+- **Read-only mode:** `read_only(true)` refuses every operation not named `get…`, `query…`, `list…`, `search…`,
+  `has…`, `can…`, `is…`, `was…` or `export…` (plus login/logout) before anything is sent.
+
+Try it against a real server (read-only, at most seven small requests, each reported as OK or FAIL):
+
+```sh
+POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject \
+  cargo run -p polarion-soap --example smoke
+```
+
 ## Live tests (testdrive only)
 
 `crates/polarion-rest/tests/live.rs` runs against Siemens' public test drive server. The URL is hard-coded so the
@@ -70,8 +117,9 @@ cargo test -p polarion-rest --test live -- --ignored --nocapture --test-threads=
 ## Code generation
 
 `crates/polarion-rest/src/generated/` and `crates/polarion-rest/tests/spec_examples.rs` are generated from
-`spec/polarion-openapi.json` by the generator in [`xtask/`](xtask). The generated code is committed; CI fails if it
-is stale.
+`spec/polarion-openapi.json`, `crates/polarion-soap/src/generated/` and `crates/polarion-soap/tests/spec_examples.rs`
+from `spec/soap/*.wsdl`, both by the generators in [`xtask/`](xtask). The generated code is committed; CI fails if
+it is stale.
 
 ```sh
 cargo xtask codegen          # regenerate
@@ -91,8 +139,13 @@ configured in the Global context). By default only `admin` and `project_admin` h
 administrator has to grant at least `GET`, e.g. to `project_user`. See
 [Siemens: REST API authorization](https://developer.siemens.com/polarion/authorization.html).
 
-`spec_examples.rs` builds an example document from every schema in the spec and checks it round-trips through the
-generated types, so mapping gaps show up as test failures rather than silently dropped fields.
+The WSDLs were fetched from the same 2410 server (`<polarion>/ws/services/<Name>WebService?wsdl`, no login needed).
+Unlike REST, the SOAP API barely changes between versions: compared with testdrive's newer release, all 302
+operations are the same and the only type difference is `Hyperlink.title`, which 2410 lacks.
+
+Both `spec_examples.rs` test suites build an example document from every schema (independently of the generator)
+and check it round-trips through the generated types, so mapping gaps show up as test failures rather than silently
+dropped fields.
 
 ## License
 

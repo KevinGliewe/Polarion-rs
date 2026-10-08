@@ -1,0 +1,26 @@
+[package]
+name = "polarion-soap"
+description = "Async client for the Siemens Polarion ALM SOAP web services, generated from the WSDLs"
+keywords = ["polarion", "alm", "soap", "wsdl", "api"]
+categories = ["api-bindings", "web-programming::http-client"]
+readme = "../../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+base64.workspace = true
+reqwest = { workspace = true, features = ["cookies"] }
+roxmltree.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+wiremock.workspace = true
+
+[lints]
+workspace = true

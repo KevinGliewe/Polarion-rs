@@ -23,7 +23,7 @@ pub fn doc_lines(text: &str) -> Vec<String> {
     lines
 }
 
-fn strip_html(text: &str) -> String {
+pub fn strip_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find('<') {
@@ -70,7 +70,7 @@ fn strip_html(text: &str) -> String {
         .replace("&amp;", "&")
 }
 
-fn escape_word(word: &str) -> String {
+pub fn escape_word(word: &str) -> String {
     if word.starts_with("http://") || word.starts_with("https://") {
         let trimmed = word.trim_end_matches(['.', ',', ')', ';', ':']);
         return format!("<{trimmed}>{}", &word[trimmed.len()..]);
