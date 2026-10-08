@@ -1,0 +1,1688 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions targetNamespace="http://ws.polarion.com/PlanningWebService" xmlns:apachesoap="http://xml.apache.org/xml-soap" xmlns:impl="http://ws.polarion.com/PlanningWebService" xmlns:intf="http://ws.polarion.com/PlanningWebService" xmlns:tns1="http://ws.polarion.com/PlanningWebService-impl" xmlns:tns2="http://ws.polarion.com/types" xmlns:tns3="http://ws.polarion.com/TrackerWebService-types" xmlns:tns4="http://ws.polarion.com/PlanningWebService-types" xmlns:tns5="http://ws.polarion.com/ProjectWebService-types" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:wsdlsoap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<!--WSDL created by Apache Axis version: 1.4
+Built on Apr 22, 2006 (06:55:48 PDT)-->
+ <wsdl:types>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/PlanningWebService-impl" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/TrackerWebService-types"/>
+   <import namespace="http://ws.polarion.com/ProjectWebService-types"/>
+   <import namespace="http://ws.polarion.com/PlanningWebService-types"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <element name="addPlanAllowedType">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="workItemType" type="tns3:EnumOptionId"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="addPlanAllowedTypeResponse">
+    <complexType/>
+   </element>
+   <element name="addPlanItems">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element maxOccurs="unbounded" name="items" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="addPlanItemsResponse">
+    <complexType/>
+   </element>
+   <element name="addProjectToPlanProjectSpan">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="projectId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="addProjectToPlanProjectSpanResponse">
+    <complexType/>
+   </element>
+   <element name="createPlan">
+    <complexType>
+     <sequence>
+      <element name="projectId" type="xsd:string"/>
+      <element name="name" type="xsd:string"/>
+      <element name="id" type="xsd:string"/>
+      <element name="parentId" type="xsd:string"/>
+      <element name="templateId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="createPlanResponse">
+    <complexType>
+     <sequence>
+      <element name="createPlanReturn" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="createPlanTemplate">
+    <complexType>
+     <sequence>
+      <element name="projectId" type="xsd:string"/>
+      <element name="name" type="xsd:string"/>
+      <element name="id" type="xsd:string"/>
+      <element name="templateId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="createPlanTemplateResponse">
+    <complexType>
+     <sequence>
+      <element name="createPlanTemplateReturn" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="deletePlans">
+    <complexType>
+     <sequence>
+      <element name="projectId" type="xsd:string"/>
+      <element maxOccurs="unbounded" name="ids" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="deletePlansResponse">
+    <complexType/>
+   </element>
+   <element name="getPlanById">
+    <complexType>
+     <sequence>
+      <element name="projectId" type="xsd:string"/>
+      <element name="id" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanByIdResponse">
+    <complexType>
+     <sequence>
+      <element name="getPlanByIdReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanByUri">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanByUriResponse">
+    <complexType>
+     <sequence>
+      <element name="getPlanByUriReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanStatistics">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanStatisticsResponse">
+    <complexType>
+     <sequence>
+      <element name="getPlanStatisticsReturn" type="tns4:PlanStatistics"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanWikiContent">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getPlanWikiContentResponse">
+    <complexType>
+     <sequence>
+      <element name="getPlanWikiContentReturn" type="tns2:Text"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="removePlanAllowedType">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="workItemType" type="tns3:EnumOptionId"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="removePlanAllowedTypeResponse">
+    <complexType/>
+   </element>
+   <element name="removePlanItems">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element maxOccurs="unbounded" name="items" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="removePlanItemsResponse">
+    <complexType/>
+   </element>
+   <element name="removeProjectFromPlanProjectSpan">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="projectId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="removeProjectFromPlanProjectSpanResponse">
+    <complexType/>
+   </element>
+   <element name="searchPlanTemplates">
+    <complexType>
+     <sequence>
+      <element name="query" type="xsd:string"/>
+      <element name="sort" type="xsd:string"/>
+      <element name="resultsLimit" type="xsd:int"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlanTemplatesResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="searchPlanTemplatesReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlanTemplatesWithFields">
+    <complexType>
+     <sequence>
+      <element name="query" type="xsd:string"/>
+      <element name="sort" type="xsd:string"/>
+      <element name="resultsLimit" type="xsd:int"/>
+      <element maxOccurs="unbounded" name="fields" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlanTemplatesWithFieldsResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="searchPlanTemplatesWithFieldsReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlans">
+    <complexType>
+     <sequence>
+      <element name="query" type="xsd:string"/>
+      <element name="sort" type="xsd:string"/>
+      <element name="resultsLimit" type="xsd:int"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlansResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="searchPlansReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlansWithFields">
+    <complexType>
+     <sequence>
+      <element name="query" type="xsd:string"/>
+      <element name="sort" type="xsd:string"/>
+      <element name="resultsLimit" type="xsd:int"/>
+      <element maxOccurs="unbounded" name="fields" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="searchPlansWithFieldsResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="searchPlansWithFieldsReturn" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="setPlanWikiContent">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="text" type="tns2:Text"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="setPlanWikiContentResponse">
+    <complexType/>
+   </element>
+   <element name="updatePlan">
+    <complexType>
+     <sequence>
+      <element name="content" type="tns4:Plan"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="updatePlanResponse">
+    <complexType/>
+   </element>
+   <element name="wasPlanStarted">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="wasPlanStartedResponse">
+    <complexType>
+     <sequence>
+      <element name="wasPlanStartedReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/TrackerWebService-types"/>
+   <import namespace="http://ws.polarion.com/ProjectWebService-types"/>
+   <import namespace="http://ws.polarion.com/PlanningWebService-types"/>
+   <simpleType name="SubterraURI">
+    <restriction base="xsd:string"/>
+   </simpleType>
+   <complexType name="Text">
+    <sequence>
+     <element name="type" type="xsd:string"/>
+     <element name="content" type="xsd:string"/>
+     <element name="contentLossy" type="xsd:boolean"/>
+    </sequence>
+   </complexType>
+   <simpleType name="Location">
+    <restriction base="xsd:string"/>
+   </simpleType>
+   <simpleType name="duration">
+    <restriction base="xsd:string"/>
+   </simpleType>
+   <complexType name="ArrayOfSubterraURI">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="SubterraURI" type="tns2:SubterraURI"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfstring">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="string" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="Revision">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="author" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="branch" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="created" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="internalCommit" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedWorkItemURIs" type="tns2:ArrayOfSubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="message" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="repositoryName" type="xsd:string"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfRevision">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Revision" type="tns2:Revision"/>
+    </sequence>
+   </complexType>
+   <complexType name="property">
+    <sequence>
+     <element name="key" nillable="false" type="xsd:string"/>
+     <element name="value" nillable="true" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="Properties">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="property" type="tns2:property"/>
+    </sequence>
+   </complexType>
+   <simpleType name="Currency">
+    <restriction base="xsd:decimal">
+     <fractionDigits value="2"/>
+    </restriction>
+   </simpleType>
+   <complexType name="ArrayOfText">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Text" type="tns2:Text"/>
+    </sequence>
+   </complexType>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/TrackerWebService-types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/ProjectWebService-types"/>
+   <import namespace="http://ws.polarion.com/PlanningWebService-types"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <complexType name="EnumOptionId">
+    <sequence>
+     <element name="id" nillable="true" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfEnumOptionId">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="EnumOptionId" type="tns3:EnumOptionId"/>
+    </sequence>
+   </complexType>
+   <complexType name="Approval">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="secureApprovalCommentId" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="status" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="user" type="tns5:User"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfApproval">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Approval" type="tns3:Approval"/>
+    </sequence>
+   </complexType>
+   <complexType name="Attachment">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="author" type="tns5:User"/>
+     <element maxOccurs="1" minOccurs="0" name="fileName" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="length" type="xsd:long"/>
+     <element maxOccurs="1" minOccurs="0" name="title" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="updated" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="url" type="xsd:string"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfAttachment">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Attachment" type="tns3:Attachment"/>
+    </sequence>
+   </complexType>
+   <complexType name="Category">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfCategory">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Category" type="tns3:Category"/>
+    </sequence>
+   </complexType>
+   <complexType name="Comment">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="author" type="tns5:User"/>
+     <element maxOccurs="1" minOccurs="0" name="childCommentURIs" type="tns2:ArrayOfSubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="created" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="parentCommentURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="resolved" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="tags" type="tns3:ArrayOfEnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="text" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="title" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="visibleTo" type="tns2:ArrayOfstring"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfComment">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Comment" type="tns3:Comment"/>
+    </sequence>
+   </complexType>
+   <complexType name="ExternallyLinkedWorkItem">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="role" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="workItemURI" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfExternallyLinkedWorkItem">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="ExternallyLinkedWorkItem" type="tns3:ExternallyLinkedWorkItem"/>
+    </sequence>
+   </complexType>
+   <complexType name="Hyperlink">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="role" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="uri" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfHyperlink">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Hyperlink" type="tns3:Hyperlink"/>
+    </sequence>
+   </complexType>
+   <complexType name="LinkedOslcResource">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="label" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="revision" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="role" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="uri" type="xsd:string"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfLinkedOslcResource">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="LinkedOslcResource" type="tns3:LinkedOslcResource"/>
+    </sequence>
+   </complexType>
+   <complexType name="LinkedWorkItem">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="revision" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="role" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="suspect" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="workItemURI" type="tns2:SubterraURI"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfLinkedWorkItem">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="LinkedWorkItem" type="tns3:LinkedWorkItem"/>
+    </sequence>
+   </complexType>
+   <complexType name="PlanningConstraint">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="constraint" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="date" type="xsd:dateTime"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfPlanningConstraint">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="PlanningConstraint" type="tns3:PlanningConstraint"/>
+    </sequence>
+   </complexType>
+   <complexType name="PriorityOptionId">
+    <complexContent>
+     <extension base="tns3:EnumOptionId">
+      <sequence/>
+     </extension>
+    </complexContent>
+   </complexType>
+   <complexType name="TimePoint">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="closed" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="earliestPlannedStart" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="time" type="xsd:date"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="WorkRecord">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="comment" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="date" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="timeSpent" type="tns2:duration"/>
+     <element maxOccurs="1" minOccurs="0" name="type" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="user" type="tns5:User"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfWorkRecord">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="WorkRecord" type="tns3:WorkRecord"/>
+    </sequence>
+   </complexType>
+   <complexType name="Custom">
+    <sequence>
+     <element name="key" type="xsd:string"/>
+     <element name="value" nillable="true"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfCustom">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Custom" type="tns3:Custom"/>
+    </sequence>
+   </complexType>
+   <complexType name="WorkItem">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="approvals" type="tns3:ArrayOfApproval"/>
+     <element maxOccurs="1" minOccurs="0" name="assignee" type="tns5:ArrayOfUser"/>
+     <element maxOccurs="1" minOccurs="0" name="attachments" type="tns3:ArrayOfAttachment"/>
+     <element maxOccurs="1" minOccurs="0" name="author" type="tns5:User"/>
+     <element maxOccurs="1" minOccurs="0" name="categories" type="tns3:ArrayOfCategory"/>
+     <element maxOccurs="1" minOccurs="0" name="comments" type="tns3:ArrayOfComment"/>
+     <element maxOccurs="1" minOccurs="0" name="created" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="dueDate" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="externallyLinkedWorkItems" type="tns3:ArrayOfExternallyLinkedWorkItem"/>
+     <element maxOccurs="1" minOccurs="0" name="hyperlinks" type="tns3:ArrayOfHyperlink"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="initialEstimate" type="tns2:duration"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedOslcResources" type="tns3:ArrayOfLinkedOslcResource"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedRevisions" type="tns2:ArrayOfRevision"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedRevisionsDerived" type="tns2:ArrayOfRevision"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedWorkItems" type="tns3:ArrayOfLinkedWorkItem"/>
+     <element maxOccurs="1" minOccurs="0" name="linkedWorkItemsDerived" type="tns3:ArrayOfLinkedWorkItem"/>
+     <element maxOccurs="1" minOccurs="0" name="location" type="tns2:Location"/>
+     <element maxOccurs="1" minOccurs="0" name="moduleURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="outlineNumber" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="plannedEnd" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="plannedInURIs" type="tns2:ArrayOfSubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="plannedStart" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="planningConstraints" type="tns3:ArrayOfPlanningConstraint"/>
+     <element maxOccurs="1" minOccurs="0" name="previousStatus" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="priority" type="tns3:PriorityOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="project" type="tns5:Project"/>
+     <element maxOccurs="1" minOccurs="0" name="remainingEstimate" type="tns2:duration"/>
+     <element maxOccurs="1" minOccurs="0" name="resolution" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="resolvedOn" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="severity" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="status" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="timePoint" type="tns3:TimePoint"/>
+     <element maxOccurs="1" minOccurs="0" name="timeSpent" type="tns2:duration"/>
+     <element maxOccurs="1" minOccurs="0" name="title" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="type" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="updated" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="workRecords" type="tns3:ArrayOfWorkRecord"/>
+     <element maxOccurs="1" minOccurs="0" name="customFields" type="tns3:ArrayOfCustom"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfPriorityOptionId">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="PriorityOptionId" type="tns3:PriorityOptionId"/>
+    </sequence>
+   </complexType>
+   <complexType name="EnumOption">
+    <sequence>
+     <element name="default" type="xsd:boolean"/>
+     <element name="enumId" nillable="true" type="xsd:string"/>
+     <element name="hidden" type="xsd:boolean"/>
+     <element name="id" nillable="true" type="xsd:string"/>
+     <element name="name" nillable="true" type="xsd:string"/>
+     <element name="phantom" type="xsd:boolean"/>
+     <element name="properties" nillable="true" type="tns2:Properties"/>
+     <element name="sequenceNumber" type="xsd:int"/>
+    </sequence>
+   </complexType>
+   <complexType name="PriorityOpt">
+    <complexContent>
+     <extension base="tns3:EnumOption">
+      <sequence>
+       <element name="float" type="xsd:float"/>
+      </sequence>
+     </extension>
+    </complexContent>
+   </complexType>
+   <complexType name="CustomFieldType">
+    <sequence>
+     <element name="defaultValue" nillable="true" type="xsd:anyType"/>
+     <element name="dependsOn" nillable="true" type="xsd:string"/>
+     <element name="description" nillable="true" type="xsd:string"/>
+     <element name="id" nillable="true" type="xsd:string"/>
+     <element name="multi" type="xsd:boolean"/>
+     <element name="name" nillable="true" type="xsd:string"/>
+     <element name="required" type="xsd:boolean"/>
+     <element name="type" nillable="true" type="xsd:QName"/>
+    </sequence>
+   </complexType>
+   <complexType name="EnumCustomFieldType">
+    <complexContent>
+     <extension base="tns3:CustomFieldType">
+      <sequence>
+       <element name="enumId" nillable="true" type="xsd:string"/>
+      </sequence>
+     </extension>
+    </complexContent>
+   </complexType>
+   <complexType name="Row">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="values" type="tns2:ArrayOfText"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfRow">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="Row" type="tns3:Row"/>
+    </sequence>
+   </complexType>
+   <complexType name="Table">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="keys" type="tns2:ArrayOfstring"/>
+     <element maxOccurs="1" minOccurs="0" name="rows" type="tns3:ArrayOfRow"/>
+    </sequence>
+   </complexType>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/ProjectWebService-types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/TrackerWebService-types"/>
+   <import namespace="http://ws.polarion.com/PlanningWebService-types"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <complexType name="User">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="disabledNotifications" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="email" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="homePageContent" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="voteURIs" type="tns2:ArrayOfSubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="watcheURIs" type="tns2:ArrayOfSubterraURI"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="ArrayOfUser">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="User" type="tns5:User"/>
+    </sequence>
+   </complexType>
+   <complexType name="Project">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="active" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="color" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="finish" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="icon" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="lead" type="tns5:User"/>
+     <element maxOccurs="1" minOccurs="0" name="location" type="tns2:Location"/>
+     <element maxOccurs="1" minOccurs="0" name="lockWorkRecordsDate" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="projectGroupURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="start" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="trackerPrefix" type="xsd:string"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/PlanningWebService-types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/TrackerWebService-types"/>
+   <import namespace="http://ws.polarion.com/ProjectWebService-types"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <complexType name="PlanRecord">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="item" type="tns3:WorkItem"/>
+    </sequence>
+   </complexType>
+   <complexType name="ArrayOfPlanRecord">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="PlanRecord" type="tns4:PlanRecord"/>
+    </sequence>
+   </complexType>
+   <complexType name="Plan">
+    <sequence>
+     <element maxOccurs="1" minOccurs="0" name="allowedTypes" type="tns3:ArrayOfEnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="authorURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="calculationType" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="capacity" type="xsd:float"/>
+     <element maxOccurs="1" minOccurs="0" name="color" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="created" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="defaultEstimate" type="xsd:float"/>
+     <element maxOccurs="1" minOccurs="0" name="description" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="dueDate" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="estimationField" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="finishedOn" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="homePageContent" type="tns2:Text"/>
+     <element maxOccurs="1" minOccurs="0" name="id" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="isTemplate" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="location" type="tns2:Location"/>
+     <element maxOccurs="1" minOccurs="0" name="name" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="parent" type="tns4:Plan"/>
+     <element maxOccurs="1" minOccurs="0" name="previousTimeSpent" type="tns2:duration"/>
+     <element maxOccurs="1" minOccurs="0" name="prioritizationField" type="xsd:string"/>
+     <element maxOccurs="1" minOccurs="0" name="projectURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="projectSpanURIs" type="tns2:ArrayOfSubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="records" type="tns4:ArrayOfPlanRecord"/>
+     <element maxOccurs="1" minOccurs="0" name="sortOrder" type="xsd:int"/>
+     <element maxOccurs="1" minOccurs="0" name="startDate" type="xsd:date"/>
+     <element maxOccurs="1" minOccurs="0" name="startedOn" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="status" type="tns3:EnumOptionId"/>
+     <element maxOccurs="1" minOccurs="0" name="templateURI" type="tns2:SubterraURI"/>
+     <element maxOccurs="1" minOccurs="0" name="updated" type="xsd:dateTime"/>
+     <element maxOccurs="1" minOccurs="0" name="useReportFromTemplate" type="xsd:boolean"/>
+     <element maxOccurs="1" minOccurs="0" name="customFields" type="tns3:ArrayOfCustom"/>
+    </sequence>
+    <attribute name="uri" type="tns2:SubterraURI"/>
+    <attribute name="unresolvable" type="xsd:boolean"/>
+   </complexType>
+   <complexType name="PlanStatistics">
+    <sequence>
+     <element name="done" type="xsd:float"/>
+     <element name="todo" type="xsd:float"/>
+     <element name="numberOfResolved" nillable="true" type="xsd:int"/>
+     <element name="numberOfUnresolved" nillable="true" type="xsd:int"/>
+     <element name="numberOfPlanned" nillable="true" type="xsd:int"/>
+     <element name="planned" type="xsd:float"/>
+     <element name="progress" type="xsd:float"/>
+     <element name="idealProgress" type="xsd:float"/>
+     <element name="doneAsString" type="xsd:string"/>
+     <element name="todoAsString" type="xsd:string"/>
+     <element name="plannedAsString" type="xsd:string"/>
+     <element name="idealProgressAsString" type="xsd:string"/>
+     <element name="progressAsString" type="xsd:string"/>
+    </sequence>
+   </complexType>
+  </schema>
+ </wsdl:types>
+
+   <wsdl:message name="getPlanWikiContentRequest">
+
+      <wsdl:part element="tns1:getPlanWikiContent" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlansRequest">
+
+      <wsdl:part element="tns1:searchPlans" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="createPlanTemplateRequest">
+
+      <wsdl:part element="tns1:createPlanTemplate" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addPlanAllowedTypeRequest">
+
+      <wsdl:part element="tns1:addPlanAllowedType" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="setPlanWikiContentRequest">
+
+      <wsdl:part element="tns1:setPlanWikiContent" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addPlanAllowedTypeResponse">
+
+      <wsdl:part element="tns1:addPlanAllowedTypeResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanStatisticsResponse">
+
+      <wsdl:part element="tns1:getPlanStatisticsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlansWithFieldsRequest">
+
+      <wsdl:part element="tns1:searchPlansWithFields" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="updatePlanResponse">
+
+      <wsdl:part element="tns1:updatePlanResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="deletePlansRequest">
+
+      <wsdl:part element="tns1:deletePlans" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanByIdRequest">
+
+      <wsdl:part element="tns1:getPlanById" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removeProjectFromPlanProjectSpanRequest">
+
+      <wsdl:part element="tns1:removeProjectFromPlanProjectSpan" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="wasPlanStartedResponse">
+
+      <wsdl:part element="tns1:wasPlanStartedResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removePlanItemsResponse">
+
+      <wsdl:part element="tns1:removePlanItemsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removePlanItemsRequest">
+
+      <wsdl:part element="tns1:removePlanItems" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removePlanAllowedTypeResponse">
+
+      <wsdl:part element="tns1:removePlanAllowedTypeResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="createPlanResponse">
+
+      <wsdl:part element="tns1:createPlanResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="createPlanRequest">
+
+      <wsdl:part element="tns1:createPlan" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="wasPlanStartedRequest">
+
+      <wsdl:part element="tns1:wasPlanStarted" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanStatisticsRequest">
+
+      <wsdl:part element="tns1:getPlanStatistics" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removePlanAllowedTypeRequest">
+
+      <wsdl:part element="tns1:removePlanAllowedType" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlanTemplatesResponse">
+
+      <wsdl:part element="tns1:searchPlanTemplatesResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanByUriResponse">
+
+      <wsdl:part element="tns1:getPlanByUriResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addProjectToPlanProjectSpanResponse">
+
+      <wsdl:part element="tns1:addProjectToPlanProjectSpanResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanByUriRequest">
+
+      <wsdl:part element="tns1:getPlanByUri" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addPlanItemsRequest">
+
+      <wsdl:part element="tns1:addPlanItems" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlansWithFieldsResponse">
+
+      <wsdl:part element="tns1:searchPlansWithFieldsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="updatePlanRequest">
+
+      <wsdl:part element="tns1:updatePlan" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="deletePlansResponse">
+
+      <wsdl:part element="tns1:deletePlansResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addProjectToPlanProjectSpanRequest">
+
+      <wsdl:part element="tns1:addProjectToPlanProjectSpan" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlanTemplatesWithFieldsResponse">
+
+      <wsdl:part element="tns1:searchPlanTemplatesWithFieldsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlanTemplatesRequest">
+
+      <wsdl:part element="tns1:searchPlanTemplates" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlansResponse">
+
+      <wsdl:part element="tns1:searchPlansResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanWikiContentResponse">
+
+      <wsdl:part element="tns1:getPlanWikiContentResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="removeProjectFromPlanProjectSpanResponse">
+
+      <wsdl:part element="tns1:removeProjectFromPlanProjectSpanResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="searchPlanTemplatesWithFieldsRequest">
+
+      <wsdl:part element="tns1:searchPlanTemplatesWithFields" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="addPlanItemsResponse">
+
+      <wsdl:part element="tns1:addPlanItemsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="createPlanTemplateResponse">
+
+      <wsdl:part element="tns1:createPlanTemplateResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getPlanByIdResponse">
+
+      <wsdl:part element="tns1:getPlanByIdResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="setPlanWikiContentResponse">
+
+      <wsdl:part element="tns1:setPlanWikiContentResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:portType name="PlanningWebService">
+
+      <wsdl:operation name="addPlanAllowedType">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Adds specified work item type to allowed types in Plan.
+@param uri URI of the Plan (not null)
+@param workItemType work item type to add (not null)
+@since 3.9.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:addPlanAllowedTypeRequest" name="addPlanAllowedTypeRequest"/>
+
+         <wsdl:output message="impl:addPlanAllowedTypeResponse" name="addPlanAllowedTypeResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="addPlanItems">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+ Adds plan records to the plan
+@param uri the SubterraURI of the plan to add the items to
+@param items an array containing the uris of all the work items to be added	
+@since 3.8.0
+	   </wsdl:documentation>
+
+         <wsdl:input message="impl:addPlanItemsRequest" name="addPlanItemsRequest"/>
+
+         <wsdl:output message="impl:addPlanItemsResponse" name="addPlanItemsResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="addProjectToPlanProjectSpan">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Adds specified Project to project span of the Plan.
+@param uri URI of the Plan (not null)
+@param projectId project ID (not null)
+@since 3.9.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:addProjectToPlanProjectSpanRequest" name="addProjectToPlanProjectSpanRequest"/>
+
+         <wsdl:output message="impl:addProjectToPlanProjectSpanResponse" name="addProjectToPlanProjectSpanResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="createPlan">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Creates a new plan
+@param projectId The project the plan will be created in 
+@param name The name of the plan
+@param id The id of the plan
+@param parentId The id of the parent plan (can be null)
+@param templateId The id of the template used for this plan
+@return URI of the created plan.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:createPlanRequest" name="createPlanRequest"/>
+
+         <wsdl:output message="impl:createPlanResponse" name="createPlanResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="createPlanTemplate">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Creates a new plan template
+@param projectId The project the plan template will be created in 
+@param name The name of the plan
+@param id The id of the plan
+@param templateId The id of the template used for this template (can be null)
+@return URI of the created plan.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:createPlanTemplateRequest" name="createPlanTemplateRequest"/>
+
+         <wsdl:output message="impl:createPlanTemplateResponse" name="createPlanTemplateResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="deletePlans">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Delete plans
+@param projectId the project the plans will be deleted in
+@param ids the array of ids to be deleted
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:deletePlansRequest" name="deletePlansRequest"/>
+
+         <wsdl:output message="impl:deletePlansResponse" name="deletePlansResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanById">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns a specific plan
+@param projectId ID of the project that contains the specific plan
+@param id ID of the plan
+@return the plan
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:getPlanByIdRequest" name="getPlanByIdRequest"/>
+
+         <wsdl:output message="impl:getPlanByIdResponse" name="getPlanByIdResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanByUri">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns a specific plan
+@param uri the SubterraURI of the plan to load
+@return the plan
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:getPlanByUriRequest" name="getPlanByUriRequest"/>
+
+         <wsdl:output message="impl:getPlanByUriResponse" name="getPlanByUriResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanStatistics">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+ Get statistics of the plan
+@param uri the SubterraURI of the plan to get the statistics from
+@return the statistics of plan with given SubterraURI 	
+@since 3.8.0
+	   </wsdl:documentation>
+
+         <wsdl:input message="impl:getPlanStatisticsRequest" name="getPlanStatisticsRequest"/>
+
+         <wsdl:output message="impl:getPlanStatisticsResponse" name="getPlanStatisticsResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanWikiContent">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the wiki content of plan with given uri
+@param uri the SubterraURI of the plan
+@return the wikipage content of the plan with given id
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:getPlanWikiContentRequest" name="getPlanWikiContentRequest"/>
+
+         <wsdl:output message="impl:getPlanWikiContentResponse" name="getPlanWikiContentResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removePlanAllowedType">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Removes all occurrences of specified work item type from allowed types in Plan.
+@param uri URI of the Plan (not null)
+@param workItemType work item type to remove (not null)
+@since 3.9.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:removePlanAllowedTypeRequest" name="removePlanAllowedTypeRequest"/>
+
+         <wsdl:output message="impl:removePlanAllowedTypeResponse" name="removePlanAllowedTypeResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removePlanItems">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+ Remove plan records to the plan
+@param uri the SubterraURI of the plan to delete the items from
+@param items an array containing the uris of all the work items to be removed
+@since 3.8.0	
+	   </wsdl:documentation>
+
+         <wsdl:input message="impl:removePlanItemsRequest" name="removePlanItemsRequest"/>
+
+         <wsdl:output message="impl:removePlanItemsResponse" name="removePlanItemsResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removeProjectFromPlanProjectSpan">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Removes all occurrences of specified Project from project span of the Plan.
+@param uri URI of the Plan (not null)
+@param projectId project ID (not null)
+@since 3.9.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:removeProjectFromPlanProjectSpanRequest" name="removeProjectFromPlanProjectSpanRequest"/>
+
+         <wsdl:output message="impl:removeProjectFromPlanProjectSpanResponse" name="removeProjectFromPlanProjectSpanResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlanTemplates">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Search plan templates.
+@param query the query used to find plan templates (can be null)
+@param sort the format is same as for {@link com.polarion.platform.persistence.IIndexSearch#sort(String)}.
+@param resultsLimit the maximum number of records to be returned, -1 for no limit.
+@return the found plan templates.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:searchPlanTemplatesRequest" name="searchPlanTemplatesRequest"/>
+
+         <wsdl:output message="impl:searchPlanTemplatesResponse" name="searchPlanTemplatesResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlanTemplatesWithFields">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Search plan templates with only fields specified filled with values. All other fields are not transmitted.
+@param query the query used to find plan templates (can be null)
+@param sort the format is same as for {@link com.polarion.platform.persistence.IIndexSearch#sort(String)}.
+@param resultsLimit the maximum number of records to be returned, -1 for no limit.
+@param fields plan template fields that should be initialized, all other fields will be {@code null}.
+@return the found plan templates with filled specified fields.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:searchPlanTemplatesWithFieldsRequest" name="searchPlanTemplatesWithFieldsRequest"/>
+
+         <wsdl:output message="impl:searchPlanTemplatesWithFieldsResponse" name="searchPlanTemplatesWithFieldsResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlans">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Search plans.
+@param query the query used to find plans (can be null)
+@param sort the format is same as for {@link com.polarion.platform.persistence.IIndexSearch#sort(String)}.
+@param resultsLimit the maximum number of records to be returned, -1 for no limit.
+@return the found plans.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:searchPlansRequest" name="searchPlansRequest"/>
+
+         <wsdl:output message="impl:searchPlansResponse" name="searchPlansResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlansWithFields">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Search plans with only fields specified filled with values. All other fields are not transmitted.
+@param query the query used to find plans (can be null)
+@param sort the format is same as for {@link com.polarion.platform.persistence.IIndexSearch#sort(String)}.
+@param resultsLimit the maximum number of records to be returned, -1 for no limit.
+@param fields plan fields that should be initialized, all other fields will be {@code null}.
+@return the found plans with filled specified fields.
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:searchPlansWithFieldsRequest" name="searchPlansWithFieldsRequest"/>
+
+         <wsdl:output message="impl:searchPlansWithFieldsResponse" name="searchPlansWithFieldsResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="setPlanWikiContent">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Sets the wiki content of plan with given uri
+@param uri the SubterraURI of the plan
+@param text the new content for plans wikipage
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:setPlanWikiContentRequest" name="setPlanWikiContentRequest"/>
+
+         <wsdl:output message="impl:setPlanWikiContentResponse" name="setPlanWikiContentResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="updatePlan">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Updates a plan.
+@param content a plan object containing the updates, the content must contain the uri of the plan to be update
+or else the update will fail
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:updatePlanRequest" name="updatePlanRequest"/>
+
+         <wsdl:output message="impl:updatePlanResponse" name="updatePlanResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="wasPlanStarted">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+ Checks if the plan was started
+@param uri the SubterraURI of the plan
+@return true if plan exists and is started, false otherwise 	
+@since 3.8.0
+	   </wsdl:documentation>
+
+         <wsdl:input message="impl:wasPlanStartedRequest" name="wasPlanStartedRequest"/>
+
+         <wsdl:output message="impl:wasPlanStartedResponse" name="wasPlanStartedResponse"/>
+
+      </wsdl:operation>
+
+   </wsdl:portType>
+
+   <wsdl:binding name="PlanningWebServiceSoapBinding" type="impl:PlanningWebService">
+
+      <wsdlsoap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+      <wsdl:operation name="addPlanAllowedType">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="addPlanAllowedTypeRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="addPlanAllowedTypeResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="addPlanItems">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="addPlanItemsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="addPlanItemsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="addProjectToPlanProjectSpan">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="addProjectToPlanProjectSpanRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="addProjectToPlanProjectSpanResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="createPlan">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="createPlanRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="createPlanResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="createPlanTemplate">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="createPlanTemplateRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="createPlanTemplateResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="deletePlans">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="deletePlansRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="deletePlansResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanById">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getPlanByIdRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getPlanByIdResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanByUri">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getPlanByUriRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getPlanByUriResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanStatistics">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getPlanStatisticsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getPlanStatisticsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getPlanWikiContent">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getPlanWikiContentRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getPlanWikiContentResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removePlanAllowedType">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="removePlanAllowedTypeRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="removePlanAllowedTypeResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removePlanItems">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="removePlanItemsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="removePlanItemsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="removeProjectFromPlanProjectSpan">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="removeProjectFromPlanProjectSpanRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="removeProjectFromPlanProjectSpanResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlanTemplates">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="searchPlanTemplatesRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="searchPlanTemplatesResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlanTemplatesWithFields">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="searchPlanTemplatesWithFieldsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="searchPlanTemplatesWithFieldsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlans">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="searchPlansRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="searchPlansResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="searchPlansWithFields">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="searchPlansWithFieldsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="searchPlansWithFieldsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="setPlanWikiContent">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="setPlanWikiContentRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="setPlanWikiContentResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="updatePlan">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="updatePlanRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="updatePlanResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="wasPlanStarted">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="wasPlanStartedRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="wasPlanStartedResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+   </wsdl:binding>
+
+   <wsdl:service name="PlanningWebServiceService">
+
+  <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+
+      This service provides access to Polarion's Plan feature
+		  </wsdl:documentation>
+
+      <wsdl:port binding="impl:PlanningWebServiceSoapBinding" name="PlanningWebService">
+
+         <wsdlsoap:address location="https://polarion.example.com/polarion/ws/services/PlanningWebService"/>
+
+      </wsdl:port>
+
+   </wsdl:service>
+
+</wsdl:definitions>

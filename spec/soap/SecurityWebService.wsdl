@@ -1,0 +1,1187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions targetNamespace="http://ws.polarion.com/SecurityWebService" xmlns:apachesoap="http://xml.apache.org/xml-soap" xmlns:impl="http://ws.polarion.com/SecurityWebService" xmlns:intf="http://ws.polarion.com/SecurityWebService" xmlns:tns1="http://ws.polarion.com/SecurityWebService-impl" xmlns:tns2="http://ws.polarion.com/types" xmlns:tns3="http://ws.polarion.com/SecurityWebService-types" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:wsdlsoap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<!--WSDL created by Apache Axis version: 1.4
+Built on Apr 22, 2006 (06:55:48 PDT)-->
+ <wsdl:types>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/SecurityWebService-impl" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/SecurityWebService-types"/>
+   <import namespace="http://ws.polarion.com/SecurityWebService"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <element name="canAddElementToKey">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="key" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canAddElementToKeyResponse">
+    <complexType>
+     <sequence>
+      <element name="canAddElementToKeyReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canCreateInstances">
+    <complexType>
+     <sequence>
+      <element name="prototype" type="xsd:string"/>
+      <element name="projectId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canCreateInstancesResponse">
+    <complexType>
+     <sequence>
+      <element name="canCreateInstancesReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canDeleteInstance">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canDeleteInstanceResponse">
+    <complexType>
+     <sequence>
+      <element name="canDeleteInstanceReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canModifyInstance">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canModifyInstanceResponse">
+    <complexType>
+     <sequence>
+      <element name="canModifyInstanceReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canModifyKey">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="key" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canModifyKeyResponse">
+    <complexType>
+     <sequence>
+      <element name="canModifyKeyReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canReadInstance">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canReadInstanceResponse">
+    <complexType>
+     <sequence>
+      <element name="canReadInstanceReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canReadKey">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="key" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canReadKeyResponse">
+    <complexType>
+     <sequence>
+      <element name="canReadKeyReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canRemoveElementFromKey">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+      <element name="key" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="canRemoveElementFromKeyResponse">
+    <complexType>
+     <sequence>
+      <element name="canRemoveElementFromKeyReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getContextRoles">
+    <complexType>
+     <sequence>
+      <element name="location" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getContextRolesResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="getContextRolesReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getContextRolesForUser">
+    <complexType>
+     <sequence>
+      <element name="userId" type="xsd:string"/>
+      <element name="location" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getContextRolesForUserResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="getContextRolesForUserReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getGlobalRoles">
+    <complexType/>
+   </element>
+   <element name="getGlobalRolesResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="getGlobalRolesReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getLocationForURI">
+    <complexType>
+     <sequence>
+      <element name="uri" type="tns2:SubterraURI"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getLocationForURIResponse">
+    <complexType>
+     <sequence>
+      <element name="getLocationForURIReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getProductLicense">
+    <complexType/>
+   </element>
+   <element name="getProductLicenseResponse">
+    <complexType>
+     <sequence>
+      <element name="getProductLicenseReturn" type="tns3:ProductLicense"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getRolesForUser">
+    <complexType>
+     <sequence>
+      <element name="userId" type="xsd:string"/>
+      <element name="location" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getRolesForUserResponse">
+    <complexType>
+     <sequence>
+      <element maxOccurs="unbounded" name="getRolesForUserReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getUserFromToken">
+    <complexType>
+     <sequence>
+      <element name="token" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="getUserFromTokenResponse">
+    <complexType>
+     <sequence>
+      <element name="getUserFromTokenReturn" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasAddonLicense">
+    <complexType>
+     <sequence>
+      <element name="addonId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasAddonLicenseResponse">
+    <complexType>
+     <sequence>
+      <element name="hasAddonLicenseReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasCurrentUserPermission">
+    <complexType>
+     <sequence>
+      <element name="permission" type="xsd:string"/>
+      <element name="projectId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasCurrentUserPermissionResponse">
+    <complexType>
+     <sequence>
+      <element name="hasCurrentUserPermissionReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasPermission">
+    <complexType>
+     <sequence>
+      <element name="userId" type="xsd:string"/>
+      <element name="permission" type="xsd:string"/>
+      <element name="projectId" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="hasPermissionResponse">
+    <complexType>
+     <sequence>
+      <element name="hasPermissionReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="updateUserAccountVault">
+    <complexType>
+     <sequence>
+      <element name="vaultKey" type="xsd:string"/>
+      <element name="userName" type="xsd:string"/>
+      <element name="password" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="updateUserAccountVaultResponse">
+    <complexType/>
+   </element>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/SecurityWebService-types"/>
+   <import namespace="http://ws.polarion.com/SecurityWebService"/>
+   <simpleType name="SubterraURI">
+    <restriction base="xsd:string"/>
+   </simpleType>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/SecurityWebService-types" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/SecurityWebService"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <complexType name="LicenseInfo">
+    <sequence>
+     <element name="license" nillable="true" type="xsd:string"/>
+     <element name="slots" type="xsd:int"/>
+    </sequence>
+   </complexType>
+   <complexType name="ProductLicense">
+    <sequence>
+     <element name="concurrentLicenseData" nillable="true" type="impl:ArrayOf_tns3_LicenseInfo"/>
+     <element name="customerCompany" nillable="true" type="xsd:string"/>
+     <element name="customerEmail" nillable="true" type="xsd:string"/>
+     <element name="customerName" nillable="true" type="xsd:string"/>
+     <element name="dateCreated" nillable="true" type="xsd:dateTime"/>
+     <element name="expirationDate" nillable="true" type="xsd:dateTime"/>
+     <element name="generatedBy" nillable="true" type="xsd:string"/>
+     <element name="ipAddress" nillable="true" type="xsd:string"/>
+     <element name="licenseFormat" nillable="true" type="xsd:string"/>
+     <element name="licenseProfile" nillable="true" type="xsd:string"/>
+     <element name="macAddress" nillable="true" type="xsd:string"/>
+     <element name="namedLicenseData" nillable="true" type="impl:ArrayOf_tns3_LicenseInfo"/>
+    </sequence>
+   </complexType>
+  </schema>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/SecurityWebService" xmlns="http://www.w3.org/2001/XMLSchema">
+   <import namespace="http://ws.polarion.com/SecurityWebService-types"/>
+   <import namespace="http://ws.polarion.com/types"/>
+   <complexType name="ArrayOf_tns3_LicenseInfo">
+    <sequence>
+     <element maxOccurs="unbounded" minOccurs="0" name="item" type="tns3:LicenseInfo"/>
+    </sequence>
+   </complexType>
+  </schema>
+ </wsdl:types>
+
+   <wsdl:message name="canReadInstanceRequest">
+
+      <wsdl:part element="tns1:canReadInstance" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getProductLicenseResponse">
+
+      <wsdl:part element="tns1:getProductLicenseResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canModifyInstanceRequest">
+
+      <wsdl:part element="tns1:canModifyInstance" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getContextRolesRequest">
+
+      <wsdl:part element="tns1:getContextRoles" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="updateUserAccountVaultRequest">
+
+      <wsdl:part element="tns1:updateUserAccountVault" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="updateUserAccountVaultResponse">
+
+      <wsdl:part element="tns1:updateUserAccountVaultResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canReadInstanceResponse">
+
+      <wsdl:part element="tns1:canReadInstanceResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canAddElementToKeyRequest">
+
+      <wsdl:part element="tns1:canAddElementToKey" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getContextRolesResponse">
+
+      <wsdl:part element="tns1:getContextRolesResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasCurrentUserPermissionRequest">
+
+      <wsdl:part element="tns1:hasCurrentUserPermission" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canReadKeyResponse">
+
+      <wsdl:part element="tns1:canReadKeyResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getUserFromTokenResponse">
+
+      <wsdl:part element="tns1:getUserFromTokenResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canCreateInstancesRequest">
+
+      <wsdl:part element="tns1:canCreateInstances" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasAddonLicenseRequest">
+
+      <wsdl:part element="tns1:hasAddonLicense" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasPermissionRequest">
+
+      <wsdl:part element="tns1:hasPermission" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getGlobalRolesResponse">
+
+      <wsdl:part element="tns1:getGlobalRolesResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getUserFromTokenRequest">
+
+      <wsdl:part element="tns1:getUserFromToken" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canRemoveElementFromKeyResponse">
+
+      <wsdl:part element="tns1:canRemoveElementFromKeyResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canRemoveElementFromKeyRequest">
+
+      <wsdl:part element="tns1:canRemoveElementFromKey" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getRolesForUserRequest">
+
+      <wsdl:part element="tns1:getRolesForUser" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getLocationForURIRequest">
+
+      <wsdl:part element="tns1:getLocationForURI" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getProductLicenseRequest">
+
+      <wsdl:part element="tns1:getProductLicense" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canAddElementToKeyResponse">
+
+      <wsdl:part element="tns1:canAddElementToKeyResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canDeleteInstanceResponse">
+
+      <wsdl:part element="tns1:canDeleteInstanceResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasCurrentUserPermissionResponse">
+
+      <wsdl:part element="tns1:hasCurrentUserPermissionResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canReadKeyRequest">
+
+      <wsdl:part element="tns1:canReadKey" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canCreateInstancesResponse">
+
+      <wsdl:part element="tns1:canCreateInstancesResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getContextRolesForUserResponse">
+
+      <wsdl:part element="tns1:getContextRolesForUserResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getGlobalRolesRequest">
+
+      <wsdl:part element="tns1:getGlobalRoles" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getLocationForURIResponse">
+
+      <wsdl:part element="tns1:getLocationForURIResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canModifyInstanceResponse">
+
+      <wsdl:part element="tns1:canModifyInstanceResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canModifyKeyResponse">
+
+      <wsdl:part element="tns1:canModifyKeyResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasPermissionResponse">
+
+      <wsdl:part element="tns1:hasPermissionResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canDeleteInstanceRequest">
+
+      <wsdl:part element="tns1:canDeleteInstance" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasAddonLicenseResponse">
+
+      <wsdl:part element="tns1:hasAddonLicenseResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getRolesForUserResponse">
+
+      <wsdl:part element="tns1:getRolesForUserResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="canModifyKeyRequest">
+
+      <wsdl:part element="tns1:canModifyKey" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="getContextRolesForUserRequest">
+
+      <wsdl:part element="tns1:getContextRolesForUser" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:portType name="SecurityWebService">
+
+      <wsdl:operation name="canAddElementToKey">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can add elements to the collection at given key of the object.
+@param uri the uri of the object.
+@param key the key of the field that contains the collection.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canAddElementToKeyRequest" name="canAddElementToKeyRequest"/>
+
+         <wsdl:output message="impl:canAddElementToKeyResponse" name="canAddElementToKeyResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canCreateInstances">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can create instances of the given prototype.
+@param prototype the prototype of the objects.
+@param projectId the id of the project to check the permission in, {@code null} to check global permissions.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canCreateInstancesRequest" name="canCreateInstancesRequest"/>
+
+         <wsdl:output message="impl:canCreateInstancesResponse" name="canCreateInstancesResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canDeleteInstance">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can delete the given object.
+@param uri the uri of the object.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canDeleteInstanceRequest" name="canDeleteInstanceRequest"/>
+
+         <wsdl:output message="impl:canDeleteInstanceResponse" name="canDeleteInstanceResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canModifyInstance">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can modify the given object.
+@param uri the uri of the object.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canModifyInstanceRequest" name="canModifyInstanceRequest"/>
+
+         <wsdl:output message="impl:canModifyInstanceResponse" name="canModifyInstanceResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canModifyKey">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can modify the field with given key of the object.
+@param uri the uri of the object.
+@param key the key of the field.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canModifyKeyRequest" name="canModifyKeyRequest"/>
+
+         <wsdl:output message="impl:canModifyKeyResponse" name="canModifyKeyResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canReadInstance">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can read the given object.
+@param uri the uri of the object.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canReadInstanceRequest" name="canReadInstanceRequest"/>
+
+         <wsdl:output message="impl:canReadInstanceResponse" name="canReadInstanceResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canReadKey">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can read the field with given key of the object.
+@param uri the uri of the object.
+@param key the key of the field.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canReadKeyRequest" name="canReadKeyRequest"/>
+
+         <wsdl:output message="impl:canReadKeyResponse" name="canReadKeyResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canRemoveElementFromKey">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user can remove elements from the collection at given key of the object.
+@param uri the uri of the object.
+@param key the key of the field that contains the collection.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:canRemoveElementFromKeyRequest" name="canRemoveElementFromKeyRequest"/>
+
+         <wsdl:output message="impl:canRemoveElementFromKeyResponse" name="canRemoveElementFromKeyResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getContextRoles">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the context (project) roles for the given location.
+@param location the location of the context (project/project group)
+@return an array containing the roles   </wsdl:documentation>
+
+         <wsdl:input message="impl:getContextRolesRequest" name="getContextRolesRequest"/>
+
+         <wsdl:output message="impl:getContextRolesResponse" name="getContextRolesResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getContextRolesForUser">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the context roles for the given usser at the spcified location.
+@param userId the id of the user to get the roles for
+@param location the location of the context (project/project group)
+@return an array containing the roles   </wsdl:documentation>
+
+         <wsdl:input message="impl:getContextRolesForUserRequest" name="getContextRolesForUserRequest"/>
+
+         <wsdl:output message="impl:getContextRolesForUserResponse" name="getContextRolesForUserResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getGlobalRoles">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns all global roles.
+@return an array containing the roles   </wsdl:documentation>
+
+         <wsdl:input message="impl:getGlobalRolesRequest" name="getGlobalRolesRequest"/>
+
+         <wsdl:output message="impl:getGlobalRolesResponse" name="getGlobalRolesResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getLocationForURI">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the location of the object with the specified uri.
+In the context of this service the method should be used to get the location of a project(-group).
+@param uri the uri of the object to get the location from
+@return a String representing the location (currently this is default:[path], e.g. default:/my-project)   </wsdl:documentation>
+
+         <wsdl:input message="impl:getLocationForURIRequest" name="getLocationForURIRequest"/>
+
+         <wsdl:output message="impl:getLocationForURIResponse" name="getLocationForURIResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getProductLicense">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the product license. Not supported when using SALT Cloud licensing.
+@return the product license.
+@since 3.5.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:getProductLicenseRequest" name="getProductLicenseRequest"/>
+
+         <wsdl:output message="impl:getProductLicenseResponse" name="getProductLicenseResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getRolesForUser">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns all global and context roles for the context at given location assigned to the user.
+@param userId the id of the user to get the roles for
+@param location the location of the context (project/project group), pass null to get global roles
+@return an array containing the roles   </wsdl:documentation>
+
+         <wsdl:input message="impl:getRolesForUserRequest" name="getRolesForUserRequest"/>
+
+         <wsdl:output message="impl:getRolesForUserResponse" name="getRolesForUserResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getUserFromToken">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Returns the username of the user that has the assigned token.
+@param token
+@return username or null, if no user has this token
+@since 3.8.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:getUserFromTokenRequest" name="getUserFromTokenRequest"/>
+
+         <wsdl:output message="impl:getUserFromTokenResponse" name="getUserFromTokenResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasAddonLicense">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if the current user has a license for the add-on. Not supported when using SALT Cloud licensing.
+@param addonId The ID of the add-on for which the license check is made.
+@return {@code true} if the current user has a license for the add-on.
+@since 3.23.10   </wsdl:documentation>
+
+         <wsdl:input message="impl:hasAddonLicenseRequest" name="hasAddonLicenseRequest"/>
+
+         <wsdl:output message="impl:hasAddonLicenseResponse" name="hasAddonLicenseResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasCurrentUserPermission">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if given permission is granted to the current user.
+@param permission the permission to check.
+@param projectId the id of the project to check the permission in, {@code null} to check global permissions.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:hasCurrentUserPermissionRequest" name="hasCurrentUserPermissionRequest"/>
+
+         <wsdl:output message="impl:hasCurrentUserPermissionResponse" name="hasCurrentUserPermissionResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasPermission">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if given permission is granted to the specified user.
+@param userId the id of the user to check the permission for.
+@param permission the permission to check.
+@param projectId the id of the project to check the permission in, {@code null} to check global permissions.
+@return {@code true} if the permission is granted.
+@since 3.4.3   </wsdl:documentation>
+
+         <wsdl:input message="impl:hasPermissionRequest" name="hasPermissionRequest"/>
+
+         <wsdl:output message="impl:hasPermissionResponse" name="hasPermissionResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="updateUserAccountVault">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Updates the user account vault record if the user has administration permissions.
+@param vaultKey
+@param userName
+@param password
+@since 3.21.1   </wsdl:documentation>
+
+         <wsdl:input message="impl:updateUserAccountVaultRequest" name="updateUserAccountVaultRequest"/>
+
+         <wsdl:output message="impl:updateUserAccountVaultResponse" name="updateUserAccountVaultResponse"/>
+
+      </wsdl:operation>
+
+   </wsdl:portType>
+
+   <wsdl:binding name="SecurityWebServiceSoapBinding" type="impl:SecurityWebService">
+
+      <wsdlsoap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+      <wsdl:operation name="canAddElementToKey">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canAddElementToKeyRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canAddElementToKeyResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canCreateInstances">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canCreateInstancesRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canCreateInstancesResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canDeleteInstance">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canDeleteInstanceRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canDeleteInstanceResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canModifyInstance">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canModifyInstanceRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canModifyInstanceResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canModifyKey">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canModifyKeyRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canModifyKeyResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canReadInstance">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canReadInstanceRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canReadInstanceResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canReadKey">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canReadKeyRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canReadKeyResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="canRemoveElementFromKey">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="canRemoveElementFromKeyRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="canRemoveElementFromKeyResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getContextRoles">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getContextRolesRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getContextRolesResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getContextRolesForUser">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getContextRolesForUserRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getContextRolesForUserResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getGlobalRoles">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getGlobalRolesRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getGlobalRolesResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getLocationForURI">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getLocationForURIRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getLocationForURIResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getProductLicense">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getProductLicenseRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getProductLicenseResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getRolesForUser">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getRolesForUserRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getRolesForUserResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="getUserFromToken">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="getUserFromTokenRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="getUserFromTokenResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasAddonLicense">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="hasAddonLicenseRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="hasAddonLicenseResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasCurrentUserPermission">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="hasCurrentUserPermissionRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="hasCurrentUserPermissionResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasPermission">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="hasPermissionRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="hasPermissionResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="updateUserAccountVault">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="updateUserAccountVaultRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="updateUserAccountVaultResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+   </wsdl:binding>
+
+   <wsdl:service name="SecurityWebServiceService">
+
+  <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+
+      This service provides scurity related information.
+		  </wsdl:documentation>
+
+      <wsdl:port binding="impl:SecurityWebServiceSoapBinding" name="SecurityWebService">
+
+         <wsdlsoap:address location="https://polarion.example.com/polarion/ws/services/SecurityWebService"/>
+
+      </wsdl:port>
+
+   </wsdl:service>
+
+</wsdl:definitions>

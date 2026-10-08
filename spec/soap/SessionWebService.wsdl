@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions targetNamespace="http://ws.polarion.com/SessionWebService" xmlns:apachesoap="http://xml.apache.org/xml-soap" xmlns:impl="http://ws.polarion.com/SessionWebService" xmlns:intf="http://ws.polarion.com/SessionWebService" xmlns:tns1="http://ws.polarion.com/SessionWebService-impl" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:wsdlsoap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<!--WSDL created by Apache Axis version: 1.4
+Built on Apr 22, 2006 (06:55:48 PDT)-->
+ <wsdl:types>
+  <schema elementFormDefault="qualified" targetNamespace="http://ws.polarion.com/SessionWebService-impl" xmlns="http://www.w3.org/2001/XMLSchema">
+   <element name="beginTransaction">
+    <complexType/>
+   </element>
+   <element name="beginTransactionResponse">
+    <complexType/>
+   </element>
+   <element name="endSession">
+    <complexType/>
+   </element>
+   <element name="endSessionResponse">
+    <complexType/>
+   </element>
+   <element name="endTransaction">
+    <complexType>
+     <sequence>
+      <element name="rollback" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="endTransactionResponse">
+    <complexType/>
+   </element>
+   <element name="hasSubject">
+    <complexType/>
+   </element>
+   <element name="hasSubjectResponse">
+    <complexType>
+     <sequence>
+      <element name="hasSubjectReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="logIn">
+    <complexType>
+     <sequence>
+      <element name="userName" type="xsd:string"/>
+      <element name="password" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="logInResponse">
+    <complexType/>
+   </element>
+   <element name="logInWithToken">
+    <complexType>
+     <sequence>
+      <element name="mechanism" type="xsd:string"/>
+      <element name="username" type="xsd:string"/>
+      <element name="token" type="xsd:string"/>
+     </sequence>
+    </complexType>
+   </element>
+   <element name="logInWithTokenResponse">
+    <complexType/>
+   </element>
+   <element name="transactionExists">
+    <complexType/>
+   </element>
+   <element name="transactionExistsResponse">
+    <complexType>
+     <sequence>
+      <element name="transactionExistsReturn" type="xsd:boolean"/>
+     </sequence>
+    </complexType>
+   </element>
+  </schema>
+ </wsdl:types>
+
+   <wsdl:message name="endSessionResponse">
+
+      <wsdl:part element="tns1:endSessionResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="logInWithTokenResponse">
+
+      <wsdl:part element="tns1:logInWithTokenResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="endSessionRequest">
+
+      <wsdl:part element="tns1:endSession" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasSubjectRequest">
+
+      <wsdl:part element="tns1:hasSubject" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="transactionExistsResponse">
+
+      <wsdl:part element="tns1:transactionExistsResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="endTransactionResponse">
+
+      <wsdl:part element="tns1:endTransactionResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="hasSubjectResponse">
+
+      <wsdl:part element="tns1:hasSubjectResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="beginTransactionResponse">
+
+      <wsdl:part element="tns1:beginTransactionResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="endTransactionRequest">
+
+      <wsdl:part element="tns1:endTransaction" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="transactionExistsRequest">
+
+      <wsdl:part element="tns1:transactionExists" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="beginTransactionRequest">
+
+      <wsdl:part element="tns1:beginTransaction" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="logInWithTokenRequest">
+
+      <wsdl:part element="tns1:logInWithToken" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="logInResponse">
+
+      <wsdl:part element="tns1:logInResponse" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:message name="logInRequest">
+
+      <wsdl:part element="tns1:logIn" name="parameters"/>
+
+   </wsdl:message>
+
+   <wsdl:portType name="SessionWebService">
+
+      <wsdl:operation name="beginTransaction">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Starts a explicit transaction for the current session.
+Usually transactions are started and committed for each call to the webservice, but if a transaction has been started explicitly it also has to be terminated using endTransaction.   </wsdl:documentation>
+
+         <wsdl:input message="impl:beginTransactionRequest" name="beginTransactionRequest"/>
+
+         <wsdl:output message="impl:beginTransactionResponse" name="beginTransactionResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="endSession">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Terminates the current session.   </wsdl:documentation>
+
+         <wsdl:input message="impl:endSessionRequest" name="endSessionRequest"/>
+
+         <wsdl:output message="impl:endSessionResponse" name="endSessionResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="endTransaction">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Ends the explicit transaction of the current session by either commit or rollback.
+@param rollback if true the transaction is rolled back otherwise it is commited.   </wsdl:documentation>
+
+         <wsdl:input message="impl:endTransactionRequest" name="endTransactionRequest"/>
+
+         <wsdl:output message="impl:endTransactionResponse" name="endTransactionResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasSubject">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Checks if a user is logged in for the current session.   </wsdl:documentation>
+
+         <wsdl:input message="impl:hasSubjectRequest" name="hasSubjectRequest"/>
+
+         <wsdl:output message="impl:hasSubjectResponse" name="hasSubjectResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="logIn">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Logs a user in for the current session.
+@param userName the name of the user to log-in.
+@param password the password of the user to log-in.   </wsdl:documentation>
+
+         <wsdl:input message="impl:logInRequest" name="logInRequest"/>
+
+         <wsdl:output message="impl:logInResponse" name="logInResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="logInWithToken">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+This method works for both Teamcenter Security Services SSO and Personal Access Tokens (since Polarion 3.22.1).
+Possible (case insensitive) values for the mechanism parameters: TcSS and AccessToken.
+
+This will NOT work for the other SSO methods supported by Polarion. (Kerberos, SAML, or OAuth2.)
+For SAML, OAuth2 (or deprecated Kerberos), you should use the SessionWebService.logIn(username, password) method (LDAP configuration should be enabled for web services) or use an access token.
+
+@param mechanism the mechanism that the client requests for authentication. If the TcSS mechanism is used, the server must be configured for TcSS. (Otherwise, the login with this mechanism will be rejected.) AccessToken is always accepted.
+@param username the name of the user to login. Required for TcSS. null for AccessToken
+@param token the token of the user to login.
+@since 3.17.0   </wsdl:documentation>
+
+         <wsdl:input message="impl:logInWithTokenRequest" name="logInWithTokenRequest"/>
+
+         <wsdl:output message="impl:logInWithTokenResponse" name="logInWithTokenResponse"/>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="transactionExists">
+
+   <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+Check if there is a explicit transaction (started with beginTransaction) for the current session.   </wsdl:documentation>
+
+         <wsdl:input message="impl:transactionExistsRequest" name="transactionExistsRequest"/>
+
+         <wsdl:output message="impl:transactionExistsResponse" name="transactionExistsResponse"/>
+
+      </wsdl:operation>
+
+   </wsdl:portType>
+
+   <wsdl:binding name="SessionWebServiceSoapBinding" type="impl:SessionWebService">
+
+      <wsdlsoap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+      <wsdl:operation name="beginTransaction">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="beginTransactionRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="beginTransactionResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="endSession">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="endSessionRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="endSessionResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="endTransaction">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="endTransactionRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="endTransactionResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="hasSubject">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="hasSubjectRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="hasSubjectResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="logIn">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="logInRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="logInResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="logInWithToken">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="logInWithTokenRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="logInWithTokenResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+      <wsdl:operation name="transactionExists">
+
+         <wsdlsoap:operation soapAction=""/>
+
+         <wsdl:input name="transactionExistsRequest">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:input>
+
+         <wsdl:output name="transactionExistsResponse">
+
+            <wsdlsoap:body use="literal"/>
+
+         </wsdl:output>
+
+      </wsdl:operation>
+
+   </wsdl:binding>
+
+   <wsdl:service name="SessionWebServiceService">
+
+  <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+
+      This service provides functionallity that is related to the
+      current session of the webservice.
+		  </wsdl:documentation>
+
+      <wsdl:port binding="impl:SessionWebServiceSoapBinding" name="SessionWebService">
+
+         <wsdlsoap:address location="https://polarion.example.com/polarion/ws/services/SessionWebService"/>
+
+      </wsdl:port>
+
+   </wsdl:service>
+
+</wsdl:definitions>
