@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::error::{Error, Result};
 use crate::model::{FieldDefinition, FieldValue, Text};
+use crate::uri::ItemRef;
 
 /// A work item to create with [`crate::WorkItems::create`].
 ///
@@ -90,6 +91,93 @@ pub struct NewWorkRecord {
     /// Work record type id; required when there is a comment.
     pub kind: Option<String>,
     pub comment: Option<String>,
+}
+
+/// A document to create with [`crate::Documents::create`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewDocument {
+    pub project: String,
+    /// Space id; `None` for the default space.
+    pub space: Option<String>,
+    pub name: String,
+    pub title: Option<String>,
+    /// Allowed work item type ids (Polarion accepts one).
+    pub allowed_types: Vec<String>,
+    /// Link role that structures the document's work items, e.g. `parent`.
+    pub structure_link_role: String,
+    /// Initial content (HTML).
+    pub body: Option<String>,
+}
+
+/// Changes for [`crate::Documents::update`]. Fields left `None` are not touched.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DocumentUpdate {
+    pub title: Option<String>,
+    /// Document type id.
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    /// The whole document body (Polarion HTML).
+    pub body: Option<Text>,
+    pub structure_link_role: Option<String>,
+    pub uses_outline_numbering: Option<bool>,
+    pub custom_fields: BTreeMap<String, FieldValue>,
+}
+
+/// Target of [`crate::Documents::reuse`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ReuseDocument {
+    pub project: String,
+    /// Space id; `None` for the default space.
+    pub space: Option<String>,
+    pub name: String,
+    pub title: Option<String>,
+    /// Also change the first title heading in the content to `title`.
+    pub update_title_in_document: bool,
+    /// Role of the links from reused work items to their sources; `None`: no links.
+    pub link_role: Option<String>,
+    /// Fields kept in sync with the source document.
+    pub derived_fields: Vec<String>,
+}
+
+/// Changes for [`crate::TestRuns::update`]. Fields left `None` are not touched.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TestRunUpdate {
+    pub title: Option<String>,
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub group_id: Option<String>,
+    pub query: Option<String>,
+    pub select_test_cases_by: Option<String>,
+    pub keep_in_history: Option<bool>,
+    pub finished_on: Option<String>,
+    pub summary_defect: Option<ItemRef>,
+    pub custom_fields: BTreeMap<String, FieldValue>,
+}
+
+/// Changes for [`crate::Plans::update`]. Fields left `None` are not touched.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PlanUpdate {
+    pub name: Option<String>,
+    pub status: Option<String>,
+    pub description: Option<Text>,
+    pub start_date: Option<String>,
+    pub due_date: Option<String>,
+    pub capacity: Option<f32>,
+    pub default_estimate: Option<f32>,
+    pub estimation_field: Option<String>,
+    pub prioritization_field: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: Option<i32>,
+    pub custom_fields: BTreeMap<String, FieldValue>,
+}
+
+/// Changes for [`crate::Users::update`]. Fields left `None` are not touched.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct UserUpdate {
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub description: Option<Text>,
+    pub disabled_notifications: Option<bool>,
 }
 
 impl FieldValue {

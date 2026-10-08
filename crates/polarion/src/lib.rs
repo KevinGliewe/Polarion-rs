@@ -6,9 +6,14 @@
 //! options, users and linked work items are reduced to their ids, and custom
 //! fields become a `key → value` map.
 //!
-//! Operations are grouped by area: [`Polarion::items`] (work items),
-//! [`Polarion::documents`], [`Polarion::schema`] (field definitions,
-//! enumerations), [`Polarion::projects`] and [`Polarion::users`].
+//! Operations are grouped by area and cover the whole SOAP API:
+//! [`Polarion::items`] (work items), [`Polarion::documents`],
+//! [`Polarion::schema`] (field definitions, enumerations, configuration),
+//! [`Polarion::tests`] (test runs), [`Polarion::plans`], [`Polarion::wiki`],
+//! [`Polarion::baselines`], [`Polarion::revisions`], [`Polarion::activities`],
+//! [`Polarion::folders`], [`Polarion::projects`], [`Polarion::users`],
+//! [`Polarion::security`] and [`Polarion::builds`]; sessions and transactions
+//! are on [`Polarion`] itself.
 //!
 //! ```no_run
 //! use polarion::{Auth, ItemRef, Polarion, WorkItemQuery};
@@ -62,33 +67,57 @@
 //! # Ok(()) }
 //! ```
 //!
-//! Everything else is available through [`Polarion::soap`] (not checked against the allowlist).
+//! Writes not tied to a project (users, global folders, activity comments, the account
+//! vault) also need [`PolarionBuilder::allow_global_writes`]. The raw SOAP client is
+//! available through [`Polarion::soap`] (not checked against the allowlist).
 
+mod activities;
+mod baselines;
+mod builds;
 mod client;
 mod convert;
 mod documents;
 mod error;
+mod folders;
 mod items;
 mod model;
+mod plans;
 mod projects;
 mod query;
+mod revisions;
 mod schema;
+mod security;
+mod tests_mgmt;
 mod uri;
+mod wiki;
 mod write;
 
+pub use activities::{Activities, ActivityScope};
+pub use baselines::Baselines;
+pub use builds::Builds;
 pub use client::{Polarion, PolarionBuilder};
 pub use documents::Documents;
 pub use error::{Error, Result};
+pub use folders::Folders;
 pub use items::WorkItems;
 pub use model::{
-    Approval, Attachment, Category, Change, Comment, Document, EnumOption, FieldChange,
-    FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Project, Text, TimePoint, User,
+    Approval, Attachment, Baseline, Category, Change, Comment, Document, EnumOption, FieldChange,
+    FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Plan, Project, ProjectGroup,
+    Revision, TestRecord, TestRun, TestStepResult, TestSteps, Text, TimePoint, User, WikiPage,
     WorkItem, WorkRecord, WorkflowAction,
 };
+pub use plans::Plans;
 pub use polarion_soap as soap;
 pub use polarion_soap::Auth;
 pub use projects::{Projects, Users};
-pub use query::{DEFAULT_LIMIT, Fields, WorkItemQuery};
+pub use query::{DEFAULT_LIMIT, Fields, Query, WorkItemQuery};
+pub use revisions::Revisions;
 pub use schema::Schema;
+pub use security::Security;
+pub use tests_mgmt::TestRuns;
 pub use uri::{DocumentRef, ItemRef};
-pub use write::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
+pub use wiki::Wiki;
+pub use write::{
+    DocumentUpdate, NewDocument, NewWorkItem, NewWorkRecord, PlanUpdate, ReuseDocument,
+    TestRunUpdate, UserUpdate, WorkItemUpdate,
+};

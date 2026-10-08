@@ -15,8 +15,13 @@ authors.workspace = true
 base64.workspace = true
 reqwest = { workspace = true, features = ["cookies"] }
 roxmltree.workspace = true
+serde = { workspace = true, optional = true }
 thiserror.workspace = true
 url.workspace = true
+
+[features]
+# `serde::Serialize` for all types (JSON keys are the XML element names).
+serde = ["dep:serde"]
 
 [dev-dependencies]
 tokio.workspace = true

@@ -8,6 +8,10 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 pub const TRACKER: &str = "/polarion/ws/services/TrackerWebService";
 pub const PROJECT: &str = "/polarion/ws/services/ProjectWebService";
+pub const TESTS: &str = "/polarion/ws/services/TestManagementWebService";
+pub const PLANNING: &str = "/polarion/ws/services/PlanningWebService";
+pub const SECURITY: &str = "/polarion/ws/services/SecurityWebService";
+pub const SESSION: &str = "/polarion/ws/services/SessionWebService";
 pub const URI: &str = "subterra:data-service:objects:/default/";
 
 pub fn envelope(header: &str, body: &str) -> String {
@@ -23,7 +27,8 @@ pub fn xml(body: &str) -> ResponseTemplate {
 /// A mock server that accepts a token login.
 pub async fn server() -> MockServer {
     let server = MockServer::start().await;
-    Mock::given(path("/polarion/ws/services/SessionWebService"))
+    Mock::given(path(SESSION))
+        .and(body_string_contains("logInWithToken>"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(
             envelope(
                 r#"<soapenv:Header><ns1:sessionID xmlns:ns1="http://ws.polarion.com/session">-1</ns1:sessionID></soapenv:Header>"#,
@@ -44,6 +49,15 @@ pub fn base_url(server: &MockServer) -> String {
 pub fn writer(server: &MockServer) -> Polarion {
     Polarion::builder(&base_url(server), Auth::Token("t".into()))
         .allow_writes(["Sandbox"])
+        .build()
+        .unwrap()
+}
+
+/// A client that may write to `Sandbox` and globally (users, global folders, ...).
+pub fn admin(server: &MockServer) -> Polarion {
+    Polarion::builder(&base_url(server), Auth::Token("t".into()))
+        .allow_writes(["Sandbox"])
+        .allow_global_writes(true)
         .build()
         .unwrap()
 }

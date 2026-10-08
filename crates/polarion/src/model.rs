@@ -219,6 +219,9 @@ pub struct Comment {
     /// URIs of the replies.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub replies: Vec<String>,
+    /// For document comments: the work item the comment refers to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_item: Option<ItemRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
 }
@@ -427,6 +430,22 @@ pub struct Document {
     pub created: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+    /// Link role that structures the work items in the document, e.g. `parent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structure_link_role: Option<String>,
+    /// Work item types allowed in the document.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub allowed_types: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uses_outline_numbering: Option<bool>,
+    /// For derived (reused) documents: the source document's URI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<Comment>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub custom_fields: BTreeMap<String, FieldValue>,
     /// The document body (Polarion HTML with embedded work item placeholders).
@@ -477,4 +496,299 @@ pub struct User {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
+}
+
+/// A project group (folder of projects).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectGroup {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    /// URI of the parent group.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// URIs of the subgroups.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<String>,
+    /// Ids of the projects directly in this group.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub projects: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// A wiki page.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiPage {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub space: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Page type; `type` in JSON.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+    /// URIs of linked pages.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_pages: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// A baseline: a named repository revision.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Baseline {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The repository revision the baseline marks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// For baselines of a single object (e.g. a document): its URI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_object: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// A repository revision (commit).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Revision {
+    /// The revision id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// Commits made by Polarion itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub internal: Option<bool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub linked_work_items: Vec<ItemRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// A test run (or test run template).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRun {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Test run type id; `type` in JSON.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub template: bool,
+    /// URI of the template the run was created from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_uri: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    /// How test cases are selected (e.g. `manualSelection`, `staticQueryResult`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub select_test_cases_by: Option<String>,
+    /// The query selecting the test cases.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// The document the test cases come from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document: Option<DocumentRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary_defect: Option<ItemRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_in_history: Option<bool>,
+    /// URIs of the projects in the run's project span.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub project_span: Vec<String>,
+    /// Test parameter values by name.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, FieldValue>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<TestRecord>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<Comment>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom_fields: BTreeMap<String, FieldValue>,
+    /// The run's report page content.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// The result of executing one test case in a test run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestRecord {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_case: Option<ItemRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test_case_revision: Option<String>,
+    /// Result id, e.g. `passed`, `failed`, `blocked`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executed: Option<String>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executed_by: Option<String>,
+    /// Seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iteration: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub defect: Option<ItemRef>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signed: Option<bool>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, FieldValue>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub step_results: Vec<TestStepResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+}
+
+/// The result of one test step.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct TestStepResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<Text>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<Attachment>,
+}
+
+/// The test steps of a test case: a table whose columns are `columns`
+/// (e.g. `step`, `description`, `expectedResult`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct TestSteps {
+    pub columns: Vec<String>,
+    /// One row per step, one cell per column.
+    pub steps: Vec<Vec<Text>>,
+}
+
+/// A plan (release, iteration) or plan template.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Plan {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub template: bool,
+    /// URI of the parent plan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_estimate: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimation_field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prioritization_field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub calculation_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<i32>,
+    /// Work item types that may be planned.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub allowed_types: Vec<String>,
+    /// URIs of the projects in the plan's project span.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub project_span: Vec<String>,
+    /// The planned work items.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<ItemRef>,
+    /// User id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom_fields: BTreeMap<String, FieldValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<Text>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
 }

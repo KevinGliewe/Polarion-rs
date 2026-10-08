@@ -205,6 +205,11 @@ impl<T: FromXml> FromXml for Box<T> {
 
 // ---- helpers used by generated code ----
 
+/// Standard base64 (used to serialize binary values).
+pub fn base64(data: &[u8]) -> String {
+    BASE64.encode(data)
+}
+
 /// Concatenated text content of an element.
 pub fn text(node: Node<'_, '_>) -> String {
     node.children()

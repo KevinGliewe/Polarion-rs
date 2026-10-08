@@ -6,7 +6,7 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 |---|---|---|
 | [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
-| [`polarion`](crates/polarion) | usable (work item writes mock-tested only) | Convenient, JSON-serializable API by area (work items, schema, documents, projects, users), on top of `polarion-soap` |
+| [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
 | [`polarion-cli`](crates/polarion-cli) | usable (reads) | `polarion` command-line tool, with JSON output for automation |
 | `polarion-mcp` | planned | MCP server so AI agents can work with Polarion |
 
@@ -58,15 +58,29 @@ The library the CLI and MCP server build on. It uses the SOAP services (so it wo
 and returns flat domain types that serialize to compact JSON: enum options, users and linked work items are reduced
 to their ids, custom fields become a `key → value` map, and empty fields are left out.
 
-Operations are grouped by area. Phase 1 covers work items and the schema completely; documents, test management,
-planning, baselines and wiki follow.
+Operations are grouped by area and cover the **whole SOAP API**: every one of the 302 operations is reachable
+through a library method (variants such as `…WithFields`, `…Limited`, `…InBaseline` or `…BySQL` are options of one
+method). `tests/coverage.rs` enforces this; the few operations it excludes are listed there with the reason
+(login/logout, deprecated duplicates).
 
-| Area | Reads | Writes |
-|---|---|---|
-| `items()` | `get`, `get_fields`, `get_in_revision`, `query` (Lucene, optionally in a baseline), `query_refs`, `query_sql`, `count`, `back_links`, `history`, `actions`, `unavailable_actions`, `allowed_assignees`, `allowed_approvers`, `field_options`, `attachment`, `localized_title/description` | `create`, `create_in_document`, `update`, `set_custom_field`, `clear_fields`, `delete`, `move_to_document`, `perform_action`, `transition`, `reset_workflow`, comments (`add_comment`, `reply_to_comment`, `set_comment_resolved`, `set_comment_tags`), links (`add/remove_link`, `_hyperlink`, `_external_link`, `_linked_revision`), `add/remove_assignee`, `add/remove_category`, approvals (`add/remove_approvee`, `set_approval`), attachments (`add/update/delete_attachment`), work records, localized title/description, `auto_suspect`, `auto_assign` |
-| `schema()` | `custom_fields`, `custom_field`, `custom_fields_of`, `field_options`, `enum_options`, `categories`, `time_points` | |
-| `documents()` | `spaces`, `list`, `get` (optionally with body), `work_items` | phase 2 |
-| `projects()`, `users()` | `get`, `list`, `of_project` | |
+| Handle | What it covers |
+|---|---|
+| `items()` | Work items: get (by id/URI, fields, revision), Lucene queries (limit, baseline, revision), SQL, count, back links, history, revisions, workflow actions and transitions, field options, custom fields, attachments, localized texts; create, update, delete, move, comments (incl. restricted visibility), links of every kind, assignees, categories, approvals, attachments, work records, planning constraints |
+| `documents()` | Spaces, list, get (with or without body), Lucene/SQL queries (baseline), work items in document order; create, update, delete, comments, reuse and derived documents, title heading, workflow, PDF export |
+| `schema()` | Custom field definitions and keys, enum options (by field, enum id, control value, object), control keys, initial workflow actions, categories, time points, languages, duration settings |
+| `tests()` | Test runs and templates (get, search), records, steps, step configuration, test configuration, parameters, custom field definitions, report page; create, update, records, execute, steps, attachments, summary defects, project span |
+| `plans()` | Plans and templates (get, search), statistics, report page; create, update, delete, plan items, allowed types, project span |
+| `wiki()` | Spaces, pages, Lucene/SQL queries (baseline) |
+| `baselines()`, `revisions()` | Baselines (query, create, update, delete); revisions (get, query, linked work items) |
+| `activities()` | Activity streams (all, project, group), sources, comments |
+| `folders()` | Document & page folders, project or global |
+| `projects()`, `users()` | Projects and project groups; users (get, list, avatar, create, update) |
+| `security()` | Permission checks, roles, location of objects, token owner, licenses, account vault |
+| `Polarion` | Login/logout, session check, transactions (`begin_transaction`, `commit`, `rollback`) |
+
+Results are flat domain types (`WorkItem`, `Document`, `TestRun`, `Plan`, ...). Configuration-like results
+(test configuration, licenses, builds, activities, folders, ...) are the generated SOAP types, which implement
+`serde::Serialize` with the `serde` feature of `polarion-soap` (enabled by this crate).
 
 ```rust
 use polarion::{Auth, Fields, ItemRef, Polarion, WorkItemQuery};
@@ -104,7 +118,9 @@ let items = polarion.documents().work_items(&srs.reference().unwrap(), &Fields::
 
 Writes are enabled per project. Every write method checks the target's project against the allowlist and fails with
 `Error::WriteNotAllowed` before anything is sent; a client built with `Polarion::new` or `Polarion::from_client`
-writes nothing. (`Polarion::soap()` is the raw client and is not checked.)
+writes nothing. Writes that are not tied to a project (creating and updating users, global folders, comments on
+activities, the account vault) additionally need `.allow_global_writes(true)`. (`Polarion::soap()` is the raw
+client and is not checked.)
 
 ```rust
 use polarion::{Auth, FieldValue, ItemRef, NewWorkItem, Polarion, WorkItemUpdate};
@@ -135,9 +151,12 @@ need one run against a sandbox project (the smoke example checks the first two r
 - `setFieldsNull` taking a custom field's key to clear it.
 - Custom field values: floats sent as `xsd:float`, currency as `xsd:decimal`, rich text as `types:Text`.
 - `createWorkItem` honouring custom fields given at creation.
-- Work records: the user sent by id only.
+- Work records: the user sent by id only; test records: the executing user sent as
+  `subterra:data-service:objects:/default/${User}ID`.
+- Update operations for documents, test runs and plans sending only the changed fields (as `updateWorkItem` is
+  documented to accept).
 
-Anything not covered is reachable through `Polarion::soap()`. Try it against a real server (read-only, about twenty
+The raw SOAP client stays available through `Polarion::soap()`. Try it against a real server (read-only, about twenty
 small requests, prints the JSON of each result):
 
 ```sh

@@ -12,11 +12,14 @@ The repository is English only: code, comments, docs and commit messages.
   WSDL quirks are handled in `xtask/src/soap/emit.rs`: params documented as accepting null become `Option`
   (`nullable_params`), plus `NILLABLE_PARAMS`/`OPTIONAL_PARAMS` overrides; `READ_PREFIXES`/`OTHER_READS` decide what
   read-only clients allow; subtype elements (e.g. `EnumCustomFieldType.enumId`) are decoded into the base struct.
-- `polarion`: one handle per area (`items.rs`, `schema.rs`, `documents.rs`, `projects.rs`), domain types in
+- `polarion`: one handle per area (`items.rs`, `documents.rs`, `schema.rs`, `tests_mgmt.rs`, `plans.rs`, `wiki.rs`,
+  `baselines.rs`, `revisions.rs`, `activities.rs`, `folders.rs`, `projects.rs`, `security.rs`, `builds.rs`), domain types in
   `model.rs` (serde, camelCase, empty fields skipped), write inputs and JSON coercion in `write.rs`, SOAP ↔ domain
   mappings in `convert.rs`, URI parsing/building in `uri.rs`. `Polarion::new` is read-only; keep it that way.
-  **Every method that modifies data must call `Polarion::check_write` with the target's project before sending
-  anything** (tests in `tests/items_write.rs`). Writes are verified against wiremock only; keep the
+  **Every method that modifies data must call `Polarion::check_write` (or `check_write_uri`, `check_global_write`,
+  `check_write_scope`, `check_any_write`) before sending anything** (tests in `tests/items_write.rs`, `tests/areas.rs`).
+  `tests/coverage.rs` fails when a SOAP operation is neither called by the library nor listed in its `EXCLUDED` with a
+  reason; new operations from a newer WSDL must be exposed or excluded there. Writes are verified against wiremock only; keep the
   "Not yet verified" list in README.md current.
 - `polarion-cli`: arguments in `cli.rs`, dispatch in `run.rs` (one library call per command, results as
   `serde_json::Value`), text/JSON output in `render.rs`. JSON output is the library's serde form; don't reshape it.

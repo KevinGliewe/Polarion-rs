@@ -10,11 +10,12 @@ pub enum Error {
     NotFound { kind: &'static str, id: String },
 
     /// A write was refused before anything was sent: writes are not enabled for
-    /// the project (see [`crate::PolarionBuilder::allow_writes`]), or the project
-    /// of the target could not be determined.
+    /// the project (see [`crate::PolarionBuilder::allow_writes`]), or the write is
+    /// global (users, global folders, ...) or its project could not be determined,
+    /// and global writes are not enabled ([`crate::PolarionBuilder::allow_global_writes`]).
     #[error("{operation} refused: {}", match project {
         Some(p) => format!("writes to project `{p}` are not allowed"),
-        None => "the target's project is unknown, so the write allowlist cannot be checked".to_owned(),
+        None => "the write is not tied to a known project and global writes are not allowed".to_owned(),
     })]
     WriteNotAllowed {
         operation: &'static str,

@@ -166,6 +166,20 @@ impl Serialize for DocumentRef {
     }
 }
 
+/// The project of an object URI (`…/default/PROJ${TestRun}ID` → `PROJ`); `None` for
+/// global objects (`…/default/${User}jdoe`) and URIs in other formats.
+pub fn project_of(uri: &str) -> Option<&str> {
+    let rest = &uri[uri.find(OBJECTS)? + OBJECTS.len()..];
+    let project = &rest[..rest.find("${")?];
+    (!project.is_empty() && !project.contains('/')).then_some(project)
+}
+
+/// The URI of a user (`subterra:data-service:objects:/default/${User}ID`; format not yet
+/// verified against a real server for writes).
+pub fn user_uri(id: &str) -> String {
+    format!("{OBJECTS}{USER}{id}")
+}
+
 /// The user id in a user URI (`…/default/${User}jdoe`).
 pub fn user_id(uri: &str) -> Option<&str> {
     split(uri, USER)
@@ -231,6 +245,17 @@ mod tests {
         let d = DocumentRef::new("P", "Specs", "SRS");
         assert_eq!(DocumentRef::from_uri(d.uri.clone()), d);
         assert_eq!(d.to_string(), "P/Specs/SRS");
+    }
+
+    #[test]
+    fn projects_of_uris() {
+        assert_eq!(project_of(&format!("{BASE}P${{TestRun}}R1")), Some("P"));
+        assert_eq!(
+            project_of(&format!("{BASE}P${{Module}}{{moduleFolder}}a/b")),
+            Some("P")
+        );
+        assert_eq!(project_of(&format!("{BASE}${{User}}jdoe")), None);
+        assert_eq!(project_of("junk"), None);
     }
 
     #[test]

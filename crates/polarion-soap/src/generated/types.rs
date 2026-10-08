@@ -214,6 +214,75 @@ impl FromXml for Build {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Build {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.bir_location {
+            map.serialize_entry("birLocation", v)?;
+        }
+        if let Some(v) = &self.build_descriptor_name {
+            map.serialize_entry("buildDescriptorName", v)?;
+        }
+        if let Some(v) = &self.build_requestor_specific_data {
+            map.serialize_entry("buildRequestorSpecificData", v)?;
+        }
+        if let Some(v) = &self.build_stamp {
+            map.serialize_entry("buildStamp", v)?;
+        }
+        if let Some(v) = &self.build_status {
+            map.serialize_entry("buildStatus", v)?;
+        }
+        if let Some(v) = &self.build_tag {
+            map.serialize_entry("buildTag", v)?;
+        }
+        if let Some(v) = &self.build_test_results {
+            map.serialize_entry("buildTestResults", v)?;
+        }
+        if let Some(v) = &self.calculation_descriptor_name {
+            map.serialize_entry("calculationDescriptorName", v)?;
+        }
+        if let Some(v) = &self.creation_time {
+            map.serialize_entry("creationTime", v)?;
+        }
+        if let Some(v) = &self.finish_time {
+            map.serialize_entry("finishTime", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.job_id {
+            map.serialize_entry("jobId", v)?;
+        }
+        if let Some(v) = &self.linked_work_items {
+            map.serialize_entry("linkedWorkItems", v)?;
+        }
+        if let Some(v) = &self.local_deployment_space_name {
+            map.serialize_entry("localDeploymentSpaceName", v)?;
+        }
+        if let Some(v) = &self.log_files {
+            map.serialize_entry("logFiles", v)?;
+        }
+        if let Some(v) = &self.start_time {
+            map.serialize_entry("startTime", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `BuildLinkedWorkItem` in `http://ws.polarion.com/BuilderWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BuildLinkedWorkItem {
@@ -260,6 +329,27 @@ impl FromXml for BuildLinkedWorkItem {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for BuildLinkedWorkItem {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.revision {
+            map.serialize_entry("revision", v)?;
+        }
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        if let Some(v) = &self.work_item {
+            map.serialize_entry("workItem", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `BuildRequestorSpecificData` in `http://ws.polarion.com/BuilderWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BuildRequestorSpecificData {
@@ -297,6 +387,24 @@ impl FromXml for BuildRequestorSpecificData {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for BuildRequestorSpecificData {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.key {
+            map.serialize_entry("key", v)?;
+        }
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
     }
 }
 
@@ -349,6 +457,30 @@ impl FromXml for BuildTestResults {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for BuildTestResults {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.error_count {
+            map.serialize_entry("errorCount", v)?;
+        }
+        if let Some(v) = &self.failure_count {
+            map.serialize_entry("failureCount", v)?;
+        }
+        if let Some(v) = &self.skipped_count {
+            map.serialize_entry("skippedCount", v)?;
+        }
+        if let Some(v) = &self.test_count {
+            map.serialize_entry("testCount", v)?;
+        }
+        map.end()
     }
 }
 
@@ -581,6 +713,114 @@ impl FromXml for Plan {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Plan {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.allowed_types {
+            map.serialize_entry("allowedTypes", v)?;
+        }
+        if let Some(v) = &self.author_uri {
+            map.serialize_entry("authorURI", v)?;
+        }
+        if let Some(v) = &self.calculation_type {
+            map.serialize_entry("calculationType", v)?;
+        }
+        if let Some(v) = &self.capacity {
+            map.serialize_entry("capacity", v)?;
+        }
+        if let Some(v) = &self.color {
+            map.serialize_entry("color", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.default_estimate {
+            map.serialize_entry("defaultEstimate", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.due_date {
+            map.serialize_entry("dueDate", v)?;
+        }
+        if let Some(v) = &self.estimation_field {
+            map.serialize_entry("estimationField", v)?;
+        }
+        if let Some(v) = &self.finished_on {
+            map.serialize_entry("finishedOn", v)?;
+        }
+        if let Some(v) = &self.home_page_content {
+            map.serialize_entry("homePageContent", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.is_template {
+            map.serialize_entry("isTemplate", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.parent {
+            map.serialize_entry("parent", v)?;
+        }
+        if let Some(v) = &self.previous_time_spent {
+            map.serialize_entry("previousTimeSpent", v)?;
+        }
+        if let Some(v) = &self.prioritization_field {
+            map.serialize_entry("prioritizationField", v)?;
+        }
+        if let Some(v) = &self.project_uri {
+            map.serialize_entry("projectURI", v)?;
+        }
+        if let Some(v) = &self.project_span_ur_is {
+            map.serialize_entry("projectSpanURIs", v)?;
+        }
+        if let Some(v) = &self.records {
+            map.serialize_entry("records", v)?;
+        }
+        if let Some(v) = &self.sort_order {
+            map.serialize_entry("sortOrder", v)?;
+        }
+        if let Some(v) = &self.start_date {
+            map.serialize_entry("startDate", v)?;
+        }
+        if let Some(v) = &self.started_on {
+            map.serialize_entry("startedOn", v)?;
+        }
+        if let Some(v) = &self.status {
+            map.serialize_entry("status", v)?;
+        }
+        if let Some(v) = &self.template_uri {
+            map.serialize_entry("templateURI", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.use_report_from_template {
+            map.serialize_entry("useReportFromTemplate", v)?;
+        }
+        if let Some(v) = &self.custom_fields {
+            map.serialize_entry("customFields", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `PlanRecord` in `http://ws.polarion.com/PlanningWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlanRecord {
@@ -612,6 +852,21 @@ impl FromXml for PlanRecord {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for PlanRecord {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.item {
+            map.serialize_entry("item", v)?;
+        }
+        map.end()
     }
 }
 
@@ -704,6 +959,37 @@ impl FromXml for PlanStatistics {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for PlanStatistics {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("done", &self.done)?;
+        map.serialize_entry("todo", &self.todo)?;
+        if let Some(v) = &self.number_of_resolved {
+            map.serialize_entry("numberOfResolved", v)?;
+        }
+        if let Some(v) = &self.number_of_unresolved {
+            map.serialize_entry("numberOfUnresolved", v)?;
+        }
+        if let Some(v) = &self.number_of_planned {
+            map.serialize_entry("numberOfPlanned", v)?;
+        }
+        map.serialize_entry("planned", &self.planned)?;
+        map.serialize_entry("progress", &self.progress)?;
+        map.serialize_entry("idealProgress", &self.ideal_progress)?;
+        map.serialize_entry("doneAsString", &self.done_as_string)?;
+        map.serialize_entry("todoAsString", &self.todo_as_string)?;
+        map.serialize_entry("plannedAsString", &self.planned_as_string)?;
+        map.serialize_entry("idealProgressAsString", &self.ideal_progress_as_string)?;
+        map.serialize_entry("progressAsString", &self.progress_as_string)?;
+        map.end()
     }
 }
 
@@ -825,6 +1111,63 @@ impl FromXml for Project {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Project {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.active {
+            map.serialize_entry("active", v)?;
+        }
+        if let Some(v) = &self.color {
+            map.serialize_entry("color", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.finish {
+            map.serialize_entry("finish", v)?;
+        }
+        if let Some(v) = &self.icon {
+            map.serialize_entry("icon", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.lead {
+            map.serialize_entry("lead", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.lock_work_records_date {
+            map.serialize_entry("lockWorkRecordsDate", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.project_group_uri {
+            map.serialize_entry("projectGroupURI", v)?;
+        }
+        if let Some(v) = &self.start {
+            map.serialize_entry("start", v)?;
+        }
+        if let Some(v) = &self.tracker_prefix {
+            map.serialize_entry("trackerPrefix", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ProjectGroup` in `http://ws.polarion.com/ProjectWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProjectGroup {
@@ -892,6 +1235,39 @@ impl FromXml for ProjectGroup {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ProjectGroup {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.group_ur_is {
+            map.serialize_entry("groupURIs", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.parent_uri {
+            map.serialize_entry("parentURI", v)?;
+        }
+        if let Some(v) = &self.project_i_ds {
+            map.serialize_entry("projectIDs", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
     }
 }
 
@@ -983,6 +1359,48 @@ impl FromXml for User {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for User {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.disabled_notifications {
+            map.serialize_entry("disabledNotifications", v)?;
+        }
+        if let Some(v) = &self.email {
+            map.serialize_entry("email", v)?;
+        }
+        if let Some(v) = &self.home_page_content {
+            map.serialize_entry("homePageContent", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.vote_ur_is {
+            map.serialize_entry("voteURIs", v)?;
+        }
+        if let Some(v) = &self.watche_ur_is {
+            map.serialize_entry("watcheURIs", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `LicenseInfo` in `http://ws.polarion.com/SecurityWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LicenseInfo {
@@ -1018,6 +1436,22 @@ impl FromXml for LicenseInfo {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LicenseInfo {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.license {
+            map.serialize_entry("license", v)?;
+        }
+        map.serialize_entry("slots", &self.slots)?;
+        map.end()
     }
 }
 
@@ -1130,6 +1564,54 @@ impl FromXml for ProductLicense {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ProductLicense {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.concurrent_license_data {
+            map.serialize_entry("concurrentLicenseData", v)?;
+        }
+        if let Some(v) = &self.customer_company {
+            map.serialize_entry("customerCompany", v)?;
+        }
+        if let Some(v) = &self.customer_email {
+            map.serialize_entry("customerEmail", v)?;
+        }
+        if let Some(v) = &self.customer_name {
+            map.serialize_entry("customerName", v)?;
+        }
+        if let Some(v) = &self.date_created {
+            map.serialize_entry("dateCreated", v)?;
+        }
+        if let Some(v) = &self.expiration_date {
+            map.serialize_entry("expirationDate", v)?;
+        }
+        if let Some(v) = &self.generated_by {
+            map.serialize_entry("generatedBy", v)?;
+        }
+        if let Some(v) = &self.ip_address {
+            map.serialize_entry("ipAddress", v)?;
+        }
+        if let Some(v) = &self.license_format {
+            map.serialize_entry("licenseFormat", v)?;
+        }
+        if let Some(v) = &self.license_profile {
+            map.serialize_entry("licenseProfile", v)?;
+        }
+        if let Some(v) = &self.mac_address {
+            map.serialize_entry("macAddress", v)?;
+        }
+        if let Some(v) = &self.named_license_data {
+            map.serialize_entry("namedLicenseData", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Parameter` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Parameter {
@@ -1170,6 +1652,24 @@ impl FromXml for Parameter {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Parameter {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ParameterDefinition` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParameterDefinition {
@@ -1201,6 +1701,21 @@ impl FromXml for ParameterDefinition {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ParameterDefinition {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        map.end()
     }
 }
 
@@ -1260,6 +1775,24 @@ impl FromXml for ParametersAndDefinitions {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ParametersAndDefinitions {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.parameter_definitions {
+            map.serialize_entry("parameterDefinitions", v)?;
+        }
+        if let Some(v) = &self.parameters {
+            map.serialize_entry("parameters", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ParametersLibrary` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParametersLibrary {
@@ -1300,6 +1833,21 @@ impl FromXml for ParametersLibrary {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ParametersLibrary {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.parameter_definitions {
+            map.serialize_entry("parameterDefinitions", v)?;
+        }
+        map.end()
     }
 }
 
@@ -1429,6 +1977,57 @@ impl FromXml for TestRecord {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestRecord {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.attachments {
+            map.serialize_entry("attachments", v)?;
+        }
+        if let Some(v) = &self.comment {
+            map.serialize_entry("comment", v)?;
+        }
+        if let Some(v) = &self.defect_uri {
+            map.serialize_entry("defectURI", v)?;
+        }
+        if let Some(v) = &self.duration {
+            map.serialize_entry("duration", v)?;
+        }
+        if let Some(v) = &self.executed {
+            map.serialize_entry("executed", v)?;
+        }
+        if let Some(v) = &self.executed_by_uri {
+            map.serialize_entry("executedByURI", v)?;
+        }
+        if let Some(v) = &self.iteration {
+            map.serialize_entry("iteration", v)?;
+        }
+        if let Some(v) = &self.result {
+            map.serialize_entry("result", v)?;
+        }
+        if let Some(v) = &self.signed {
+            map.serialize_entry("signed", v)?;
+        }
+        if let Some(v) = &self.test_case_uri {
+            map.serialize_entry("testCaseURI", v)?;
+        }
+        if let Some(v) = &self.test_case_revision {
+            map.serialize_entry("testCaseRevision", v)?;
+        }
+        if let Some(v) = &self.test_parameters {
+            map.serialize_entry("testParameters", v)?;
+        }
+        if let Some(v) = &self.test_step_results {
+            map.serialize_entry("testStepResults", v)?;
+        }
+        map.end()
     }
 }
 
@@ -1671,6 +2270,105 @@ impl FromXml for TestRun {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestRun {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.attachments {
+            map.serialize_entry("attachments", v)?;
+        }
+        if let Some(v) = &self.author_uri {
+            map.serialize_entry("authorURI", v)?;
+        }
+        if let Some(v) = &self.comments {
+            map.serialize_entry("comments", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.document {
+            map.serialize_entry("document", v)?;
+        }
+        if let Some(v) = &self.finished_on {
+            map.serialize_entry("finishedOn", v)?;
+        }
+        if let Some(v) = &self.group_id {
+            map.serialize_entry("groupId", v)?;
+        }
+        if let Some(v) = &self.home_page_content {
+            map.serialize_entry("homePageContent", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.id_prefix {
+            map.serialize_entry("idPrefix", v)?;
+        }
+        if let Some(v) = &self.is_template {
+            map.serialize_entry("isTemplate", v)?;
+        }
+        if let Some(v) = &self.keep_in_history {
+            map.serialize_entry("keepInHistory", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.project_uri {
+            map.serialize_entry("projectURI", v)?;
+        }
+        if let Some(v) = &self.project_span_ur_is {
+            map.serialize_entry("projectSpanURIs", v)?;
+        }
+        if let Some(v) = &self.query {
+            map.serialize_entry("query", v)?;
+        }
+        if let Some(v) = &self.records {
+            map.serialize_entry("records", v)?;
+        }
+        if let Some(v) = &self.select_test_cases_by {
+            map.serialize_entry("selectTestCasesBy", v)?;
+        }
+        if let Some(v) = &self.status {
+            map.serialize_entry("status", v)?;
+        }
+        if let Some(v) = &self.summary_defect_uri {
+            map.serialize_entry("summaryDefectURI", v)?;
+        }
+        if let Some(v) = &self.template_uri {
+            map.serialize_entry("templateURI", v)?;
+        }
+        if let Some(v) = &self.test_parameters {
+            map.serialize_entry("testParameters", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.use_report_from_template {
+            map.serialize_entry("useReportFromTemplate", v)?;
+        }
+        if let Some(v) = &self.custom_fields {
+            map.serialize_entry("customFields", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `TestStep` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestStep {
@@ -1702,6 +2400,21 @@ impl FromXml for TestStep {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestStep {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.values {
+            map.serialize_entry("values", v)?;
+        }
+        map.end()
     }
 }
 
@@ -1758,6 +2471,27 @@ impl FromXml for TestStepResult {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestStepResult {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.attachments {
+            map.serialize_entry("attachments", v)?;
+        }
+        if let Some(v) = &self.comment {
+            map.serialize_entry("comment", v)?;
+        }
+        if let Some(v) = &self.result {
+            map.serialize_entry("result", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `TestSteps` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestSteps {
@@ -1802,6 +2536,24 @@ impl FromXml for TestSteps {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestSteps {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.keys {
+            map.serialize_entry("keys", v)?;
+        }
+        if let Some(v) = &self.steps {
+            map.serialize_entry("steps", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2032,6 +2784,96 @@ impl FromXml for TestsConfiguration {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestsConfiguration {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry(
+            "defectAutoAssignementEnabled",
+            &self.defect_auto_assignement_enabled,
+        )?;
+        if let Some(v) = &self.defect_reuse_type {
+            map.serialize_entry("defectReuseType", v)?;
+        }
+        if let Some(v) = &self.defect_template {
+            map.serialize_entry("defectTemplate", v)?;
+        }
+        if let Some(v) = &self.defect_to_test_case_link_role_id {
+            map.serialize_entry("defectToTestCaseLinkRoleId", v)?;
+        }
+        if let Some(v) = &self.defect_work_item_type {
+            map.serialize_entry("defectWorkItemType", v)?;
+        }
+        if let Some(v) = &self.defects_project {
+            map.serialize_entry("defectsProject", v)?;
+        }
+        if let Some(v) = &self.fields_to_copy_from_test_case_to_defect {
+            map.serialize_entry("fieldsToCopyFromTestCaseToDefect", v)?;
+        }
+        if let Some(v) = &self.fields_to_copy_from_test_run_to_linked_defect {
+            map.serialize_entry("fieldsToCopyFromTestRunToLinkedDefect", v)?;
+        }
+        if let Some(v) = &self.fields_to_copy_from_test_run_to_new_defect {
+            map.serialize_entry("fieldsToCopyFromTestRunToNewDefect", v)?;
+        }
+        if let Some(v) = &self.max_created_defects {
+            map.serialize_entry("maxCreatedDefects", v)?;
+        }
+        if let Some(v) = &self.max_created_defects_percent {
+            map.serialize_entry("maxCreatedDefectsPercent", v)?;
+        }
+        if let Some(v) = &self.result_error_enum_id {
+            map.serialize_entry("resultErrorEnumId", v)?;
+        }
+        if let Some(v) = &self.result_failed_enum_id {
+            map.serialize_entry("resultFailedEnumId", v)?;
+        }
+        if let Some(v) = &self.result_passed_enum_id {
+            map.serialize_entry("resultPassedEnumId", v)?;
+        }
+        map.serialize_entry("retestAllowed", &self.retest_allowed)?;
+        if let Some(v) = &self.status_error_enum_id {
+            map.serialize_entry("statusErrorEnumId", v)?;
+        }
+        if let Some(v) = &self.status_failed_enum_id {
+            map.serialize_entry("statusFailedEnumId", v)?;
+        }
+        if let Some(v) = &self.status_ok_enum_id {
+            map.serialize_entry("statusOkEnumId", v)?;
+        }
+        if let Some(v) = &self.summary_defect_severity {
+            map.serialize_entry("summaryDefectSeverity", v)?;
+        }
+        if let Some(v) = &self.test_case_id_custom_field {
+            map.serialize_entry("testCaseIdCustomField", v)?;
+        }
+        if let Some(v) = &self.test_case_template {
+            map.serialize_entry("testCaseTemplate", v)?;
+        }
+        if let Some(v) = &self.test_case_test_comment_field_id {
+            map.serialize_entry("testCaseTestCommentFieldId", v)?;
+        }
+        if let Some(v) = &self.test_case_test_result_field_id {
+            map.serialize_entry("testCaseTestResultFieldId", v)?;
+        }
+        if let Some(v) = &self.test_case_work_item_type {
+            map.serialize_entry("testCaseWorkItemType", v)?;
+        }
+        if let Some(v) = &self.test_run_template {
+            map.serialize_entry("testRunTemplate", v)?;
+        }
+        map.serialize_entry(
+            "testRunsGeneratedIdEnabled",
+            &self.test_runs_generated_id_enabled,
+        )?;
+        map.end()
+    }
+}
+
 /// `property` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestManagementProperty {
@@ -2067,6 +2909,22 @@ impl FromXml for TestManagementProperty {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestManagementProperty {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("key", &self.key)?;
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2172,6 +3030,54 @@ impl FromXml for Activity {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Activity {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.activity_custom_values {
+            map.serialize_entry("activityCustomValues", v)?;
+        }
+        if let Some(v) = &self.comments {
+            map.serialize_entry("comments", v)?;
+        }
+        if let Some(v) = &self.context_id {
+            map.serialize_entry("contextId", v)?;
+        }
+        if let Some(v) = &self.global_id {
+            map.serialize_entry("globalId", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.info {
+            map.serialize_entry("info", v)?;
+        }
+        if let Some(v) = &self.prefix {
+            map.serialize_entry("prefix", v)?;
+        }
+        if let Some(v) = &self.resource_locations {
+            map.serialize_entry("resourceLocations", v)?;
+        }
+        if let Some(v) = &self.source_id {
+            map.serialize_entry("sourceId", v)?;
+        }
+        if let Some(v) = &self.timestamp {
+            map.serialize_entry("timestamp", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.user_id {
+            map.serialize_entry("userId", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ActivityComment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ActivityComment {
@@ -2218,6 +3124,27 @@ impl FromXml for ActivityComment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ActivityComment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.text {
+            map.serialize_entry("text", v)?;
+        }
+        if let Some(v) = &self.time_stamp {
+            map.serialize_entry("timeStamp", v)?;
+        }
+        if let Some(v) = &self.user_id {
+            map.serialize_entry("userId", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ActivityCustomValue` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ActivityCustomValue {
@@ -2249,6 +3176,21 @@ impl FromXml for ActivityCustomValue {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ActivityCustomValue {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.values {
+            map.serialize_entry("values", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2289,6 +3231,24 @@ impl FromXml for ActivityCustomValueEntry {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ActivityCustomValueEntry {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.custom_values {
+            map.serialize_entry("customValues", v)?;
+        }
+        if let Some(v) = &self.key {
+            map.serialize_entry("key", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2338,6 +3298,27 @@ impl FromXml for ActivitySource {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ActivitySource {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.prefix {
+            map.serialize_entry("prefix", v)?;
+        }
+        if let Some(v) = &self.types {
+            map.serialize_entry("types", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Approval` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Approval {
@@ -2381,6 +3362,27 @@ impl FromXml for Approval {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Approval {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.secure_approval_comment_id {
+            map.serialize_entry("secureApprovalCommentId", v)?;
+        }
+        if let Some(v) = &self.status {
+            map.serialize_entry("status", v)?;
+        }
+        if let Some(v) = &self.user {
+            map.serialize_entry("user", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2466,6 +3468,45 @@ impl FromXml for Attachment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Attachment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.file_name {
+            map.serialize_entry("fileName", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.length {
+            map.serialize_entry("length", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.url {
+            map.serialize_entry("url", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Baseline` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Baseline {
@@ -2548,6 +3589,45 @@ impl FromXml for Baseline {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Baseline {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.base_object_uri {
+            map.serialize_entry("baseObjectURI", v)?;
+        }
+        if let Some(v) = &self.base_revision {
+            map.serialize_entry("baseRevision", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.project {
+            map.serialize_entry("project", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Category` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Category {
@@ -2603,6 +3683,33 @@ impl FromXml for Category {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Category {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2667,6 +3774,33 @@ impl FromXml for Change {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Change {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("creation", &self.creation)?;
+        if let Some(v) = &self.date {
+            map.serialize_entry("date", v)?;
+        }
+        if let Some(v) = &self.diffs {
+            map.serialize_entry("diffs", v)?;
+        }
+        map.serialize_entry("empty", &self.empty)?;
+        map.serialize_entry("invalid", &self.invalid)?;
+        if let Some(v) = &self.revision {
+            map.serialize_entry("revision", v)?;
+        }
+        if let Some(v) = &self.user {
+            map.serialize_entry("user", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2772,6 +3906,54 @@ impl FromXml for Comment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Comment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.child_comment_ur_is {
+            map.serialize_entry("childCommentURIs", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.parent_comment_uri {
+            map.serialize_entry("parentCommentURI", v)?;
+        }
+        if let Some(v) = &self.resolved {
+            map.serialize_entry("resolved", v)?;
+        }
+        if let Some(v) = &self.tags {
+            map.serialize_entry("tags", v)?;
+        }
+        if let Some(v) = &self.text {
+            map.serialize_entry("text", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.visible_to {
+            map.serialize_entry("visibleTo", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Custom` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Custom {
@@ -2807,6 +3989,22 @@ impl FromXml for Custom {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Custom {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("key", &self.key)?;
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2850,6 +4048,23 @@ impl FromXml for CustomField {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for CustomField {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("key", &self.key)?;
+        map.serialize_entry("parentItemURI", &self.parent_item_uri)?;
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
     }
 }
 
@@ -2925,6 +4140,41 @@ impl FromXml for CustomFieldType {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for CustomFieldType {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.default_value {
+            map.serialize_entry("defaultValue", v)?;
+        }
+        if let Some(v) = &self.depends_on {
+            map.serialize_entry("dependsOn", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        map.serialize_entry("multi", &self.multi)?;
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        map.serialize_entry("required", &self.required)?;
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.enum_id {
+            map.serialize_entry("enumId", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3006,6 +4256,41 @@ impl FromXml for EnumCustomFieldType {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnumCustomFieldType {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.default_value {
+            map.serialize_entry("defaultValue", v)?;
+        }
+        if let Some(v) = &self.depends_on {
+            map.serialize_entry("dependsOn", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        map.serialize_entry("multi", &self.multi)?;
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        map.serialize_entry("required", &self.required)?;
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.enum_id {
+            map.serialize_entry("enumId", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `EnumOption` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnumOption {
@@ -3078,6 +4363,37 @@ impl FromXml for EnumOption {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnumOption {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("default", &self.default_)?;
+        if let Some(v) = &self.enum_id {
+            map.serialize_entry("enumId", v)?;
+        }
+        map.serialize_entry("hidden", &self.hidden)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        map.serialize_entry("phantom", &self.phantom)?;
+        if let Some(v) = &self.properties {
+            map.serialize_entry("properties", v)?;
+        }
+        map.serialize_entry("sequenceNumber", &self.sequence_number)?;
+        if let Some(v) = &self.float {
+            map.serialize_entry("float", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `EnumOptionId` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnumOptionId {
@@ -3109,6 +4425,21 @@ impl FromXml for EnumOptionId {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for EnumOptionId {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3149,6 +4480,24 @@ impl FromXml for ExternallyLinkedWorkItem {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for ExternallyLinkedWorkItem {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        if let Some(v) = &self.work_item_uri {
+            map.serialize_entry("workItemURI", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3214,6 +4563,34 @@ impl FromXml for FieldDiff {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for FieldDiff {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.added {
+            map.serialize_entry("added", v)?;
+        }
+        if let Some(v) = &self.after {
+            map.serialize_entry("after", v)?;
+        }
+        if let Some(v) = &self.before {
+            map.serialize_entry("before", v)?;
+        }
+        map.serialize_entry("collection", &self.collection)?;
+        if let Some(v) = &self.field_name {
+            map.serialize_entry("fieldName", v)?;
+        }
+        if let Some(v) = &self.removed {
+            map.serialize_entry("removed", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Folder` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Folder {
@@ -3266,6 +4643,30 @@ impl FromXml for Folder {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Folder {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.project_uri {
+            map.serialize_entry("projectURI", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.title_or_name {
+            map.serialize_entry("titleOrName", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Hyperlink` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Hyperlink {
@@ -3303,6 +4704,24 @@ impl FromXml for Hyperlink {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Hyperlink {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3352,6 +4771,27 @@ impl FromXml for ImportedComment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ImportedComment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.initials {
+            map.serialize_entry("initials", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `LanguageDefinition` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LanguageDefinition {
@@ -3389,6 +4829,24 @@ impl FromXml for LanguageDefinition {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LanguageDefinition {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.label {
+            map.serialize_entry("label", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3441,6 +4899,30 @@ impl FromXml for LinkedOslcResource {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LinkedOslcResource {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.label {
+            map.serialize_entry("label", v)?;
+        }
+        if let Some(v) = &self.revision {
+            map.serialize_entry("revision", v)?;
+        }
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3550,6 +5032,57 @@ impl FromXml for LinkedResource {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for LinkedResource {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.branch {
+            map.serialize_entry("branch", v)?;
+        }
+        if let Some(v) = &self.category {
+            map.serialize_entry("category", v)?;
+        }
+        if let Some(v) = &self.element {
+            map.serialize_entry("element", v)?;
+        }
+        if let Some(v) = &self.element_position {
+            map.serialize_entry("elementPosition", v)?;
+        }
+        if let Some(v) = &self.file_name {
+            map.serialize_entry("fileName", v)?;
+        }
+        if let Some(v) = &self.link_position {
+            map.serialize_entry("linkPosition", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.message {
+            map.serialize_entry("message", v)?;
+        }
+        if let Some(v) = &self.object_id {
+            map.serialize_entry("objectId", v)?;
+        }
+        if let Some(v) = &self.object_revision {
+            map.serialize_entry("objectRevision", v)?;
+        }
+        if let Some(v) = &self.project_id {
+            map.serialize_entry("projectId", v)?;
+        }
+        if let Some(v) = &self.repository_id {
+            map.serialize_entry("repositoryId", v)?;
+        }
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `LinkedWorkItem` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LinkedWorkItem {
@@ -3599,6 +5132,30 @@ impl FromXml for LinkedWorkItem {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for LinkedWorkItem {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.revision {
+            map.serialize_entry("revision", v)?;
+        }
+        if let Some(v) = &self.role {
+            map.serialize_entry("role", v)?;
+        }
+        if let Some(v) = &self.suspect {
+            map.serialize_entry("suspect", v)?;
+        }
+        if let Some(v) = &self.work_item_uri {
+            map.serialize_entry("workItemURI", v)?;
+        }
+        map.end()
     }
 }
 
@@ -3855,6 +5412,117 @@ impl FromXml for Module {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Module {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.allowed_wi_types {
+            map.serialize_entry("allowedWITypes", v)?;
+        }
+        if let Some(v) = &self.are_links_from_parent_to_child {
+            map.serialize_entry("areLinksFromParentToChild", v)?;
+        }
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.auto_suspect {
+            map.serialize_entry("autoSuspect", v)?;
+        }
+        if let Some(v) = &self.branched_from {
+            map.serialize_entry("branchedFrom", v)?;
+        }
+        if let Some(v) = &self.branched_with_initialized_fields {
+            map.serialize_entry("branchedWithInitializedFields", v)?;
+        }
+        if let Some(v) = &self.branched_with_query {
+            map.serialize_entry("branchedWithQuery", v)?;
+        }
+        if let Some(v) = &self.comments {
+            map.serialize_entry("comments", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.derived_fields {
+            map.serialize_entry("derivedFields", v)?;
+        }
+        if let Some(v) = &self.derived_from_uri {
+            map.serialize_entry("derivedFromURI", v)?;
+        }
+        if let Some(v) = &self.derived_from_link_role {
+            map.serialize_entry("derivedFromLinkRole", v)?;
+        }
+        if let Some(v) = &self.heading_sidebar_fields {
+            map.serialize_entry("headingSidebarFields", v)?;
+        }
+        if let Some(v) = &self.home_page_content {
+            map.serialize_entry("homePageContent", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.linked_oslc_resources {
+            map.serialize_entry("linkedOslcResources", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.module_absolute_location {
+            map.serialize_entry("moduleAbsoluteLocation", v)?;
+        }
+        if let Some(v) = &self.module_folder {
+            map.serialize_entry("moduleFolder", v)?;
+        }
+        if let Some(v) = &self.module_location {
+            map.serialize_entry("moduleLocation", v)?;
+        }
+        if let Some(v) = &self.module_name {
+            map.serialize_entry("moduleName", v)?;
+        }
+        if let Some(v) = &self.project {
+            map.serialize_entry("project", v)?;
+        }
+        if let Some(v) = &self.status {
+            map.serialize_entry("status", v)?;
+        }
+        if let Some(v) = &self.structure_link_role {
+            map.serialize_entry("structureLinkRole", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.updated_by {
+            map.serialize_entry("updatedBy", v)?;
+        }
+        if let Some(v) = &self.uses_outline_numbering {
+            map.serialize_entry("usesOutlineNumbering", v)?;
+        }
+        if let Some(v) = &self.variant_uri {
+            map.serialize_entry("variantURI", v)?;
+        }
+        if let Some(v) = &self.custom_fields {
+            map.serialize_entry("customFields", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `ModuleComment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModuleComment {
@@ -3957,6 +5625,54 @@ impl FromXml for ModuleComment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for ModuleComment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.child_comment_ur_is {
+            map.serialize_entry("childCommentURIs", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.imported_comment {
+            map.serialize_entry("importedComment", v)?;
+        }
+        if let Some(v) = &self.parent_comment_uri {
+            map.serialize_entry("parentCommentURI", v)?;
+        }
+        if let Some(v) = &self.referred_work_item_uri {
+            map.serialize_entry("referredWorkItemURI", v)?;
+        }
+        if let Some(v) = &self.resolved {
+            map.serialize_entry("resolved", v)?;
+        }
+        if let Some(v) = &self.tags {
+            map.serialize_entry("tags", v)?;
+        }
+        if let Some(v) = &self.text {
+            map.serialize_entry("text", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `PdfProperties` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PdfProperties {
@@ -4013,6 +5729,24 @@ impl FromXml for PdfProperties {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for PdfProperties {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("paperSize", &self.paper_size)?;
+        map.serialize_entry("orientation", &self.orientation)?;
+        map.serialize_entry("fitToPageWidth", &self.fit_to_page_width)?;
+        map.serialize_entry("generateBookmarks", &self.generate_bookmarks)?;
+        map.serialize_entry("includeHeaderFooter", &self.include_header_footer)?;
+        map.serialize_entry("repeatTableHeaders", &self.repeat_table_headers)?;
+        map.end()
+    }
+}
+
 /// `PlanningConstraint` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlanningConstraint {
@@ -4050,6 +5784,24 @@ impl FromXml for PlanningConstraint {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for PlanningConstraint {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.constraint {
+            map.serialize_entry("constraint", v)?;
+        }
+        if let Some(v) = &self.date {
+            map.serialize_entry("date", v)?;
+        }
+        map.end()
     }
 }
 
@@ -4126,6 +5878,35 @@ impl FromXml for PriorityOpt {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for PriorityOpt {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("default", &self.default_)?;
+        if let Some(v) = &self.enum_id {
+            map.serialize_entry("enumId", v)?;
+        }
+        map.serialize_entry("hidden", &self.hidden)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        map.serialize_entry("phantom", &self.phantom)?;
+        if let Some(v) = &self.properties {
+            map.serialize_entry("properties", v)?;
+        }
+        map.serialize_entry("sequenceNumber", &self.sequence_number)?;
+        map.serialize_entry("float", &self.float)?;
+        map.end()
+    }
+}
+
 /// `PriorityOptionId` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PriorityOptionId {
@@ -4160,6 +5941,21 @@ impl FromXml for PriorityOptionId {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for PriorityOptionId {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Row` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Row {
@@ -4191,6 +5987,21 @@ impl FromXml for Row {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Row {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.values {
+            map.serialize_entry("values", v)?;
+        }
+        map.end()
     }
 }
 
@@ -4231,6 +6042,24 @@ impl FromXml for Table {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Table {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.keys {
+            map.serialize_entry("keys", v)?;
+        }
+        if let Some(v) = &self.rows {
+            map.serialize_entry("rows", v)?;
+        }
+        map.end()
     }
 }
 
@@ -4319,6 +6148,48 @@ impl FromXml for TestRunAttachment {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestRunAttachment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.file_name {
+            map.serialize_entry("fileName", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.length {
+            map.serialize_entry("length", v)?;
+        }
+        if let Some(v) = &self.test_run_uri {
+            map.serialize_entry("testRunURI", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.url {
+            map.serialize_entry("url", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
     }
 }
 
@@ -4418,6 +6289,51 @@ impl FromXml for TestRunComment {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for TestRunComment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.child_comment_ur_is {
+            map.serialize_entry("childCommentURIs", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.parent_comment_uri {
+            map.serialize_entry("parentCommentURI", v)?;
+        }
+        if let Some(v) = &self.resolved {
+            map.serialize_entry("resolved", v)?;
+        }
+        if let Some(v) = &self.tags {
+            map.serialize_entry("tags", v)?;
+        }
+        if let Some(v) = &self.text {
+            map.serialize_entry("text", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `TimePoint` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TimePoint {
@@ -4491,6 +6407,42 @@ impl FromXml for TimePoint {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for TimePoint {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.closed {
+            map.serialize_entry("closed", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.earliest_planned_start {
+            map.serialize_entry("earliestPlannedStart", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.time {
+            map.serialize_entry("time", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
     }
 }
 
@@ -4631,6 +6583,69 @@ impl FromXml for WikiPage {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for WikiPage {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.attachments {
+            map.serialize_entry("attachments", v)?;
+        }
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.home_page_content {
+            map.serialize_entry("homePageContent", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.linked_page_ur_is {
+            map.serialize_entry("linkedPageURIs", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.page_location {
+            map.serialize_entry("pageLocation", v)?;
+        }
+        if let Some(v) = &self.page_name {
+            map.serialize_entry("pageName", v)?;
+        }
+        if let Some(v) = &self.project {
+            map.serialize_entry("project", v)?;
+        }
+        if let Some(v) = &self.space_id {
+            map.serialize_entry("spaceId", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.updated_by {
+            map.serialize_entry("updatedBy", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `WikiPageAttachment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WikiPageAttachment {
@@ -4710,6 +6725,45 @@ impl FromXml for WikiPageAttachment {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for WikiPageAttachment {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.file_name {
+            map.serialize_entry("fileName", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.length {
+            map.serialize_entry("length", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.url {
+            map.serialize_entry("url", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
     }
 }
 
@@ -5048,6 +7102,144 @@ impl FromXml for WorkItem {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for WorkItem {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.approvals {
+            map.serialize_entry("approvals", v)?;
+        }
+        if let Some(v) = &self.assignee {
+            map.serialize_entry("assignee", v)?;
+        }
+        if let Some(v) = &self.attachments {
+            map.serialize_entry("attachments", v)?;
+        }
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.categories {
+            map.serialize_entry("categories", v)?;
+        }
+        if let Some(v) = &self.comments {
+            map.serialize_entry("comments", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.description {
+            map.serialize_entry("description", v)?;
+        }
+        if let Some(v) = &self.due_date {
+            map.serialize_entry("dueDate", v)?;
+        }
+        if let Some(v) = &self.externally_linked_work_items {
+            map.serialize_entry("externallyLinkedWorkItems", v)?;
+        }
+        if let Some(v) = &self.hyperlinks {
+            map.serialize_entry("hyperlinks", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.initial_estimate {
+            map.serialize_entry("initialEstimate", v)?;
+        }
+        if let Some(v) = &self.linked_oslc_resources {
+            map.serialize_entry("linkedOslcResources", v)?;
+        }
+        if let Some(v) = &self.linked_revisions {
+            map.serialize_entry("linkedRevisions", v)?;
+        }
+        if let Some(v) = &self.linked_revisions_derived {
+            map.serialize_entry("linkedRevisionsDerived", v)?;
+        }
+        if let Some(v) = &self.linked_work_items {
+            map.serialize_entry("linkedWorkItems", v)?;
+        }
+        if let Some(v) = &self.linked_work_items_derived {
+            map.serialize_entry("linkedWorkItemsDerived", v)?;
+        }
+        if let Some(v) = &self.location {
+            map.serialize_entry("location", v)?;
+        }
+        if let Some(v) = &self.module_uri {
+            map.serialize_entry("moduleURI", v)?;
+        }
+        if let Some(v) = &self.outline_number {
+            map.serialize_entry("outlineNumber", v)?;
+        }
+        if let Some(v) = &self.planned_end {
+            map.serialize_entry("plannedEnd", v)?;
+        }
+        if let Some(v) = &self.planned_in_ur_is {
+            map.serialize_entry("plannedInURIs", v)?;
+        }
+        if let Some(v) = &self.planned_start {
+            map.serialize_entry("plannedStart", v)?;
+        }
+        if let Some(v) = &self.planning_constraints {
+            map.serialize_entry("planningConstraints", v)?;
+        }
+        if let Some(v) = &self.previous_status {
+            map.serialize_entry("previousStatus", v)?;
+        }
+        if let Some(v) = &self.priority {
+            map.serialize_entry("priority", v)?;
+        }
+        if let Some(v) = &self.project {
+            map.serialize_entry("project", v)?;
+        }
+        if let Some(v) = &self.remaining_estimate {
+            map.serialize_entry("remainingEstimate", v)?;
+        }
+        if let Some(v) = &self.resolution {
+            map.serialize_entry("resolution", v)?;
+        }
+        if let Some(v) = &self.resolved_on {
+            map.serialize_entry("resolvedOn", v)?;
+        }
+        if let Some(v) = &self.severity {
+            map.serialize_entry("severity", v)?;
+        }
+        if let Some(v) = &self.status {
+            map.serialize_entry("status", v)?;
+        }
+        if let Some(v) = &self.time_point {
+            map.serialize_entry("timePoint", v)?;
+        }
+        if let Some(v) = &self.time_spent {
+            map.serialize_entry("timeSpent", v)?;
+        }
+        if let Some(v) = &self.title {
+            map.serialize_entry("title", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.updated {
+            map.serialize_entry("updated", v)?;
+        }
+        if let Some(v) = &self.work_records {
+            map.serialize_entry("workRecords", v)?;
+        }
+        if let Some(v) = &self.custom_fields {
+            map.serialize_entry("customFields", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `WorkRecord` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorkRecord {
@@ -5124,6 +7316,42 @@ impl FromXml for WorkRecord {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for WorkRecord {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.comment {
+            map.serialize_entry("comment", v)?;
+        }
+        if let Some(v) = &self.date {
+            map.serialize_entry("date", v)?;
+        }
+        if let Some(v) = &self.id {
+            map.serialize_entry("id", v)?;
+        }
+        if let Some(v) = &self.time_spent {
+            map.serialize_entry("timeSpent", v)?;
+        }
+        if let Some(v) = &self.type_ {
+            map.serialize_entry("type", v)?;
+        }
+        if let Some(v) = &self.user {
+            map.serialize_entry("user", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `WorkflowAction` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorkflowAction {
@@ -5195,6 +7423,40 @@ impl FromXml for WorkflowAction {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for WorkflowAction {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("actionId", &self.action_id)?;
+        if let Some(v) = &self.action_name {
+            map.serialize_entry("actionName", v)?;
+        }
+        if let Some(v) = &self.cleaned_features {
+            map.serialize_entry("cleanedFeatures", v)?;
+        }
+        if let Some(v) = &self.native_action_id {
+            map.serialize_entry("nativeActionId", v)?;
+        }
+        if let Some(v) = &self.required_features {
+            map.serialize_entry("requiredFeatures", v)?;
+        }
+        if let Some(v) = &self.suggested_features {
+            map.serialize_entry("suggestedFeatures", v)?;
+        }
+        if let Some(v) = &self.target_status {
+            map.serialize_entry("targetStatus", v)?;
+        }
+        if let Some(v) = &self.unavailability_message {
+            map.serialize_entry("unavailabilityMessage", v)?;
+        }
+        map.end()
     }
 }
 
@@ -5288,6 +7550,48 @@ impl FromXml for Revision {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Revision {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        if let Some(v) = &self.author {
+            map.serialize_entry("author", v)?;
+        }
+        if let Some(v) = &self.branch {
+            map.serialize_entry("branch", v)?;
+        }
+        if let Some(v) = &self.created {
+            map.serialize_entry("created", v)?;
+        }
+        if let Some(v) = &self.internal_commit {
+            map.serialize_entry("internalCommit", v)?;
+        }
+        if let Some(v) = &self.linked_work_item_ur_is {
+            map.serialize_entry("linkedWorkItemURIs", v)?;
+        }
+        if let Some(v) = &self.message {
+            map.serialize_entry("message", v)?;
+        }
+        if let Some(v) = &self.name {
+            map.serialize_entry("name", v)?;
+        }
+        if let Some(v) = &self.repository_name {
+            map.serialize_entry("repositoryName", v)?;
+        }
+        if let Some(v) = &self.uri {
+            map.serialize_entry("uri", v)?;
+        }
+        if let Some(v) = &self.unresolvable {
+            map.serialize_entry("unresolvable", v)?;
+        }
+        map.end()
+    }
+}
+
 /// `Text` in `http://ws.polarion.com/types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Text {
@@ -5328,6 +7632,21 @@ impl FromXml for Text {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Text {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("type", &self.type_)?;
+        map.serialize_entry("content", &self.content)?;
+        map.serialize_entry("contentLossy", &self.content_lossy)?;
+        map.end()
+    }
+}
+
 /// `property` in `http://ws.polarion.com/types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Property {
@@ -5363,6 +7682,22 @@ impl FromXml for Property {
             }
         }
         Ok(out)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Property {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("key", &self.key)?;
+        if let Some(v) = &self.value {
+            map.serialize_entry("value", v)?;
+        }
+        map.end()
     }
 }
 
@@ -6616,6 +8951,155 @@ impl ToXml for AnyValue {
                 w.close(prefix, name);
             }
             AnyValue::Unknown { xml, .. } => w.raw(xml),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for AnyValue {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> ::core::result::Result<S::Ok, S::Error> {
+        match self {
+            AnyValue::Nil => serializer.serialize_none(),
+            AnyValue::String(v)
+            | AnyValue::Decimal(v)
+            | AnyValue::Date(v)
+            | AnyValue::DateTime(v)
+            | AnyValue::Time(v)
+            | AnyValue::QName(v) => serializer.serialize_str(v),
+            AnyValue::Boolean(v) => serializer.serialize_bool(*v),
+            AnyValue::Int(v) => serializer.serialize_i32(*v),
+            AnyValue::Long(v) => serializer.serialize_i64(*v),
+            AnyValue::Float(v) => serializer.serialize_f32(*v),
+            AnyValue::Double(v) => serializer.serialize_f64(*v),
+            AnyValue::Base64(v) => serializer.serialize_str(&xml::base64(v)),
+            AnyValue::Build(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::BuildLinkedWorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::BuildRequestorSpecificData(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::BuildTestResults(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Plan(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PlanRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PlanStatistics(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Project(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ProjectGroup(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::User(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::LicenseInfo(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ProductLicense(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Parameter(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ParameterDefinition(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ParametersAndDefinitions(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ParametersLibrary(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestRun(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestStep(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestStepResult(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestSteps(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestsConfiguration(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestManagementProperty(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Activity(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ActivityComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ActivityCustomValue(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ActivityCustomValueEntry(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ActivitySource(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Approval(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Attachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Baseline(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Category(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Change(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Comment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Custom(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::CustomField(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::CustomFieldType(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::EnumCustomFieldType(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::EnumOption(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::EnumOptionId(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ExternallyLinkedWorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::FieldDiff(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Folder(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Hyperlink(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ImportedComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::LanguageDefinition(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::LinkedOslcResource(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::LinkedResource(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::LinkedWorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Module(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ModuleComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PdfProperties(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PlanningConstraint(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PriorityOpt(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::PriorityOptionId(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Row(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Table(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestRunAttachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestRunComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TimePoint(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::WikiPage(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::WikiPageAttachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::WorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::WorkRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::WorkflowAction(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Revision(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Text(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Property(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfBuildLinkedWorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfBuildRequestorSpecificData(v) => {
+                serde::Serialize::serialize(v, serializer)
+            }
+            AnyValue::ArrayOfPlanRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfUser(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTns3LicenseInfo(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTns3ParameterDefinition(v) => {
+                serde::Serialize::serialize(v, serializer)
+            }
+            AnyValue::ArrayOfParameter(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfParameterDefinition(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTestRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTestStep(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTestStepResult(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::TestManagementProperties(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTns2Location(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTns3ActivityComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTns3ActivityCustomValueEntry(v) => {
+                serde::Serialize::serialize(v, serializer)
+            }
+            AnyValue::ArrayOfTns3FieldDiff(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfXsdAnyType(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfXsdString(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfApproval(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfAttachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfCategory(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfCustom(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfEnumOptionId(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfExternallyLinkedWorkItem(v) => {
+                serde::Serialize::serialize(v, serializer)
+            }
+            AnyValue::ArrayOfHyperlink(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfLinkedOslcResource(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfLinkedWorkItem(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfModuleComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfPlanningConstraint(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfPriorityOptionId(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfRow(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTestRunAttachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfTestRunComment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfWikiPageAttachment(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfWorkRecord(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfLocation(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfRevision(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfSubterraUri(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfText(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::ArrayOfstring(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Properties(v) => serde::Serialize::serialize(v, serializer),
+            AnyValue::Unknown { xsi_type, xml } => {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("xsiType", xsi_type)?;
+                map.serialize_entry("xml", xml)?;
+                map.end()
+            }
         }
     }
 }

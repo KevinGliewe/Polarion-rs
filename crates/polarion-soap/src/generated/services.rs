@@ -4848,7 +4848,7 @@ impl TrackerService<'_> {
     pub async fn create_folder(
         &self,
         project_id: Option<&str>,
-        parent_name: &str,
+        parent_name: Option<&str>,
         name: &str,
         title: &str,
     ) -> Result<Folder> {
@@ -4861,7 +4861,12 @@ impl TrackerService<'_> {
             }
             None => w.nil("trackeri", "projectId"),
         }
-        parent_name.write_xml(&mut w, "trackeri", "parentName");
+        match parent_name {
+            Some(v) => {
+                v.write_xml(&mut w, "trackeri", "parentName");
+            }
+            None => w.nil("trackeri", "parentName"),
+        }
         name.write_xml(&mut w, "trackeri", "name");
         title.write_xml(&mut w, "trackeri", "title");
         w.close("trackeri", "createFolder");

@@ -31,6 +31,10 @@ fn items(list: Vec<soap::WorkItem>) -> Vec<WorkItem> {
         .collect()
 }
 
+pub(crate) fn baseline_and_revision() -> Error {
+    Error::Invalid("a query can use a baseline or a revision, not both".into())
+}
+
 fn found(item: soap::WorkItem, reference: &ItemRef) -> Result<WorkItem> {
     if item.unresolvable == Some(true) || (item.id.is_none() && item.uri.is_none()) {
         return Err(not_found("work item", reference));
@@ -111,69 +115,84 @@ impl<'a> WorkItems<'a> {
         found(w, item)
     }
 
-    /// Work items matching a Lucene query (optionally in a baseline).
+    /// Work items matching a Lucene query, optionally in a baseline or as of a revision.
     pub async fn query(&self, query: &WorkItemQuery) -> Result<Vec<WorkItem>> {
-        let tracker = self.tracker();
-        let lucene = query.lucene();
-        let list = match query.baseline_revision() {
-            None => {
-                tracker
-                    .query_work_items_limited(
-                        &lucene,
-                        query.sort_key(),
-                        query.field_keys(),
-                        query.results_limit(),
-                    )
+        let t = self.tracker();
+        let (q, sort) = (query.lucene(), query.sort_key());
+        let standard = Fields::standard();
+        let fields = query.field_list().unwrap_or(&standard).keys();
+        let list = match (
+            query.baseline_revision(),
+            query.revision_value(),
+            query.limit_value(),
+        ) {
+            (Some(_), Some(_), _) => return Err(baseline_and_revision()),
+            (None, None, Some(_)) => {
+                t.query_work_items_limited(&q, sort, fields, query.results_limit())
                     .await?
             }
-            Some(revision) => {
-                tracker
-                    .query_work_items_in_baseline_limited(
-                        &lucene,
-                        query.sort_key(),
-                        revision,
-                        query.field_keys(),
-                        query.results_limit(),
-                    )
+            (None, None, None) => t.query_work_items(&q, sort, fields).await?,
+            (Some(b), None, Some(_)) => {
+                t.query_work_items_in_baseline_limited(&q, sort, b, fields, query.results_limit())
                     .await?
             }
+            (Some(b), None, None) => t.query_work_items_in_baseline(&q, sort, b, fields).await?,
+            (None, Some(r), Some(_)) => {
+                t.query_work_items_in_revision_limited(&q, sort, r, fields, query.results_limit())
+                    .await?
+            }
+            (None, Some(r), None) => t.query_work_items_in_revision(&q, sort, r, fields).await?,
         };
         Ok(items(list))
     }
 
     /// References of the work items matching a query; cheaper than [`WorkItems::query`].
-    /// The query's fields are ignored.
+    /// Fields and revision are ignored.
     pub async fn query_refs(&self, query: &WorkItemQuery) -> Result<Vec<ItemRef>> {
-        let tracker = self.tracker();
-        let lucene = query.lucene();
-        let uris = match query.baseline_revision() {
-            None => {
-                tracker
-                    .query_work_item_uris_limited(&lucene, query.sort_key(), query.results_limit())
+        let t = self.tracker();
+        let (q, sort) = (query.lucene(), query.sort_key());
+        let uris = match (query.baseline_revision(), query.limit_value()) {
+            (None, Some(_)) => {
+                t.query_work_item_uris_limited(&q, sort, query.results_limit())
                     .await?
             }
-            Some(revision) => {
-                tracker
-                    .query_work_item_uris_in_baseline_limited(
-                        &lucene,
-                        query.sort_key(),
-                        revision,
-                        query.results_limit(),
-                    )
+            (None, None) => t.query_work_item_uris(&q, sort).await?,
+            (Some(b), Some(_)) => {
+                t.query_work_item_uris_in_baseline_limited(&q, sort, b, query.results_limit())
                     .await?
             }
+            (Some(b), None) => t.query_work_item_uris_in_baseline(&q, sort, b).await?,
         };
         Ok(uris.into_iter().map(ItemRef::from_uri).collect())
     }
 
     /// Work items selected by an SQL query against Polarion's database
-    /// (`SELECT ... FROM WORKITEM ...`).
-    pub async fn query_sql(&self, sql: &str, fields: &Fields) -> Result<Vec<WorkItem>> {
-        let list = self
-            .tracker()
-            .query_work_items_by_sql(sql, fields.keys())
-            .await?;
+    /// (`SELECT ... FROM WORKITEM ...`), optionally in a baseline.
+    pub async fn query_sql(
+        &self,
+        sql: &str,
+        fields: &Fields,
+        baseline: Option<&str>,
+    ) -> Result<Vec<WorkItem>> {
+        let t = self.tracker();
+        let list = match baseline {
+            None => t.query_work_items_by_sql(sql, fields.keys()).await?,
+            Some(b) => {
+                t.query_work_items_in_baseline_by_sql(sql, b, fields.keys())
+                    .await?
+            }
+        };
         Ok(items(list))
+    }
+
+    /// References of the work items selected by an SQL query, optionally in a baseline.
+    pub async fn query_refs_sql(&self, sql: &str, baseline: Option<&str>) -> Result<Vec<ItemRef>> {
+        let t = self.tracker();
+        let uris = match baseline {
+            None => t.query_work_item_uris_by_sql(sql).await?,
+            Some(b) => t.query_work_item_uris_in_baseline_by_sql(sql, b).await?,
+        };
+        Ok(uris.into_iter().map(ItemRef::from_uri).collect())
     }
 
     /// Number of work items matching the query (sort, limit, fields and baseline are ignored).
@@ -254,6 +273,115 @@ impl<'a> WorkItems<'a> {
             .get_localized_work_item_description(&item.uri, language)
             .await?;
         Ok(text.into())
+    }
+
+    /// The value of one custom field (`None` if empty).
+    pub async fn custom_field(&self, item: &ItemRef, key: &str) -> Result<Option<FieldValue>> {
+        let field = self.tracker().get_custom_field(&item.uri, key).await?;
+        Ok(field.value.and_then(convert::field_value))
+    }
+
+    /// The keys of the custom fields defined for this work item.
+    pub async fn custom_field_keys(&self, item: &ItemRef) -> Result<Vec<String>> {
+        Ok(self.tracker().get_custom_field_keys(&item.uri).await?)
+    }
+
+    /// The options of an enumeration (by enum id) that this work item can use.
+    pub async fn enum_options(&self, item: &ItemRef, enum_id: &str) -> Result<Vec<EnumOption>> {
+        let options = self
+            .tracker()
+            .get_enum_options_for_id(&item.uri, enum_id)
+            .await?;
+        Ok(options.into_iter().map(EnumOption::from).collect())
+    }
+
+    /// Ids of the options of a field that are available now (respecting the workflow and
+    /// dependencies).
+    pub async fn available_option_ids(&self, item: &ItemRef, key: &str) -> Result<Vec<String>> {
+        let ids = self
+            .tracker()
+            .get_available_enum_option_ids_for_key(&item.uri, key)
+            .await?;
+        Ok(ids.into_iter().filter_map(|o| o.id).collect())
+    }
+
+    /// Ids of the options of an enumeration (by enum id) that are available now.
+    pub async fn available_enum_option_ids(
+        &self,
+        item: &ItemRef,
+        enum_id: &str,
+    ) -> Result<Vec<String>> {
+        let ids = self
+            .tracker()
+            .get_available_enum_option_ids_for_id(&item.uri, enum_id)
+            .await?;
+        Ok(ids.into_iter().filter_map(|o| o.id).collect())
+    }
+
+    /// One option of a field, by option id.
+    pub async fn field_option(
+        &self,
+        item: &ItemRef,
+        key: &str,
+        option: &str,
+    ) -> Result<EnumOption> {
+        let o = self
+            .tracker()
+            .get_enum_option_with_key(&item.uri, key, &option_id(option))
+            .await?;
+        Ok(o.into())
+    }
+
+    /// One option of an enumeration (by enum id), by option id.
+    pub async fn enum_option(
+        &self,
+        item: &ItemRef,
+        enum_id: &str,
+        option: &str,
+    ) -> Result<EnumOption> {
+        let o = self
+            .tracker()
+            .get_enum_option_with_enum_id(&item.uri, enum_id, &option_id(option))
+            .await?;
+        Ok(o.into())
+    }
+
+    /// The options of a field, filtered by the option of the field it depends on (`filter`).
+    pub async fn filtered_field_options(
+        &self,
+        item: &ItemRef,
+        key: &str,
+        filter: Option<&str>,
+    ) -> Result<Vec<EnumOption>> {
+        let options = self
+            .tracker()
+            .get_filtered_enum_options_for_key(&item.uri, key, filter)
+            .await?;
+        Ok(options.into_iter().map(EnumOption::from).collect())
+    }
+
+    /// The workflow action performed when the work item is created, if any.
+    pub async fn initial_action(&self, item: &ItemRef) -> Result<Option<WorkflowAction>> {
+        let a = self
+            .tracker()
+            .get_initial_workflow_action(&item.uri)
+            .await?;
+        Ok((a.action_name.is_some() || a.native_action_id.is_some()).then(|| a.into()))
+    }
+
+    /// Whether a comment is in a resolved comment thread.
+    pub async fn is_comment_resolved(&self, comment_uri: &str) -> Result<bool> {
+        Ok(self.tracker().is_resolved_comment(comment_uri).await?)
+    }
+
+    /// Source code resources linked to the work item.
+    pub async fn linked_resources(&self, item: &ItemRef) -> Result<Vec<soap::LinkedResource>> {
+        Ok(self.tracker().get_linked_resources(&item.uri).await?)
+    }
+
+    /// Repository revisions in which the work item changed (newest last).
+    pub async fn revisions(&self, item: &ItemRef) -> Result<Vec<String>> {
+        Ok(self.tracker().get_revisions(&item.uri).await?)
     }
 
     // --------------------------------------------------------------- writes
@@ -449,6 +577,23 @@ impl<'a> WorkItems<'a> {
             .await?)
     }
 
+    /// Add a comment visible only to the given users or roles; returns its URI.
+    /// (Uses Polarion's deprecated `createCommentNew`, the only operation with visibility.)
+    pub async fn add_restricted_comment(
+        &self,
+        item: &ItemRef,
+        title: &str,
+        text: &Text,
+        visible_to: &[String],
+    ) -> Result<String> {
+        let tracker = self.writable("createCommentNew", item)?;
+        #[allow(deprecated)]
+        let uri = tracker
+            .create_comment_new(&item.uri, title, &soap_text(text), visible_to)
+            .await?;
+        Ok(uri)
+    }
+
     /// Reply to a comment of `item`; returns the reply's URI.
     pub async fn reply_to_comment(
         &self,
@@ -570,6 +715,61 @@ impl<'a> WorkItems<'a> {
                     .await?
             }
         })
+    }
+
+    /// Link to another work item, pinned to a revision of it (`None`: HEAD), optionally
+    /// marked suspect.
+    pub async fn add_link_at_revision(
+        &self,
+        item: &ItemRef,
+        role: &str,
+        target: &ItemRef,
+        revision: Option<&str>,
+        suspect: bool,
+    ) -> Result<bool> {
+        let tracker = self.writable("addLinkedItemWithRev", item)?;
+        Ok(tracker
+            .add_linked_item_with_rev(&item.uri, &target.uri, &option_id(role), revision, suspect)
+            .await?)
+    }
+
+    /// Link an OSLC resource (by URL) with a role and a label.
+    pub async fn add_oslc_link(
+        &self,
+        item: &ItemRef,
+        url: &str,
+        role: &str,
+        label: &str,
+    ) -> Result<bool> {
+        let tracker = self.writable("addLinkedOslcItem", item)?;
+        Ok(tracker
+            .add_linked_oslc_item(&item.uri, url, &option_id(role), label)
+            .await?)
+    }
+
+    /// Add a planning constraint (e.g. `startNoEarlierThan`) at a date.
+    pub async fn add_planning_constraint(
+        &self,
+        item: &ItemRef,
+        date: &str,
+        constraint: &str,
+    ) -> Result<bool> {
+        let tracker = self.writable("addPlaningContraint", item)?;
+        Ok(tracker
+            .add_planing_contraint(&item.uri, date, &option_id(constraint))
+            .await?)
+    }
+
+    pub async fn remove_planning_constraint(
+        &self,
+        item: &ItemRef,
+        date: &str,
+        constraint: &str,
+    ) -> Result<bool> {
+        let tracker = self.writable("removePlaningConstraint", item)?;
+        Ok(tracker
+            .remove_planing_constraint(&item.uri, date, &option_id(constraint))
+            .await?)
     }
 
     // ---- people and categories

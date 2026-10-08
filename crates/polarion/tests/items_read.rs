@@ -120,9 +120,9 @@ async fn query_variants() {
     expect(
         &server,
         TRACKER,
-        &["queryWorkItemUrisLimited>", "query>type:task<", "resultsLimit>-1<"],
+        &["queryWorkItemUris>", "query>type:task<"],
         &format!(
-            "<queryWorkItemUrisLimitedResponse><queryWorkItemUrisLimitedReturn>{URI}P${{WorkItem}}P-1</queryWorkItemUrisLimitedReturn><queryWorkItemUrisLimitedReturn>junk</queryWorkItemUrisLimitedReturn></queryWorkItemUrisLimitedResponse>"
+            "<queryWorkItemUrisResponse><queryWorkItemUrisReturn>{URI}P${{WorkItem}}P-1</queryWorkItemUrisReturn><queryWorkItemUrisReturn>junk</queryWorkItemUrisReturn></queryWorkItemUrisResponse>"
         ),
     )
     .await;
@@ -165,7 +165,7 @@ async fn query_variants() {
     );
 
     let by_sql = items
-        .query_sql("SELECT * FROM WORKITEM", &Fields::new(["id"]))
+        .query_sql("SELECT * FROM WORKITEM", &Fields::new(["id"]), None)
         .await
         .unwrap();
     assert_eq!(by_sql[0].id.as_deref(), Some("P-2"));

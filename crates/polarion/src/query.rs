@@ -119,7 +119,7 @@ impl Default for Fields {
     }
 }
 
-/// A Lucene work item query.
+/// A Lucene query for work items, documents, wiki pages, test runs, plans or baselines.
 ///
 /// ```
 /// use polarion::{Fields, WorkItemQuery};
@@ -132,25 +132,30 @@ impl Default for Fields {
 /// assert_eq!(query.lucene(), "project.id:MyProject AND (type:requirement AND status:open)");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkItemQuery {
+pub struct Query {
     query: String,
     project: Option<String>,
     sort: String,
     limit: Option<u32>,
-    fields: Fields,
+    fields: Option<Fields>,
     baseline: Option<String>,
+    revision: Option<String>,
 }
 
-impl WorkItemQuery {
-    /// A query in Polarion's Lucene syntax; empty matches every work item (of the project, if set).
+/// The query type used for work items; the same as [`Query`].
+pub type WorkItemQuery = Query;
+
+impl Query {
+    /// A query in Polarion's Lucene syntax; empty matches everything (of the project, if set).
     pub fn new(query: impl Into<String>) -> Self {
         Self {
             query: query.into(),
             project: None,
             sort: "id".to_owned(),
             limit: Some(DEFAULT_LIMIT),
-            fields: Fields::standard(),
+            fields: None,
             baseline: None,
+            revision: None,
         }
     }
 
@@ -178,20 +183,24 @@ impl WorkItemQuery {
         self
     }
 
+    /// Fields to fetch. Default: [`Fields::standard`] for work items, all fields otherwise.
     pub fn fields(mut self, fields: Fields) -> Self {
-        self.fields = fields;
+        self.fields = Some(fields);
         self
     }
 
-    /// Query the work items as they were in a baseline (repository revision).
-    /// Ignored by counting.
+    /// Search the index as it was in a baseline (repository revision).
+    /// Supported for work items, documents and wiki pages; ignored by counting.
     pub fn baseline(mut self, revision: impl Into<String>) -> Self {
         self.baseline = Some(revision.into());
         self
     }
 
-    pub(crate) fn baseline_revision(&self) -> Option<&str> {
-        self.baseline.as_deref()
+    /// Work items only: search their current state but return them as they were in
+    /// `revision`.
+    pub fn revision(mut self, revision: impl Into<String>) -> Self {
+        self.revision = Some(revision.into());
+        self
     }
 
     /// The Lucene query sent to the server, including the project restriction.
@@ -204,8 +213,17 @@ impl WorkItemQuery {
         }
     }
 
+    /// `None` when the query is empty (for operations that take a nullable query).
+    pub(crate) fn lucene_opt(&self) -> Option<String> {
+        Some(self.lucene()).filter(|q| !q.is_empty())
+    }
+
     pub(crate) fn sort_key(&self) -> &str {
         &self.sort
+    }
+
+    pub(crate) fn limit_value(&self) -> Option<u32> {
+        self.limit
     }
 
     /// The SOAP `resultsLimit` (-1 for no limit).
@@ -214,8 +232,16 @@ impl WorkItemQuery {
             .map_or(-1, |l| i32::try_from(l).unwrap_or(i32::MAX))
     }
 
-    pub(crate) fn field_keys(&self) -> &[String] {
-        self.fields.keys()
+    pub(crate) fn field_list(&self) -> Option<&Fields> {
+        self.fields.as_ref()
+    }
+
+    pub(crate) fn baseline_revision(&self) -> Option<&str> {
+        self.baseline.as_deref()
+    }
+
+    pub(crate) fn revision_value(&self) -> Option<&str> {
+        self.revision.as_deref()
     }
 }
 

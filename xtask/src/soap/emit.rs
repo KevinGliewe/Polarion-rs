@@ -32,6 +32,8 @@ const NILLABLE_PARAMS: &[(&str, &str, &str)] = &[
     ("TrackerWebService", "reuseDocument", "linkRole"),
     ("TrackerWebService", "reuseDocument", "derivedFields"),
     ("PlanningWebService", "createPlan", "parentId"),
+    // "a sub folder for parentName folder, if it is not null"
+    ("TrackerWebService", "createFolder", "parentName"),
 ];
 
 /// Request parameters the WSDL declares as required but that may be omitted.
@@ -512,6 +514,49 @@ impl<'m> Gen<'m> {
             out.push_str("                _ => {}\n            }\n        }\n");
         }
         out.push_str("        Ok(out)\n    }\n}\n\n");
+
+        // Serialize (optional): element names as keys, absent and empty values left out.
+        let _ = writeln!(
+            out,
+            "#[cfg(feature = \"serde\")]\nimpl serde::Serialize for {name} {{\n    fn serialize<S: serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> {{\n        use serde::ser::SerializeMap;\n        let mut map = serializer.serialize_map(None)?;"
+        );
+        let value = |ty: &Ty, v: &str| match ty {
+            Ty::Bytes => format!("&xml::base64({v})"),
+            _ => v.to_owned(),
+        };
+        for (el, ident, ty, card) in &fields {
+            let line = match card {
+                Card::Required => format!(
+                    "map.serialize_entry({:?}, {})?;",
+                    el.name,
+                    value(ty, &format!("&self.{ident}"))
+                ),
+                Card::Optional => format!(
+                    "if let Some(v) = &self.{ident} {{ map.serialize_entry({:?}, {})?; }}",
+                    el.name,
+                    value(ty, "v")
+                ),
+                Card::Repeated => format!(
+                    "if !self.{ident}.is_empty() {{ map.serialize_entry({:?}, &self.{ident})?; }}",
+                    el.name
+                ),
+            };
+            let _ = writeln!(out, "        {line}");
+        }
+        for (el, ident) in &subtype_fields {
+            let _ = writeln!(
+                out,
+                "        if let Some(v) = &self.{ident} {{ map.serialize_entry({:?}, v)?; }}",
+                el.name
+            );
+        }
+        for (xml_name, ident, _) in &attr_fields {
+            let _ = writeln!(
+                out,
+                "        if let Some(v) = &self.{ident} {{ map.serialize_entry({xml_name:?}, v)?; }}"
+            );
+        }
+        out.push_str("        map.end()\n    }\n}\n\n");
         Ok(())
     }
 
@@ -614,7 +659,28 @@ impl<'m> Gen<'m> {
             );
         }
         out.push_str(
-            "            AnyValue::Unknown { xml, .. } => w.raw(xml),\n        }\n    }\n}\n",
+            "            AnyValue::Unknown { xml, .. } => w.raw(xml),\n        }\n    }\n}\n\n",
+        );
+
+        // Serialize (optional): the value itself; unknown types as {xsiType, xml}.
+        out.push_str(
+            "#[cfg(feature = \"serde\")]\nimpl serde::Serialize for AnyValue {\n    fn serialize<S: serde::Serializer>(&self, serializer: S) -> ::core::result::Result<S::Ok, S::Error> {\n        match self {\n            AnyValue::Nil => serializer.serialize_none(),\n            AnyValue::String(v) | AnyValue::Decimal(v) | AnyValue::Date(v) | AnyValue::DateTime(v) | AnyValue::Time(v) | AnyValue::QName(v) => serializer.serialize_str(v),\n            AnyValue::Boolean(v) => serializer.serialize_bool(*v),\n            AnyValue::Int(v) => serializer.serialize_i32(*v),\n            AnyValue::Long(v) => serializer.serialize_i64(*v),\n            AnyValue::Float(v) => serializer.serialize_f32(*v),\n            AnyValue::Double(v) => serializer.serialize_f64(*v),\n            AnyValue::Base64(v) => serializer.serialize_str(&xml::base64(v)),\n",
+        );
+        for (_, name) in self.structs() {
+            let _ = writeln!(
+                out,
+                "            AnyValue::{name}(v) => serde::Serialize::serialize(v, serializer),"
+            );
+        }
+        for arr in self.arrays.values() {
+            let _ = writeln!(
+                out,
+                "            AnyValue::{}(v) => serde::Serialize::serialize(v, serializer),",
+                arr.name
+            );
+        }
+        out.push_str(
+            "            AnyValue::Unknown { xsi_type, xml } => {\n                use serde::ser::SerializeMap;\n                let mut map = serializer.serialize_map(Some(2))?;\n                map.serialize_entry(\"xsiType\", xsi_type)?;\n                map.serialize_entry(\"xml\", xml)?;\n                map.end()\n            }\n        }\n    }\n}\n",
         );
         Ok(())
     }

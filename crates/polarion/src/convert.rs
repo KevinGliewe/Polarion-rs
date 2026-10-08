@@ -6,8 +6,9 @@ use polarion_soap::types::{self as soap, AnyValue};
 
 use crate::error::{Error, Result};
 use crate::model::{
-    Approval, Attachment, Category, Change, Comment, Document, EnumOption, FieldChange,
-    FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Project, Text, TimePoint, User,
+    Approval, Attachment, Baseline, Category, Change, Comment, Document, EnumOption, FieldChange,
+    FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Plan, Project, ProjectGroup,
+    Revision, TestRecord, TestRun, TestStepResult, TestSteps, Text, TimePoint, User, WikiPage,
     WorkItem, WorkRecord, WorkflowAction,
 };
 use crate::uri::{self, DocumentRef, ItemRef};
@@ -242,6 +243,43 @@ impl From<soap::Comment> for Comment {
             tags: c.tags.into_iter().flatten().filter_map(|t| t.id).collect(),
             parent: c.parent_comment_uri,
             replies: c.child_comment_ur_is.unwrap_or_default(),
+            work_item: None,
+            uri: c.uri,
+        }
+    }
+}
+
+impl From<soap::ModuleComment> for Comment {
+    fn from(c: soap::ModuleComment) -> Self {
+        Self {
+            id: c.id,
+            author: user_id(c.author),
+            created: c.created,
+            title: None,
+            text: text(c.text),
+            resolved: c.resolved.unwrap_or(false),
+            tags: c.tags.into_iter().flatten().filter_map(|t| t.id).collect(),
+            parent: c.parent_comment_uri,
+            replies: c.child_comment_ur_is.unwrap_or_default(),
+            work_item: c.referred_work_item_uri.map(ItemRef::from_uri),
+            uri: c.uri,
+        }
+    }
+}
+
+impl From<soap::TestRunComment> for Comment {
+    fn from(c: soap::TestRunComment) -> Self {
+        Self {
+            id: c.id,
+            author: user_id(c.author),
+            created: c.created,
+            title: c.title,
+            text: text(c.text),
+            resolved: c.resolved.unwrap_or(false),
+            tags: c.tags.into_iter().flatten().filter_map(|t| t.id).collect(),
+            parent: c.parent_comment_uri,
+            replies: c.child_comment_ur_is.unwrap_or_default(),
+            work_item: None,
             uri: c.uri,
         }
     }
@@ -249,6 +287,34 @@ impl From<soap::Comment> for Comment {
 
 impl From<soap::Attachment> for Attachment {
     fn from(a: soap::Attachment) -> Self {
+        Self {
+            id: a.id,
+            file_name: a.file_name,
+            title: a.title,
+            length: a.length,
+            author: user_id(a.author),
+            updated: a.updated,
+            url: a.url,
+        }
+    }
+}
+
+impl From<soap::TestRunAttachment> for Attachment {
+    fn from(a: soap::TestRunAttachment) -> Self {
+        Self {
+            id: a.id,
+            file_name: a.file_name,
+            title: a.title,
+            length: a.length,
+            author: user_id(a.author),
+            updated: a.updated,
+            url: a.url,
+        }
+    }
+}
+
+impl From<soap::WikiPageAttachment> for Attachment {
+    fn from(a: soap::WikiPageAttachment) -> Self {
         Self {
             id: a.id,
             file_name: a.file_name,
@@ -521,6 +587,22 @@ impl From<soap::Module> for Document {
             author: user_id(m.author),
             created: m.created,
             updated: m.updated,
+            updated_by: user_id(m.updated_by),
+            structure_link_role: enum_id(m.structure_link_role),
+            allowed_types: m
+                .allowed_wi_types
+                .into_iter()
+                .flatten()
+                .filter_map(|t| t.id)
+                .collect(),
+            uses_outline_numbering: m.uses_outline_numbering,
+            derived_from: m.derived_from_uri,
+            comments: m
+                .comments
+                .into_iter()
+                .flatten()
+                .map(Comment::from)
+                .collect(),
             custom_fields: custom_fields(m.custom_fields),
             body: text(m.home_page_content),
             uri: m.uri,
@@ -554,6 +636,317 @@ impl From<soap::User> for User {
             email: u.email,
         }
     }
+}
+
+fn parameters(p: Option<Vec<soap::Parameter>>) -> BTreeMap<String, FieldValue> {
+    p.into_iter()
+        .flatten()
+        .filter_map(|p| Some((p.name?, field_value(p.value?)?)))
+        .collect()
+}
+
+fn user_from_uri(uri: Option<String>) -> Option<String> {
+    let uri = uri?;
+    Some(uri::user_id(&uri).map(str::to_owned).unwrap_or(uri))
+}
+
+fn project_from_uri(uri: Option<&str>) -> Option<String> {
+    uri.and_then(uri::project_of).map(str::to_owned)
+}
+
+impl From<soap::ProjectGroup> for ProjectGroup {
+    fn from(g: soap::ProjectGroup) -> Self {
+        Self {
+            name: g.name,
+            location: g.location,
+            parent: g.parent_uri,
+            groups: g.group_ur_is.unwrap_or_default(),
+            projects: g.project_i_ds.unwrap_or_default(),
+            uri: g.uri,
+        }
+    }
+}
+
+impl From<soap::WikiPage> for WikiPage {
+    fn from(w: soap::WikiPage) -> Self {
+        Self {
+            project: w
+                .project
+                .and_then(|p| p.id)
+                .or_else(|| project_from_uri(w.uri.as_deref())),
+            space: w.space_id,
+            name: w.page_name.or(w.id),
+            title: w.title,
+            kind: w.type_,
+            author: user_id(w.author),
+            created: w.created,
+            updated: w.updated,
+            updated_by: user_id(w.updated_by),
+            linked_pages: w.linked_page_ur_is.unwrap_or_default(),
+            attachments: w
+                .attachments
+                .into_iter()
+                .flatten()
+                .map(Attachment::from)
+                .collect(),
+            body: text(w.home_page_content),
+            uri: w.uri,
+        }
+    }
+}
+
+impl From<soap::Baseline> for Baseline {
+    fn from(b: soap::Baseline) -> Self {
+        Self {
+            id: b.id,
+            project: b
+                .project
+                .and_then(|p| p.id)
+                .or_else(|| project_from_uri(b.uri.as_deref())),
+            name: b.name,
+            description: b.description,
+            revision: b.base_revision,
+            base_object: b.base_object_uri,
+            author: user_id(b.author),
+            uri: b.uri,
+        }
+    }
+}
+
+impl From<soap::Revision> for Revision {
+    fn from(r: soap::Revision) -> Self {
+        Self {
+            name: r.name,
+            repository: r.repository_name,
+            author: r.author,
+            created: r.created,
+            message: r.message,
+            branch: r.branch,
+            internal: r.internal_commit,
+            linked_work_items: r
+                .linked_work_item_ur_is
+                .into_iter()
+                .flatten()
+                .map(ItemRef::from_uri)
+                .collect(),
+            uri: r.uri,
+        }
+    }
+}
+
+impl From<soap::TestRecord> for TestRecord {
+    fn from(r: soap::TestRecord) -> Self {
+        Self {
+            test_case: r.test_case_uri.map(ItemRef::from_uri),
+            test_case_revision: r.test_case_revision,
+            result: enum_id(r.result),
+            comment: text(r.comment),
+            executed: r.executed,
+            executed_by: user_from_uri(r.executed_by_uri),
+            duration: r.duration,
+            iteration: r.iteration,
+            defect: r.defect_uri.map(ItemRef::from_uri),
+            signed: r.signed,
+            parameters: parameters(r.test_parameters),
+            step_results: r
+                .test_step_results
+                .into_iter()
+                .flatten()
+                .map(|s| TestStepResult {
+                    result: enum_id(s.result),
+                    comment: text(s.comment),
+                    attachments: s
+                        .attachments
+                        .into_iter()
+                        .flatten()
+                        .map(Attachment::from)
+                        .collect(),
+                })
+                .collect(),
+            attachments: r
+                .attachments
+                .into_iter()
+                .flatten()
+                .map(Attachment::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<soap::TestRun> for TestRun {
+    fn from(r: soap::TestRun) -> Self {
+        Self {
+            id: r.id,
+            project: project_from_uri(r.project_uri.as_deref())
+                .or_else(|| project_from_uri(r.uri.as_deref())),
+            title: r.title,
+            kind: enum_id(r.type_),
+            status: enum_id(r.status),
+            template: r.is_template.unwrap_or(false),
+            template_uri: r.template_uri,
+            author: user_from_uri(r.author_uri),
+            created: r.created,
+            updated: r.updated,
+            finished_on: r.finished_on,
+            group_id: r.group_id,
+            select_test_cases_by: enum_id(r.select_test_cases_by),
+            query: r.query,
+            document: r.document.and_then(|d| d.uri).map(DocumentRef::from_uri),
+            summary_defect: r.summary_defect_uri.map(ItemRef::from_uri),
+            keep_in_history: r.keep_in_history,
+            project_span: r.project_span_ur_is.unwrap_or_default(),
+            parameters: parameters(r.test_parameters.and_then(|p| p.parameters)),
+            records: r
+                .records
+                .into_iter()
+                .flatten()
+                .map(TestRecord::from)
+                .collect(),
+            attachments: r
+                .attachments
+                .into_iter()
+                .flatten()
+                .map(Attachment::from)
+                .collect(),
+            comments: r
+                .comments
+                .into_iter()
+                .flatten()
+                .map(Comment::from)
+                .collect(),
+            custom_fields: custom_fields(r.custom_fields),
+            body: text(r.home_page_content),
+            uri: r.uri,
+        }
+    }
+}
+
+impl From<soap::TestSteps> for TestSteps {
+    fn from(t: soap::TestSteps) -> Self {
+        Self {
+            columns: t.keys.into_iter().flatten().filter_map(|k| k.id).collect(),
+            steps: t
+                .steps
+                .into_iter()
+                .flatten()
+                .map(|s| s.values.into_iter().flatten().map(Text::from).collect())
+                .collect(),
+        }
+    }
+}
+
+impl From<soap::Plan> for Plan {
+    fn from(p: soap::Plan) -> Self {
+        Self {
+            id: p.id,
+            project: project_from_uri(p.project_uri.as_deref())
+                .or_else(|| project_from_uri(p.uri.as_deref())),
+            name: p.name,
+            status: enum_id(p.status),
+            template: p.is_template.unwrap_or(false),
+            parent: p.parent.and_then(|parent| parent.uri),
+            template_uri: p.template_uri,
+            description: text(p.description),
+            start_date: p.start_date,
+            due_date: p.due_date,
+            started_on: p.started_on,
+            finished_on: p.finished_on,
+            capacity: p.capacity,
+            default_estimate: p.default_estimate,
+            estimation_field: p.estimation_field,
+            prioritization_field: p.prioritization_field,
+            calculation_type: enum_id(p.calculation_type),
+            color: p.color,
+            sort_order: p.sort_order,
+            allowed_types: p
+                .allowed_types
+                .into_iter()
+                .flatten()
+                .filter_map(|t| t.id)
+                .collect(),
+            project_span: p.project_span_ur_is.unwrap_or_default(),
+            items: p
+                .records
+                .into_iter()
+                .flatten()
+                .filter_map(|r| r.item?.uri)
+                .map(ItemRef::from_uri)
+                .collect(),
+            author: user_from_uri(p.author_uri),
+            created: p.created,
+            updated: p.updated,
+            custom_fields: custom_fields(p.custom_fields),
+            body: text(p.home_page_content),
+            uri: p.uri,
+        }
+    }
+}
+
+// ---- domain → SOAP for the other areas
+
+pub(crate) fn soap_custom_fields(
+    fields: &BTreeMap<String, FieldValue>,
+) -> Result<Option<Vec<soap::Custom>>> {
+    if fields.is_empty() {
+        return Ok(None);
+    }
+    fields
+        .iter()
+        .map(|(key, value)| {
+            Ok(soap::Custom {
+                key: key.clone(),
+                value: Some(any_value(value)?),
+            })
+        })
+        .collect::<Result<_>>()
+        .map(Some)
+}
+
+/// A test record to send. `executed_by` is a user id; attachments are ignored
+/// (add them with the attachment methods).
+pub(crate) fn soap_test_record(r: &TestRecord) -> Result<soap::TestRecord> {
+    Ok(soap::TestRecord {
+        test_case_uri: r.test_case.as_ref().map(|t| t.uri.clone()),
+        test_case_revision: r.test_case_revision.clone(),
+        result: r.result.as_deref().map(option_id),
+        comment: r.comment.as_ref().map(soap_text),
+        executed: r.executed.clone(),
+        executed_by_uri: r.executed_by.as_deref().map(uri::user_uri),
+        duration: r.duration,
+        iteration: r.iteration,
+        defect_uri: r.defect.as_ref().map(|d| d.uri.clone()),
+        signed: r.signed,
+        test_parameters: if r.parameters.is_empty() {
+            None
+        } else {
+            Some(
+                r.parameters
+                    .iter()
+                    .map(|(name, value)| {
+                        Ok(soap::Parameter {
+                            name: Some(name.clone()),
+                            value: Some(any_value(value)?),
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            )
+        },
+        test_step_results: if r.step_results.is_empty() {
+            None
+        } else {
+            Some(
+                r.step_results
+                    .iter()
+                    .map(|s| soap::TestStepResult {
+                        result: s.result.as_deref().map(option_id),
+                        comment: s.comment.as_ref().map(soap_text),
+                        attachments: None,
+                    })
+                    .collect(),
+            )
+        },
+        attachments: None,
+    })
 }
 
 #[cfg(test)]
