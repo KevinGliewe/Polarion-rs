@@ -42,10 +42,12 @@ let created = client.post_work_items("MyProject", &[new]).await?;
   `sort`, `revision`, and any other parameter via `Query::param`.
 - **Pagination:** `Client::paginate` fetches all pages of any list operation.
 - **Escape hatch:** `Client::request_json` for raw calls.
+- **Read-only mode:** `Client::builder(..).read_only(true)` refuses every non-`GET` request before it is sent,
+  for exploring production servers safely.
 - **TLS:** the OS trust store is used, so corporate CAs work; extra PEM CAs or (for test servers) disabled
   validation via `Client::builder`.
 
-Try it against a real server:
+Try it against a real server (read-only, at most three small `GET` requests):
 
 ```sh
 POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject \

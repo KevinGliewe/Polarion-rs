@@ -19,6 +19,13 @@ pub enum Error {
         body: String,
     },
 
+    /// The client is read-only and the request was not a `GET`; nothing was sent.
+    #[error("refusing {method} {url}: client is read-only")]
+    ReadOnly {
+        method: reqwest::Method,
+        url: String,
+    },
+
     /// Transport-level failure (connection, TLS, timeout, ...).
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),

@@ -335,3 +335,37 @@ async fn required_query_parameters_are_positional() {
     let fields = meta.data.unwrap().attributes.unwrap();
     assert_eq!(fields["title"]["label"], "Title");
 }
+
+#[tokio::test]
+async fn read_only_client_never_sends_writes() {
+    let server = MockServer::start().await;
+    let client = Client::builder(&format!("{}/polarion", server.uri()), "t")
+        .read_only(true)
+        .build()
+        .unwrap();
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": []})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client.get_projects(&Query::new()).await.unwrap();
+
+    let err = client
+        .delete_work_items("PROJ", &[WorkItem::reference("PROJ/WI-1")])
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::ReadOnly { ref method, .. } if method == "DELETE"));
+    let err = client
+        .request_json(
+            polarion_rest::Method::POST,
+            "projects/PROJ/workitems",
+            &Query::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::ReadOnly { .. }));
+    // Only the GET reached the server.
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}

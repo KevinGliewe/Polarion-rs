@@ -7,6 +7,9 @@
 //! cargo run -p polarion-rest --example smoke
 //! ```
 //!
+//! Read-only: the client refuses anything but `GET`, so this is safe to run
+//! against a production server. It sends at most three small requests.
+//!
 //! Set `POLARION_INSECURE=1` to accept self-signed certificates.
 
 use polarion_rest::models::WorkItemAttributes;
@@ -19,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let insecure = std::env::var("POLARION_INSECURE").is_ok_and(|v| v == "1");
     let client = Client::builder(&url, &token)
         .danger_accept_invalid_certs(insecure)
+        .read_only(true)
         .build()?;
     println!("REST base: {}", client.base_url());
 

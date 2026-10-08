@@ -25,6 +25,7 @@ const REST_PATH: [&str; 2] = ["rest", "v1"];
 pub struct Client {
     http: reqwest::Client,
     base: Url,
+    read_only: bool,
 }
 
 impl Client {
@@ -44,7 +45,13 @@ impl Client {
             timeout: DEFAULT_TIMEOUT,
             accept_invalid_certs: false,
             root_certificates: Vec::new(),
+            read_only: false,
         }
+    }
+
+    /// Whether this client refuses everything but `GET` requests.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
     }
 
     /// Base URL of the REST API (always ends in `/rest/v1/`).
@@ -172,7 +179,14 @@ impl Client {
     }
 
     async fn execute(&self, req: RequestBuilder) -> Result<Response> {
-        let resp = req.send().await?;
+        let req = req.build()?;
+        if self.read_only && req.method() != Method::GET {
+            return Err(Error::ReadOnly {
+                method: req.method().clone(),
+                url: req.url().to_string(),
+            });
+        }
+        let resp = self.http.execute(req).await?;
         let status = resp.status();
         if status.is_success() {
             return Ok(resp);
@@ -235,6 +249,7 @@ pub struct ClientBuilder {
     timeout: Duration,
     accept_invalid_certs: bool,
     root_certificates: Vec<reqwest::Certificate>,
+    read_only: bool,
 }
 
 impl ClientBuilder {
@@ -254,6 +269,16 @@ impl ClientBuilder {
     /// Disable TLS certificate validation. Only for test instances with self-signed certificates.
     pub fn danger_accept_invalid_certs(mut self, accept: bool) -> Self {
         self.accept_invalid_certs = accept;
+        self
+    }
+
+    /// Refuse every request except `GET`, before it is sent.
+    ///
+    /// A safety net for exploring production servers: only reads reach the
+    /// network, writes fail with [`Error::ReadOnly`]. Non-mutating `POST`
+    /// operations are refused too.
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
         self
     }
 
@@ -279,6 +304,7 @@ impl ClientBuilder {
         Ok(Client {
             http: http.build()?,
             base,
+            read_only: self.read_only,
         })
     }
 }
