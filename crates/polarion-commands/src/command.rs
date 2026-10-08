@@ -29,8 +29,9 @@ pub trait CommandInfo {
 
 /// What a command does.
 pub trait Run: Sized {
-    /// The result, serialized only at the boundary (JSON for MCP and `--json`, ...).
-    type Output: Serialize + Send;
+    /// The result, serialized only at the boundary (JSON for MCP and `--json`, ...); its
+    /// JSON Schema describes that serialized form (MCP output schemas).
+    type Output: Serialize + JsonSchema + Send;
 
     fn run(self, cx: &Context<'_>) -> impl Future<Output = Result<Self::Output>> + Send;
 }
@@ -100,6 +101,8 @@ pub struct Entry {
     pub view: View,
     /// JSON Schema of the arguments object.
     pub schema: fn() -> Value,
+    /// JSON Schema of the serialized result.
+    pub output: fn() -> Value,
     /// The typed command from JSON arguments.
     pub parse: fn(Value) -> Result<AnyCommand>,
 }
@@ -124,6 +127,11 @@ impl Entry {
         (self.schema)()
     }
 
+    /// JSON Schema of the serialized result.
+    pub fn output_schema(&self) -> Value {
+        (self.output)()
+    }
+
     /// The typed command from JSON arguments (an object, or `null` for none).
     pub fn parse(&self, arguments: Value) -> Result<AnyCommand> {
         (self.parse)(arguments)
@@ -144,6 +152,21 @@ pub fn schema_of<T: JsonSchema>() -> Value {
             .entry("properties")
             .or_insert_with(|| Value::Object(Map::new()));
         object.insert("additionalProperties".into(), Value::Bool(false));
+    }
+    schema
+}
+
+/// The JSON Schema of a result as it is serialized. Types used more than once (users, enum
+/// options, rich text, ...) are `$defs`, referenced from where they appear.
+pub fn output_schema_of<T: JsonSchema>() -> Value {
+    let generator = SchemaSettings::draft2020_12()
+        .for_serialize()
+        .into_generator();
+    let mut schema = generator.into_root_schema_for::<T>().to_value();
+    if let Some(object) = schema.as_object_mut() {
+        for key in ["$schema", "title"] {
+            object.remove(key);
+        }
     }
     schema
 }

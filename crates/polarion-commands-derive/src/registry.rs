@@ -140,6 +140,7 @@ pub fn expand(input: TokenStream) -> syn::Result<TokenStream> {
                 write: <#module::#ty as crate::CommandInfo>::WRITE,
                 view: <#module::#ty as crate::CommandInfo>::VIEW,
                 schema: crate::schema_of::<#module::#ty>,
+                output: crate::output_schema_of::<<#module::#ty as crate::Run>::Output>,
                 parse: |value| crate::parse_as::<#module::#ty>(value).map(AnyCommand::#variant),
             }
         }

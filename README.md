@@ -91,8 +91,11 @@ protocol version (up to `2026-07-28`). It is configured by the same environment 
 - With `POLARION_MCP_TOOLS=all`, every command is also registered as its own tool (`items_add_link`, ...). That
   is about 270 tools, which costs the agent context on every turn; the default set is usually better.
 
-Results are the library's JSON. Failures, including refused writes, are tool errors with a message such as
-`error (readOnly): ...`. The server is read-only unless `POLARION_WRITE_PROJECTS` is set, and it tells the agent so
+Results are the library's JSON, as text and as structured content: every tool that returns data declares an
+`outputSchema` generated from the command's result type, and its result carries `structuredContent` that matches it.
+Results that are not JSON objects (lists, counts, flags) are wrapped as `{"result": ...}`, which every protocol
+version accepts. `polarion_describe` shows a command's output schema too. Failures, including refused writes, are
+tool errors with a message such as `error (readOnly): ...`. The server is read-only unless `POLARION_WRITE_PROJECTS` is set, and it tells the agent so
 when it connects.
 
 **Attachments.** Work item attachments (`items.attachment`) and PDF exports (`documents.export-pdf`) never reach the

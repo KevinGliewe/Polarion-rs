@@ -1,12 +1,15 @@
 //! Results that are not library types.
 
+use std::borrow::Cow;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 
 /// Whether an operation changed anything: `{"changed": true}`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Changed {
     pub changed: bool,
 }
@@ -18,7 +21,7 @@ impl From<bool> for Changed {
 }
 
 /// Nothing to report (`null`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct Done;
 
 /// Binary content: `{"size": .., "base64": ..}`.
@@ -31,5 +34,23 @@ impl Serialize for Download {
         map.serialize_entry("size", &self.0.len())?;
         map.serialize_entry("base64", &BASE64.encode(&self.0))?;
         map.end()
+    }
+}
+
+impl JsonSchema for Download {
+    fn schema_name() -> Cow<'static, str> {
+        Cow::Borrowed("Download")
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "type": "object",
+            "description": "Binary content",
+            "properties": {
+                "size": {"type": "integer", "minimum": 0, "description": "Size in bytes"},
+                "base64": {"type": "string", "contentEncoding": "base64"}
+            },
+            "required": ["size", "base64"]
+        })
     }
 }

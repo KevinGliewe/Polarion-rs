@@ -25,6 +25,9 @@
 //! Custom field values come as [`types::AnyValue`], decoded from the
 //! `xsi:type` the server sends (enum options, rich text, dates, ...).
 
+// The generated JSON Schemas of large types (`WorkItem`) nest deeply in `json!`.
+#![recursion_limit = "512"]
+
 mod client;
 mod error;
 mod generated;

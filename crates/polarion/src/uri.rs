@@ -78,6 +78,29 @@ impl Serialize for ItemRef {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ItemRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ItemRef".into()
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A work item: `project` and `id`, or its `uri`",
+            "properties": {
+                "project": {"type": "string"},
+                "id": {"type": "string"},
+                "uri": {"type": "string"}
+            }
+        })
+    }
+}
+
 /// A document (called "module" in the SOAP API), identified by project, space and name.
 ///
 /// Serializes as `{"project": .., "space": .., "name": ..}`, or as `{"uri": ..}` if the URI could not be parsed.
@@ -163,6 +186,30 @@ impl Serialize for DocumentRef {
                 st.end()
             }
         }
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for DocumentRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "DocumentRef".into()
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A document: `project`, `space` and `name`, or its `uri`",
+            "properties": {
+                "project": {"type": "string"},
+                "space": {"type": "string"},
+                "name": {"type": "string"},
+                "uri": {"type": "string"}
+            }
+        })
     }
 }
 

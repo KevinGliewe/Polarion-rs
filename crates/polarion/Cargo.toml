@@ -13,9 +13,14 @@ authors.workspace = true
 
 [dependencies]
 polarion-soap = { workspace = true, features = ["serde"] }
+schemars = { version = "1", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[features]
+# `schemars::JsonSchema` for the result types, describing their JSON form.
+schemars = ["dep:schemars", "polarion-soap/schemars"]
 
 [dev-dependencies]
 tokio.workspace = true

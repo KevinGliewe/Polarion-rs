@@ -96,13 +96,41 @@ fn tool(
 }
 
 fn command_tool(name: String, command: &'static Entry, exchange: Option<&Exchange>) -> Registered {
-    tool(
+    let mut registered = tool(
         name,
         command.description.to_owned(),
         files::schema(command, exchange),
         !command.write,
         ToolKind::Command(command),
-    )
+    );
+    if let Some((Value::Object(schema), _)) = output_schema(command) {
+        registered.tool = registered.tool.with_raw_output_schema(Arc::new(schema));
+    }
+    registered
+}
+
+/// A command's MCP output schema, and whether its results are wrapped as `{"result": ...}`:
+/// protocol versions before 2026-07-28 (and the clients built for them) want an object at the
+/// root. `None` for commands without a structured result (nothing, or file content).
+fn output_schema(command: &Entry) -> Option<(Value, bool)> {
+    if matches!(command.view, View::Done | View::Bytes) {
+        return None;
+    }
+    let mut schema = command.output_schema();
+    if schema.get("type").and_then(Value::as_str) == Some("object") {
+        return Some((schema, false));
+    }
+    // References of recursive types point at the root's `$defs`.
+    let defs = schema.as_object_mut().and_then(|o| o.remove("$defs"));
+    let mut wrapper = json!({
+        "type": "object",
+        "properties": {"result": schema},
+        "required": ["result"],
+    });
+    if let Some(defs) = defs {
+        wrapper["$defs"] = defs;
+    }
+    Some((wrapper, true))
 }
 
 struct Shared {
@@ -271,19 +299,29 @@ impl PolarionMcp {
     }
 
     /// Run a command for the agent: exchange arguments in, byte results as image/text blocks.
-    async fn execute(&self, command: &Entry, arguments: Value) -> CallToolResult {
+    /// `structured`: also return the result as structured content (tools with an output schema).
+    async fn execute(&self, command: &Entry, arguments: Value, structured: bool) -> CallToolResult {
         let exchange = self.0.exchange.as_ref();
         let outcome = async {
             let (arguments, save_as) = files::prepare(command, arguments, exchange)?;
             let value = self.run(command, arguments).await?;
             if matches!(command.view, View::Bytes) {
-                files::present(&value, save_as.as_deref(), exchange)
-            } else {
-                Ok(vec![ContentBlock::text(text(&value))])
+                return Ok((files::present(&value, save_as.as_deref(), exchange)?, None));
             }
+            let content = vec![ContentBlock::text(text(&value))];
+            let structured = match structured.then(|| output_schema(command)).flatten() {
+                Some((_, true)) => Some(json!({ "result": value })),
+                Some((_, false)) => Some(value),
+                None => None,
+            };
+            Ok((content, structured))
         };
         match outcome.await {
-            Ok(content) => CallToolResult::success(content),
+            Ok((content, structured)) => {
+                let mut result = CallToolResult::success(content);
+                result.structured_content = structured;
+                result
+            }
             Err(e) => error_result(&e),
         }
     }
@@ -339,7 +377,7 @@ impl ServerHandler for PolarionMcp {
             })?;
         let arguments = request.arguments.map_or(Value::Null, Value::Object);
         let lookup = match &entry.kind {
-            ToolKind::Command(c) => return Ok(self.execute(c, arguments).await.into()),
+            ToolKind::Command(c) => return Ok(self.execute(c, arguments, true).await.into()),
             ToolKind::Call => {
                 let command = arguments
                     .get("command")
@@ -348,7 +386,7 @@ impl ServerHandler for PolarionMcp {
                 match find(command) {
                     Some(c) => {
                         let args = arguments.get("args").cloned().unwrap_or(Value::Null);
-                        return Ok(self.execute(c, args).await.into());
+                        return Ok(self.execute(c, args, false).await.into());
                     }
                     None => Err(CommandError::invalid(format!(
                         "unknown command `{command}` (see polarion_commands)"
@@ -429,5 +467,6 @@ fn describe(arguments: &Value, exchange: Option<&Exchange>) -> Result<Value, Com
         "description": c.description,
         "write": c.write,
         "inputSchema": files::schema(c, exchange),
+        "outputSchema": c.output_schema(),
     }))
 }

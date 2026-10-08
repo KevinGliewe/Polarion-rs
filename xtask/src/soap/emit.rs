@@ -557,6 +557,61 @@ impl<'m> Gen<'m> {
             );
         }
         out.push_str("        map.end()\n    }\n}\n\n");
+
+        // JsonSchema (optional): exactly what `Serialize` writes.
+        let mut props = Vec::new();
+        let mut required = Vec::new();
+        for (el, ident, ty, card) in &fields {
+            let schema = match (ty, card) {
+                (Ty::Bytes, Card::Required | Card::Optional) => {
+                    "schemars::json_schema!({\"type\": \"string\", \"contentEncoding\": \"base64\"})".to_owned()
+                }
+                (_, Card::Repeated) => format!("generator.subschema_for::<Vec<{}>>()", self.rust(ty)),
+                _ => format!("generator.subschema_for::<{}>()", self.rust(ty)),
+            };
+            if *card == Card::Required {
+                required.push(el.name.clone());
+            }
+            props.push((el.name.clone(), ident.clone(), schema));
+        }
+        for (el, ident) in &subtype_fields {
+            let ty = self.ty(&el.ty)?;
+            props.push((
+                el.name.clone(),
+                ident.clone(),
+                format!("generator.subschema_for::<{}>()", self.rust(&ty)),
+            ));
+        }
+        for (xml_name, ident, ty) in &attr_fields {
+            props.push((
+                xml_name.clone(),
+                ident.clone(),
+                format!("generator.subschema_for::<{}>()", self.rust(ty)),
+            ));
+        }
+        let _ = writeln!(
+            out,
+            "#[cfg(feature = \"schemars\")]\nimpl schemars::JsonSchema for {name} {{\n    fn schema_name() -> ::std::borrow::Cow<'static, str> {{\n        ::std::borrow::Cow::Borrowed({name:?})\n    }}\n\n    fn schema_id() -> ::std::borrow::Cow<'static, str> {{\n        ::std::borrow::Cow::Borrowed(\"polarion_soap::types::{name}\")\n    }}\n\n    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {{"
+        );
+        for (_, ident, schema) in &props {
+            let _ = writeln!(out, "        let p_{ident} = {schema};");
+        }
+        let _ = writeln!(
+            out,
+            "        schemars::json_schema!({{\n            \"type\": \"object\",\n            \"properties\": {{"
+        );
+        for (key, ident, _) in &props {
+            let _ = writeln!(out, "                {key:?}: p_{ident},");
+        }
+        let _ = writeln!(
+            out,
+            "            }},\n            \"required\": [{}],\n        }})\n    }}\n}}\n",
+            required
+                .iter()
+                .map(|r| format!("{r:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
         Ok(())
     }
 
@@ -681,6 +736,11 @@ impl<'m> Gen<'m> {
         }
         out.push_str(
             "            AnyValue::Unknown { xsi_type, xml } => {\n                use serde::ser::SerializeMap;\n                let mut map = serializer.serialize_map(Some(2))?;\n                map.serialize_entry(\"xsiType\", xsi_type)?;\n                map.serialize_entry(\"xml\", xml)?;\n                map.end()\n            }\n        }\n    }\n}\n",
+        );
+
+        // JsonSchema (optional): any value.
+        out.push_str(
+            "\n#[cfg(feature = \"schemars\")]\nimpl schemars::JsonSchema for AnyValue {\n    fn schema_name() -> ::std::borrow::Cow<'static, str> {\n        ::std::borrow::Cow::Borrowed(\"AnyValue\")\n    }\n\n    fn inline_schema() -> bool {\n        true\n    }\n\n    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {\n        schemars::json_schema!({\n            \"description\": \"Any value: the decoded value itself (string, number, boolean, object or array), null for nil, or {xsiType, xml} for types the WSDLs do not define.\"\n        })\n    }\n}\n",
         );
         Ok(())
     }

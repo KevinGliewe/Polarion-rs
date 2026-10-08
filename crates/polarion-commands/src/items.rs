@@ -2,6 +2,7 @@
 
 use polarion::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
 use polarion_commands_derive::cmd;
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::{
@@ -176,7 +177,7 @@ pub struct Links {
 
 /// A work item's links: `outgoing` from it, `incoming` from other items (each link's `item` is
 /// the other end).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ItemLinks {
     pub outgoing: Vec<polarion::Link>,
     pub incoming: Vec<polarion::Link>,
@@ -692,7 +693,7 @@ pub struct Create {
 }
 
 /// A new work item: its reference and URI.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct Created {
     pub item: polarion::ItemRef,
     pub uri: String,

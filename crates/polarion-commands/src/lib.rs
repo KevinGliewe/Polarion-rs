@@ -52,7 +52,7 @@ use serde_json::Value;
 pub use arg::{
     Data, DocumentArg, FieldSelection, ItemArg, JsonObject, JsonValue, QueryArgs, RichText,
 };
-pub use command::{CommandInfo, Context, Entry, Run, parse_as, schema_of};
+pub use command::{CommandInfo, Context, Entry, Run, output_schema_of, parse_as, schema_of};
 pub use config::{Config, split_list};
 pub use error::{CommandError, Result};
 pub use output::{Changed, Done, Download};

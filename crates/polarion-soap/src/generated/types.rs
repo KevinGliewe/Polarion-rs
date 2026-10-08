@@ -283,6 +283,65 @@ impl serde::Serialize for Build {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Build {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Build")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Build")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_bir_location = generator.subschema_for::<String>();
+        let p_build_descriptor_name = generator.subschema_for::<String>();
+        let p_build_requestor_specific_data =
+            generator.subschema_for::<Vec<BuildRequestorSpecificData>>();
+        let p_build_stamp = generator.subschema_for::<String>();
+        let p_build_status = generator.subschema_for::<String>();
+        let p_build_tag = generator.subschema_for::<String>();
+        let p_build_test_results = generator.subschema_for::<BuildTestResults>();
+        let p_calculation_descriptor_name = generator.subschema_for::<String>();
+        let p_creation_time = generator.subschema_for::<String>();
+        let p_finish_time = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_job_id = generator.subschema_for::<String>();
+        let p_linked_work_items = generator.subschema_for::<Vec<BuildLinkedWorkItem>>();
+        let p_local_deployment_space_name = generator.subschema_for::<String>();
+        let p_log_files = generator.subschema_for::<Vec<String>>();
+        let p_start_time = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "birLocation": p_bir_location,
+                "buildDescriptorName": p_build_descriptor_name,
+                "buildRequestorSpecificData": p_build_requestor_specific_data,
+                "buildStamp": p_build_stamp,
+                "buildStatus": p_build_status,
+                "buildTag": p_build_tag,
+                "buildTestResults": p_build_test_results,
+                "calculationDescriptorName": p_calculation_descriptor_name,
+                "creationTime": p_creation_time,
+                "finishTime": p_finish_time,
+                "id": p_id,
+                "jobId": p_job_id,
+                "linkedWorkItems": p_linked_work_items,
+                "localDeploymentSpaceName": p_local_deployment_space_name,
+                "logFiles": p_log_files,
+                "startTime": p_start_time,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `BuildLinkedWorkItem` in `http://ws.polarion.com/BuilderWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BuildLinkedWorkItem {
@@ -350,6 +409,32 @@ impl serde::Serialize for BuildLinkedWorkItem {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for BuildLinkedWorkItem {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("BuildLinkedWorkItem")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::BuildLinkedWorkItem")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_revision = generator.subschema_for::<String>();
+        let p_role = generator.subschema_for::<EnumOptionId>();
+        let p_work_item = generator.subschema_for::<WorkItem>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "revision": p_revision,
+                "role": p_role,
+                "workItem": p_work_item,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `BuildRequestorSpecificData` in `http://ws.polarion.com/BuilderWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct BuildRequestorSpecificData {
@@ -405,6 +490,30 @@ impl serde::Serialize for BuildRequestorSpecificData {
             map.serialize_entry("value", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for BuildRequestorSpecificData {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("BuildRequestorSpecificData")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::BuildRequestorSpecificData")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_key = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "key": p_key,
+                "value": p_value,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -481,6 +590,34 @@ impl serde::Serialize for BuildTestResults {
             map.serialize_entry("testCount", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for BuildTestResults {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("BuildTestResults")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::BuildTestResults")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_error_count = generator.subschema_for::<i32>();
+        let p_failure_count = generator.subschema_for::<i32>();
+        let p_skipped_count = generator.subschema_for::<i32>();
+        let p_test_count = generator.subschema_for::<i32>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "errorCount": p_error_count,
+                "failureCount": p_failure_count,
+                "skippedCount": p_skipped_count,
+                "testCount": p_test_count,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -821,6 +958,90 @@ impl serde::Serialize for Plan {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Plan {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Plan")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Plan")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_allowed_types = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_author_uri = generator.subschema_for::<String>();
+        let p_calculation_type = generator.subschema_for::<EnumOptionId>();
+        let p_capacity = generator.subschema_for::<f32>();
+        let p_color = generator.subschema_for::<String>();
+        let p_created = generator.subschema_for::<String>();
+        let p_default_estimate = generator.subschema_for::<f32>();
+        let p_description = generator.subschema_for::<Text>();
+        let p_due_date = generator.subschema_for::<String>();
+        let p_estimation_field = generator.subschema_for::<String>();
+        let p_finished_on = generator.subschema_for::<String>();
+        let p_home_page_content = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_is_template = generator.subschema_for::<bool>();
+        let p_location = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_parent = generator.subschema_for::<Plan>();
+        let p_previous_time_spent = generator.subschema_for::<String>();
+        let p_prioritization_field = generator.subschema_for::<String>();
+        let p_project_uri = generator.subschema_for::<String>();
+        let p_project_span_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_records = generator.subschema_for::<Vec<PlanRecord>>();
+        let p_sort_order = generator.subschema_for::<i32>();
+        let p_start_date = generator.subschema_for::<String>();
+        let p_started_on = generator.subschema_for::<String>();
+        let p_status = generator.subschema_for::<EnumOptionId>();
+        let p_template_uri = generator.subschema_for::<String>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_use_report_from_template = generator.subschema_for::<bool>();
+        let p_custom_fields = generator.subschema_for::<Vec<Custom>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "allowedTypes": p_allowed_types,
+                "authorURI": p_author_uri,
+                "calculationType": p_calculation_type,
+                "capacity": p_capacity,
+                "color": p_color,
+                "created": p_created,
+                "defaultEstimate": p_default_estimate,
+                "description": p_description,
+                "dueDate": p_due_date,
+                "estimationField": p_estimation_field,
+                "finishedOn": p_finished_on,
+                "homePageContent": p_home_page_content,
+                "id": p_id,
+                "isTemplate": p_is_template,
+                "location": p_location,
+                "name": p_name,
+                "parent": p_parent,
+                "previousTimeSpent": p_previous_time_spent,
+                "prioritizationField": p_prioritization_field,
+                "projectURI": p_project_uri,
+                "projectSpanURIs": p_project_span_ur_is,
+                "records": p_records,
+                "sortOrder": p_sort_order,
+                "startDate": p_start_date,
+                "startedOn": p_started_on,
+                "status": p_status,
+                "templateURI": p_template_uri,
+                "updated": p_updated,
+                "useReportFromTemplate": p_use_report_from_template,
+                "customFields": p_custom_fields,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `PlanRecord` in `http://ws.polarion.com/PlanningWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlanRecord {
@@ -867,6 +1088,28 @@ impl serde::Serialize for PlanRecord {
             map.serialize_entry("item", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PlanRecord {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PlanRecord")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PlanRecord")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_item = generator.subschema_for::<WorkItem>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "item": p_item,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -990,6 +1233,52 @@ impl serde::Serialize for PlanStatistics {
         map.serialize_entry("idealProgressAsString", &self.ideal_progress_as_string)?;
         map.serialize_entry("progressAsString", &self.progress_as_string)?;
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PlanStatistics {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PlanStatistics")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PlanStatistics")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_done = generator.subschema_for::<f32>();
+        let p_todo = generator.subschema_for::<f32>();
+        let p_number_of_resolved = generator.subschema_for::<i32>();
+        let p_number_of_unresolved = generator.subschema_for::<i32>();
+        let p_number_of_planned = generator.subschema_for::<i32>();
+        let p_planned = generator.subschema_for::<f32>();
+        let p_progress = generator.subschema_for::<f32>();
+        let p_ideal_progress = generator.subschema_for::<f32>();
+        let p_done_as_string = generator.subschema_for::<String>();
+        let p_todo_as_string = generator.subschema_for::<String>();
+        let p_planned_as_string = generator.subschema_for::<String>();
+        let p_ideal_progress_as_string = generator.subschema_for::<String>();
+        let p_progress_as_string = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "done": p_done,
+                "todo": p_todo,
+                "numberOfResolved": p_number_of_resolved,
+                "numberOfUnresolved": p_number_of_unresolved,
+                "numberOfPlanned": p_number_of_planned,
+                "planned": p_planned,
+                "progress": p_progress,
+                "idealProgress": p_ideal_progress,
+                "doneAsString": p_done_as_string,
+                "todoAsString": p_todo_as_string,
+                "plannedAsString": p_planned_as_string,
+                "idealProgressAsString": p_ideal_progress_as_string,
+                "progressAsString": p_progress_as_string,
+            },
+            "required": ["done", "todo", "planned", "progress", "idealProgress", "doneAsString", "todoAsString", "plannedAsString", "idealProgressAsString", "progressAsString"],
+        })
     }
 }
 
@@ -1168,6 +1457,56 @@ impl serde::Serialize for Project {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Project {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Project")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Project")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_active = generator.subschema_for::<bool>();
+        let p_color = generator.subschema_for::<String>();
+        let p_description = generator.subschema_for::<Text>();
+        let p_finish = generator.subschema_for::<String>();
+        let p_icon = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_lead = generator.subschema_for::<User>();
+        let p_location = generator.subschema_for::<String>();
+        let p_lock_work_records_date = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_project_group_uri = generator.subschema_for::<String>();
+        let p_start = generator.subschema_for::<String>();
+        let p_tracker_prefix = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "active": p_active,
+                "color": p_color,
+                "description": p_description,
+                "finish": p_finish,
+                "icon": p_icon,
+                "id": p_id,
+                "lead": p_lead,
+                "location": p_location,
+                "lockWorkRecordsDate": p_lock_work_records_date,
+                "name": p_name,
+                "projectGroupURI": p_project_group_uri,
+                "start": p_start,
+                "trackerPrefix": p_tracker_prefix,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ProjectGroup` in `http://ws.polarion.com/ProjectWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProjectGroup {
@@ -1268,6 +1607,40 @@ impl serde::Serialize for ProjectGroup {
             map.serialize_entry("unresolvable", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ProjectGroup {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ProjectGroup")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ProjectGroup")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_group_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_location = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_parent_uri = generator.subschema_for::<String>();
+        let p_project_i_ds = generator.subschema_for::<Vec<String>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "groupURIs": p_group_ur_is,
+                "location": p_location,
+                "name": p_name,
+                "parentURI": p_parent_uri,
+                "projectIDs": p_project_i_ds,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -1401,6 +1774,46 @@ impl serde::Serialize for User {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for User {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("User")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::User")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_description = generator.subschema_for::<Text>();
+        let p_disabled_notifications = generator.subschema_for::<bool>();
+        let p_email = generator.subschema_for::<String>();
+        let p_home_page_content = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_vote_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_watche_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "description": p_description,
+                "disabledNotifications": p_disabled_notifications,
+                "email": p_email,
+                "homePageContent": p_home_page_content,
+                "id": p_id,
+                "name": p_name,
+                "voteURIs": p_vote_ur_is,
+                "watcheURIs": p_watche_ur_is,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `LicenseInfo` in `http://ws.polarion.com/SecurityWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LicenseInfo {
@@ -1452,6 +1865,30 @@ impl serde::Serialize for LicenseInfo {
         }
         map.serialize_entry("slots", &self.slots)?;
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for LicenseInfo {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("LicenseInfo")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::LicenseInfo")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_license = generator.subschema_for::<String>();
+        let p_slots = generator.subschema_for::<i32>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "license": p_license,
+                "slots": p_slots,
+            },
+            "required": ["slots"],
+        })
     }
 }
 
@@ -1612,6 +2049,50 @@ impl serde::Serialize for ProductLicense {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ProductLicense {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ProductLicense")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ProductLicense")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_concurrent_license_data = generator.subschema_for::<Vec<LicenseInfo>>();
+        let p_customer_company = generator.subschema_for::<String>();
+        let p_customer_email = generator.subschema_for::<String>();
+        let p_customer_name = generator.subschema_for::<String>();
+        let p_date_created = generator.subschema_for::<String>();
+        let p_expiration_date = generator.subschema_for::<String>();
+        let p_generated_by = generator.subschema_for::<String>();
+        let p_ip_address = generator.subschema_for::<String>();
+        let p_license_format = generator.subschema_for::<String>();
+        let p_license_profile = generator.subschema_for::<String>();
+        let p_mac_address = generator.subschema_for::<String>();
+        let p_named_license_data = generator.subschema_for::<Vec<LicenseInfo>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "concurrentLicenseData": p_concurrent_license_data,
+                "customerCompany": p_customer_company,
+                "customerEmail": p_customer_email,
+                "customerName": p_customer_name,
+                "dateCreated": p_date_created,
+                "expirationDate": p_expiration_date,
+                "generatedBy": p_generated_by,
+                "ipAddress": p_ip_address,
+                "licenseFormat": p_license_format,
+                "licenseProfile": p_license_profile,
+                "macAddress": p_mac_address,
+                "namedLicenseData": p_named_license_data,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Parameter` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Parameter {
@@ -1670,6 +2151,30 @@ impl serde::Serialize for Parameter {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Parameter {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Parameter")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Parameter")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_name = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<AnyValue>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "name": p_name,
+                "value": p_value,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ParameterDefinition` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParameterDefinition {
@@ -1716,6 +2221,28 @@ impl serde::Serialize for ParameterDefinition {
             map.serialize_entry("name", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ParameterDefinition {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ParameterDefinition")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ParameterDefinition")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_name = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "name": p_name,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -1793,6 +2320,30 @@ impl serde::Serialize for ParametersAndDefinitions {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ParametersAndDefinitions {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ParametersAndDefinitions")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ParametersAndDefinitions")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_parameter_definitions = generator.subschema_for::<Vec<ParameterDefinition>>();
+        let p_parameters = generator.subschema_for::<Vec<Parameter>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "parameterDefinitions": p_parameter_definitions,
+                "parameters": p_parameters,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ParametersLibrary` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParametersLibrary {
@@ -1848,6 +2399,28 @@ impl serde::Serialize for ParametersLibrary {
             map.serialize_entry("parameterDefinitions", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ParametersLibrary {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ParametersLibrary")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ParametersLibrary")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_parameter_definitions = generator.subschema_for::<Vec<ParameterDefinition>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "parameterDefinitions": p_parameter_definitions,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -2028,6 +2601,52 @@ impl serde::Serialize for TestRecord {
             map.serialize_entry("testStepResults", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestRecord {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestRecord")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestRecord")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_attachments = generator.subschema_for::<Vec<TestRunAttachment>>();
+        let p_comment = generator.subschema_for::<Text>();
+        let p_defect_uri = generator.subschema_for::<String>();
+        let p_duration = generator.subschema_for::<f32>();
+        let p_executed = generator.subschema_for::<String>();
+        let p_executed_by_uri = generator.subschema_for::<String>();
+        let p_iteration = generator.subschema_for::<i32>();
+        let p_result = generator.subschema_for::<EnumOptionId>();
+        let p_signed = generator.subschema_for::<bool>();
+        let p_test_case_uri = generator.subschema_for::<String>();
+        let p_test_case_revision = generator.subschema_for::<String>();
+        let p_test_parameters = generator.subschema_for::<Vec<Parameter>>();
+        let p_test_step_results = generator.subschema_for::<Vec<TestStepResult>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "attachments": p_attachments,
+                "comment": p_comment,
+                "defectURI": p_defect_uri,
+                "duration": p_duration,
+                "executed": p_executed,
+                "executedByURI": p_executed_by_uri,
+                "iteration": p_iteration,
+                "result": p_result,
+                "signed": p_signed,
+                "testCaseURI": p_test_case_uri,
+                "testCaseRevision": p_test_case_revision,
+                "testParameters": p_test_parameters,
+                "testStepResults": p_test_step_results,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -2369,6 +2988,84 @@ impl serde::Serialize for TestRun {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestRun {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestRun")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestRun")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_attachments = generator.subschema_for::<Vec<TestRunAttachment>>();
+        let p_author_uri = generator.subschema_for::<String>();
+        let p_comments = generator.subschema_for::<Vec<TestRunComment>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_document = generator.subschema_for::<Module>();
+        let p_finished_on = generator.subschema_for::<String>();
+        let p_group_id = generator.subschema_for::<String>();
+        let p_home_page_content = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_id_prefix = generator.subschema_for::<String>();
+        let p_is_template = generator.subschema_for::<bool>();
+        let p_keep_in_history = generator.subschema_for::<bool>();
+        let p_location = generator.subschema_for::<String>();
+        let p_project_uri = generator.subschema_for::<String>();
+        let p_project_span_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_query = generator.subschema_for::<String>();
+        let p_records = generator.subschema_for::<Vec<TestRecord>>();
+        let p_select_test_cases_by = generator.subschema_for::<EnumOptionId>();
+        let p_status = generator.subschema_for::<EnumOptionId>();
+        let p_summary_defect_uri = generator.subschema_for::<String>();
+        let p_template_uri = generator.subschema_for::<String>();
+        let p_test_parameters = generator.subschema_for::<ParametersAndDefinitions>();
+        let p_title = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<EnumOptionId>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_use_report_from_template = generator.subschema_for::<bool>();
+        let p_custom_fields = generator.subschema_for::<Vec<Custom>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "attachments": p_attachments,
+                "authorURI": p_author_uri,
+                "comments": p_comments,
+                "created": p_created,
+                "document": p_document,
+                "finishedOn": p_finished_on,
+                "groupId": p_group_id,
+                "homePageContent": p_home_page_content,
+                "id": p_id,
+                "idPrefix": p_id_prefix,
+                "isTemplate": p_is_template,
+                "keepInHistory": p_keep_in_history,
+                "location": p_location,
+                "projectURI": p_project_uri,
+                "projectSpanURIs": p_project_span_ur_is,
+                "query": p_query,
+                "records": p_records,
+                "selectTestCasesBy": p_select_test_cases_by,
+                "status": p_status,
+                "summaryDefectURI": p_summary_defect_uri,
+                "templateURI": p_template_uri,
+                "testParameters": p_test_parameters,
+                "title": p_title,
+                "type": p_type_,
+                "updated": p_updated,
+                "useReportFromTemplate": p_use_report_from_template,
+                "customFields": p_custom_fields,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `TestStep` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestStep {
@@ -2415,6 +3112,28 @@ impl serde::Serialize for TestStep {
             map.serialize_entry("values", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestStep {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestStep")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestStep")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_values = generator.subschema_for::<Vec<Text>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "values": p_values,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -2492,6 +3211,32 @@ impl serde::Serialize for TestStepResult {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestStepResult {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestStepResult")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestStepResult")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_attachments = generator.subschema_for::<Vec<TestRunAttachment>>();
+        let p_comment = generator.subschema_for::<Text>();
+        let p_result = generator.subschema_for::<EnumOptionId>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "attachments": p_attachments,
+                "comment": p_comment,
+                "result": p_result,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `TestSteps` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestSteps {
@@ -2554,6 +3299,30 @@ impl serde::Serialize for TestSteps {
             map.serialize_entry("steps", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestSteps {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestSteps")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestSteps")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_keys = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_steps = generator.subschema_for::<Vec<TestStep>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "keys": p_keys,
+                "steps": p_steps,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -2874,6 +3643,81 @@ impl serde::Serialize for TestsConfiguration {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestsConfiguration {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestsConfiguration")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestsConfiguration")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_defect_auto_assignement_enabled = generator.subschema_for::<bool>();
+        let p_defect_reuse_type = generator.subschema_for::<String>();
+        let p_defect_template = generator.subschema_for::<String>();
+        let p_defect_to_test_case_link_role_id = generator.subschema_for::<String>();
+        let p_defect_work_item_type = generator.subschema_for::<String>();
+        let p_defects_project = generator.subschema_for::<String>();
+        let p_fields_to_copy_from_test_case_to_defect =
+            generator.subschema_for::<Vec<TestManagementProperty>>();
+        let p_fields_to_copy_from_test_run_to_linked_defect =
+            generator.subschema_for::<Vec<TestManagementProperty>>();
+        let p_fields_to_copy_from_test_run_to_new_defect =
+            generator.subschema_for::<Vec<TestManagementProperty>>();
+        let p_max_created_defects = generator.subschema_for::<i32>();
+        let p_max_created_defects_percent = generator.subschema_for::<i32>();
+        let p_result_error_enum_id = generator.subschema_for::<String>();
+        let p_result_failed_enum_id = generator.subschema_for::<String>();
+        let p_result_passed_enum_id = generator.subschema_for::<String>();
+        let p_retest_allowed = generator.subschema_for::<bool>();
+        let p_status_error_enum_id = generator.subschema_for::<String>();
+        let p_status_failed_enum_id = generator.subschema_for::<String>();
+        let p_status_ok_enum_id = generator.subschema_for::<String>();
+        let p_summary_defect_severity = generator.subschema_for::<String>();
+        let p_test_case_id_custom_field = generator.subschema_for::<String>();
+        let p_test_case_template = generator.subschema_for::<String>();
+        let p_test_case_test_comment_field_id = generator.subschema_for::<String>();
+        let p_test_case_test_result_field_id = generator.subschema_for::<String>();
+        let p_test_case_work_item_type = generator.subschema_for::<String>();
+        let p_test_run_template = generator.subschema_for::<String>();
+        let p_test_runs_generated_id_enabled = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "defectAutoAssignementEnabled": p_defect_auto_assignement_enabled,
+                "defectReuseType": p_defect_reuse_type,
+                "defectTemplate": p_defect_template,
+                "defectToTestCaseLinkRoleId": p_defect_to_test_case_link_role_id,
+                "defectWorkItemType": p_defect_work_item_type,
+                "defectsProject": p_defects_project,
+                "fieldsToCopyFromTestCaseToDefect": p_fields_to_copy_from_test_case_to_defect,
+                "fieldsToCopyFromTestRunToLinkedDefect": p_fields_to_copy_from_test_run_to_linked_defect,
+                "fieldsToCopyFromTestRunToNewDefect": p_fields_to_copy_from_test_run_to_new_defect,
+                "maxCreatedDefects": p_max_created_defects,
+                "maxCreatedDefectsPercent": p_max_created_defects_percent,
+                "resultErrorEnumId": p_result_error_enum_id,
+                "resultFailedEnumId": p_result_failed_enum_id,
+                "resultPassedEnumId": p_result_passed_enum_id,
+                "retestAllowed": p_retest_allowed,
+                "statusErrorEnumId": p_status_error_enum_id,
+                "statusFailedEnumId": p_status_failed_enum_id,
+                "statusOkEnumId": p_status_ok_enum_id,
+                "summaryDefectSeverity": p_summary_defect_severity,
+                "testCaseIdCustomField": p_test_case_id_custom_field,
+                "testCaseTemplate": p_test_case_template,
+                "testCaseTestCommentFieldId": p_test_case_test_comment_field_id,
+                "testCaseTestResultFieldId": p_test_case_test_result_field_id,
+                "testCaseWorkItemType": p_test_case_work_item_type,
+                "testRunTemplate": p_test_run_template,
+                "testRunsGeneratedIdEnabled": p_test_runs_generated_id_enabled,
+            },
+            "required": ["defectAutoAssignementEnabled", "retestAllowed", "testRunsGeneratedIdEnabled"],
+        })
+    }
+}
+
 /// `property` in `http://ws.polarion.com/TestManagementWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TestManagementProperty {
@@ -2925,6 +3769,30 @@ impl serde::Serialize for TestManagementProperty {
             map.serialize_entry("value", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestManagementProperty {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestManagementProperty")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestManagementProperty")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_key = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "key": p_key,
+                "value": p_value,
+            },
+            "required": ["key"],
+        })
     }
 }
 
@@ -3078,6 +3946,50 @@ impl serde::Serialize for Activity {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Activity {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Activity")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Activity")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_activity_custom_values = generator.subschema_for::<Vec<ActivityCustomValueEntry>>();
+        let p_comments = generator.subschema_for::<Vec<ActivityComment>>();
+        let p_context_id = generator.subschema_for::<String>();
+        let p_global_id = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_info = generator.subschema_for::<Text>();
+        let p_prefix = generator.subschema_for::<String>();
+        let p_resource_locations = generator.subschema_for::<Vec<String>>();
+        let p_source_id = generator.subschema_for::<String>();
+        let p_timestamp = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<String>();
+        let p_user_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "activityCustomValues": p_activity_custom_values,
+                "comments": p_comments,
+                "contextId": p_context_id,
+                "globalId": p_global_id,
+                "id": p_id,
+                "info": p_info,
+                "prefix": p_prefix,
+                "resourceLocations": p_resource_locations,
+                "sourceId": p_source_id,
+                "timestamp": p_timestamp,
+                "type": p_type_,
+                "userId": p_user_id,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ActivityComment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ActivityComment {
@@ -3145,6 +4057,32 @@ impl serde::Serialize for ActivityComment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ActivityComment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ActivityComment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ActivityComment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_text = generator.subschema_for::<Text>();
+        let p_time_stamp = generator.subschema_for::<String>();
+        let p_user_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "text": p_text,
+                "timeStamp": p_time_stamp,
+                "userId": p_user_id,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ActivityCustomValue` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ActivityCustomValue {
@@ -3191,6 +4129,28 @@ impl serde::Serialize for ActivityCustomValue {
             map.serialize_entry("values", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ActivityCustomValue {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ActivityCustomValue")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ActivityCustomValue")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_values = generator.subschema_for::<Vec<String>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "values": p_values,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -3249,6 +4209,30 @@ impl serde::Serialize for ActivityCustomValueEntry {
             map.serialize_entry("key", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ActivityCustomValueEntry {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ActivityCustomValueEntry")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ActivityCustomValueEntry")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_custom_values = generator.subschema_for::<ActivityCustomValue>();
+        let p_key = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "customValues": p_custom_values,
+                "key": p_key,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -3319,6 +4303,32 @@ impl serde::Serialize for ActivitySource {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ActivitySource {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ActivitySource")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ActivitySource")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_id = generator.subschema_for::<String>();
+        let p_prefix = generator.subschema_for::<String>();
+        let p_types = generator.subschema_for::<Vec<String>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "id": p_id,
+                "prefix": p_prefix,
+                "types": p_types,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Approval` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Approval {
@@ -3383,6 +4393,32 @@ impl serde::Serialize for Approval {
             map.serialize_entry("user", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Approval {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Approval")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Approval")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_secure_approval_comment_id = generator.subschema_for::<String>();
+        let p_status = generator.subschema_for::<EnumOptionId>();
+        let p_user = generator.subschema_for::<User>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "secureApprovalCommentId": p_secure_approval_comment_id,
+                "status": p_status,
+                "user": p_user,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -3507,6 +4543,44 @@ impl serde::Serialize for Attachment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Attachment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Attachment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Attachment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_file_name = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_length = generator.subschema_for::<i64>();
+        let p_title = generator.subschema_for::<String>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_url = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "fileName": p_file_name,
+                "id": p_id,
+                "length": p_length,
+                "title": p_title,
+                "updated": p_updated,
+                "url": p_url,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Baseline` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Baseline {
@@ -3628,6 +4702,44 @@ impl serde::Serialize for Baseline {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Baseline {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Baseline")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Baseline")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_base_object_uri = generator.subschema_for::<String>();
+        let p_base_revision = generator.subschema_for::<String>();
+        let p_description = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_project = generator.subschema_for::<Project>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "baseObjectURI": p_base_object_uri,
+                "baseRevision": p_base_revision,
+                "description": p_description,
+                "id": p_id,
+                "name": p_name,
+                "project": p_project,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Category` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Category {
@@ -3710,6 +4822,36 @@ impl serde::Serialize for Category {
             map.serialize_entry("unresolvable", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Category {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Category")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Category")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_description = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "description": p_description,
+                "id": p_id,
+                "name": p_name,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -3801,6 +4943,40 @@ impl serde::Serialize for Change {
             map.serialize_entry("user", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Change {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Change")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Change")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_creation = generator.subschema_for::<bool>();
+        let p_date = generator.subschema_for::<String>();
+        let p_diffs = generator.subschema_for::<Vec<FieldDiff>>();
+        let p_empty = generator.subschema_for::<bool>();
+        let p_invalid = generator.subschema_for::<bool>();
+        let p_revision = generator.subschema_for::<String>();
+        let p_user = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "creation": p_creation,
+                "date": p_date,
+                "diffs": p_diffs,
+                "empty": p_empty,
+                "invalid": p_invalid,
+                "revision": p_revision,
+                "user": p_user,
+            },
+            "required": ["creation", "empty", "invalid"],
+        })
     }
 }
 
@@ -3954,6 +5130,50 @@ impl serde::Serialize for Comment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Comment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Comment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Comment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_child_comment_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_parent_comment_uri = generator.subschema_for::<String>();
+        let p_resolved = generator.subschema_for::<bool>();
+        let p_tags = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_text = generator.subschema_for::<Text>();
+        let p_title = generator.subschema_for::<String>();
+        let p_visible_to = generator.subschema_for::<Vec<String>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "childCommentURIs": p_child_comment_ur_is,
+                "created": p_created,
+                "id": p_id,
+                "parentCommentURI": p_parent_comment_uri,
+                "resolved": p_resolved,
+                "tags": p_tags,
+                "text": p_text,
+                "title": p_title,
+                "visibleTo": p_visible_to,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Custom` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Custom {
@@ -4005,6 +5225,30 @@ impl serde::Serialize for Custom {
             map.serialize_entry("value", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Custom {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Custom")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Custom")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_key = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<AnyValue>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "key": p_key,
+                "value": p_value,
+            },
+            "required": ["key"],
+        })
     }
 }
 
@@ -4065,6 +5309,32 @@ impl serde::Serialize for CustomField {
             map.serialize_entry("value", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for CustomField {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("CustomField")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::CustomField")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_key = generator.subschema_for::<String>();
+        let p_parent_item_uri = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<AnyValue>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "key": p_key,
+                "parentItemURI": p_parent_item_uri,
+                "value": p_value,
+            },
+            "required": ["key", "parentItemURI"],
+        })
     }
 }
 
@@ -4175,6 +5445,44 @@ impl serde::Serialize for CustomFieldType {
             map.serialize_entry("enumId", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for CustomFieldType {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("CustomFieldType")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::CustomFieldType")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_default_value = generator.subschema_for::<AnyValue>();
+        let p_depends_on = generator.subschema_for::<String>();
+        let p_description = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_multi = generator.subschema_for::<bool>();
+        let p_name = generator.subschema_for::<String>();
+        let p_required = generator.subschema_for::<bool>();
+        let p_type_ = generator.subschema_for::<String>();
+        let p_enum_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "defaultValue": p_default_value,
+                "dependsOn": p_depends_on,
+                "description": p_description,
+                "id": p_id,
+                "multi": p_multi,
+                "name": p_name,
+                "required": p_required,
+                "type": p_type_,
+                "enumId": p_enum_id,
+            },
+            "required": ["multi", "required"],
+        })
     }
 }
 
@@ -4291,6 +5599,44 @@ impl serde::Serialize for EnumCustomFieldType {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for EnumCustomFieldType {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("EnumCustomFieldType")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::EnumCustomFieldType")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_default_value = generator.subschema_for::<AnyValue>();
+        let p_depends_on = generator.subschema_for::<String>();
+        let p_description = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_multi = generator.subschema_for::<bool>();
+        let p_name = generator.subschema_for::<String>();
+        let p_required = generator.subschema_for::<bool>();
+        let p_type_ = generator.subschema_for::<String>();
+        let p_enum_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "defaultValue": p_default_value,
+                "dependsOn": p_depends_on,
+                "description": p_description,
+                "id": p_id,
+                "multi": p_multi,
+                "name": p_name,
+                "required": p_required,
+                "type": p_type_,
+                "enumId": p_enum_id,
+            },
+            "required": ["multi", "required"],
+        })
+    }
+}
+
 /// `EnumOption` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnumOption {
@@ -4394,6 +5740,44 @@ impl serde::Serialize for EnumOption {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for EnumOption {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("EnumOption")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::EnumOption")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_default_ = generator.subschema_for::<bool>();
+        let p_enum_id = generator.subschema_for::<String>();
+        let p_hidden = generator.subschema_for::<bool>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_phantom = generator.subschema_for::<bool>();
+        let p_properties = generator.subschema_for::<Vec<Property>>();
+        let p_sequence_number = generator.subschema_for::<i32>();
+        let p_float = generator.subschema_for::<f32>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "default": p_default_,
+                "enumId": p_enum_id,
+                "hidden": p_hidden,
+                "id": p_id,
+                "name": p_name,
+                "phantom": p_phantom,
+                "properties": p_properties,
+                "sequenceNumber": p_sequence_number,
+                "float": p_float,
+            },
+            "required": ["default", "hidden", "phantom", "sequenceNumber"],
+        })
+    }
+}
+
 /// `EnumOptionId` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct EnumOptionId {
@@ -4440,6 +5824,28 @@ impl serde::Serialize for EnumOptionId {
             map.serialize_entry("id", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for EnumOptionId {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("EnumOptionId")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::EnumOptionId")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "id": p_id,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -4498,6 +5904,30 @@ impl serde::Serialize for ExternallyLinkedWorkItem {
             map.serialize_entry("workItemURI", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ExternallyLinkedWorkItem {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ExternallyLinkedWorkItem")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ExternallyLinkedWorkItem")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_role = generator.subschema_for::<EnumOptionId>();
+        let p_work_item_uri = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "role": p_role,
+                "workItemURI": p_work_item_uri,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -4591,6 +6021,38 @@ impl serde::Serialize for FieldDiff {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for FieldDiff {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("FieldDiff")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::FieldDiff")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_added = generator.subschema_for::<Vec<AnyValue>>();
+        let p_after = generator.subschema_for::<AnyValue>();
+        let p_before = generator.subschema_for::<AnyValue>();
+        let p_collection = generator.subschema_for::<bool>();
+        let p_field_name = generator.subschema_for::<String>();
+        let p_removed = generator.subschema_for::<Vec<AnyValue>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "added": p_added,
+                "after": p_after,
+                "before": p_before,
+                "collection": p_collection,
+                "fieldName": p_field_name,
+                "removed": p_removed,
+            },
+            "required": ["collection"],
+        })
+    }
+}
+
 /// `Folder` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Folder {
@@ -4667,6 +6129,34 @@ impl serde::Serialize for Folder {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Folder {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Folder")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Folder")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_name = generator.subschema_for::<String>();
+        let p_project_uri = generator.subschema_for::<String>();
+        let p_title = generator.subschema_for::<String>();
+        let p_title_or_name = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "name": p_name,
+                "projectURI": p_project_uri,
+                "title": p_title,
+                "titleOrName": p_title_or_name,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Hyperlink` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Hyperlink {
@@ -4722,6 +6212,30 @@ impl serde::Serialize for Hyperlink {
             map.serialize_entry("uri", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Hyperlink {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Hyperlink")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Hyperlink")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_role = generator.subschema_for::<EnumOptionId>();
+        let p_uri = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "role": p_role,
+                "uri": p_uri,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -4792,6 +6306,32 @@ impl serde::Serialize for ImportedComment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ImportedComment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ImportedComment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ImportedComment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<String>();
+        let p_created = generator.subschema_for::<String>();
+        let p_initials = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "created": p_created,
+                "initials": p_initials,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `LanguageDefinition` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LanguageDefinition {
@@ -4847,6 +6387,30 @@ impl serde::Serialize for LanguageDefinition {
             map.serialize_entry("label", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for LanguageDefinition {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("LanguageDefinition")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::LanguageDefinition")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_id = generator.subschema_for::<String>();
+        let p_label = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "id": p_id,
+                "label": p_label,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -4923,6 +6487,34 @@ impl serde::Serialize for LinkedOslcResource {
             map.serialize_entry("uri", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for LinkedOslcResource {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("LinkedOslcResource")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::LinkedOslcResource")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_label = generator.subschema_for::<String>();
+        let p_revision = generator.subschema_for::<String>();
+        let p_role = generator.subschema_for::<EnumOptionId>();
+        let p_uri = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "label": p_label,
+                "revision": p_revision,
+                "role": p_role,
+                "uri": p_uri,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -5083,6 +6675,52 @@ impl serde::Serialize for LinkedResource {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for LinkedResource {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("LinkedResource")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::LinkedResource")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_branch = generator.subschema_for::<String>();
+        let p_category = generator.subschema_for::<String>();
+        let p_element = generator.subschema_for::<String>();
+        let p_element_position = generator.subschema_for::<String>();
+        let p_file_name = generator.subschema_for::<String>();
+        let p_link_position = generator.subschema_for::<String>();
+        let p_location = generator.subschema_for::<String>();
+        let p_message = generator.subschema_for::<String>();
+        let p_object_id = generator.subschema_for::<String>();
+        let p_object_revision = generator.subschema_for::<String>();
+        let p_project_id = generator.subschema_for::<String>();
+        let p_repository_id = generator.subschema_for::<String>();
+        let p_role = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "branch": p_branch,
+                "category": p_category,
+                "element": p_element,
+                "elementPosition": p_element_position,
+                "fileName": p_file_name,
+                "linkPosition": p_link_position,
+                "location": p_location,
+                "message": p_message,
+                "objectId": p_object_id,
+                "objectRevision": p_object_revision,
+                "projectId": p_project_id,
+                "repositoryId": p_repository_id,
+                "role": p_role,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `LinkedWorkItem` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LinkedWorkItem {
@@ -5156,6 +6794,34 @@ impl serde::Serialize for LinkedWorkItem {
             map.serialize_entry("workItemURI", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for LinkedWorkItem {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("LinkedWorkItem")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::LinkedWorkItem")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_revision = generator.subschema_for::<String>();
+        let p_role = generator.subschema_for::<EnumOptionId>();
+        let p_suspect = generator.subschema_for::<bool>();
+        let p_work_item_uri = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "revision": p_revision,
+                "role": p_role,
+                "suspect": p_suspect,
+                "workItemURI": p_work_item_uri,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -5523,6 +7189,92 @@ impl serde::Serialize for Module {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Module {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Module")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Module")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_allowed_wi_types = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_are_links_from_parent_to_child = generator.subschema_for::<bool>();
+        let p_author = generator.subschema_for::<User>();
+        let p_auto_suspect = generator.subschema_for::<bool>();
+        let p_branched_from = generator.subschema_for::<Module>();
+        let p_branched_with_initialized_fields = generator.subschema_for::<Vec<String>>();
+        let p_branched_with_query = generator.subschema_for::<String>();
+        let p_comments = generator.subschema_for::<Vec<ModuleComment>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_derived_fields = generator.subschema_for::<Vec<String>>();
+        let p_derived_from_uri = generator.subschema_for::<String>();
+        let p_derived_from_link_role = generator.subschema_for::<EnumOptionId>();
+        let p_heading_sidebar_fields = generator.subschema_for::<String>();
+        let p_home_page_content = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_linked_oslc_resources = generator.subschema_for::<Vec<LinkedOslcResource>>();
+        let p_location = generator.subschema_for::<String>();
+        let p_module_absolute_location = generator.subschema_for::<String>();
+        let p_module_folder = generator.subschema_for::<String>();
+        let p_module_location = generator.subschema_for::<String>();
+        let p_module_name = generator.subschema_for::<String>();
+        let p_project = generator.subschema_for::<Project>();
+        let p_status = generator.subschema_for::<EnumOptionId>();
+        let p_structure_link_role = generator.subschema_for::<EnumOptionId>();
+        let p_title = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<EnumOptionId>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_updated_by = generator.subschema_for::<User>();
+        let p_uses_outline_numbering = generator.subschema_for::<bool>();
+        let p_variant_uri = generator.subschema_for::<String>();
+        let p_custom_fields = generator.subschema_for::<Vec<Custom>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "allowedWITypes": p_allowed_wi_types,
+                "areLinksFromParentToChild": p_are_links_from_parent_to_child,
+                "author": p_author,
+                "autoSuspect": p_auto_suspect,
+                "branchedFrom": p_branched_from,
+                "branchedWithInitializedFields": p_branched_with_initialized_fields,
+                "branchedWithQuery": p_branched_with_query,
+                "comments": p_comments,
+                "created": p_created,
+                "derivedFields": p_derived_fields,
+                "derivedFromURI": p_derived_from_uri,
+                "derivedFromLinkRole": p_derived_from_link_role,
+                "headingSidebarFields": p_heading_sidebar_fields,
+                "homePageContent": p_home_page_content,
+                "id": p_id,
+                "linkedOslcResources": p_linked_oslc_resources,
+                "location": p_location,
+                "moduleAbsoluteLocation": p_module_absolute_location,
+                "moduleFolder": p_module_folder,
+                "moduleLocation": p_module_location,
+                "moduleName": p_module_name,
+                "project": p_project,
+                "status": p_status,
+                "structureLinkRole": p_structure_link_role,
+                "title": p_title,
+                "type": p_type_,
+                "updated": p_updated,
+                "updatedBy": p_updated_by,
+                "usesOutlineNumbering": p_uses_outline_numbering,
+                "variantURI": p_variant_uri,
+                "customFields": p_custom_fields,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `ModuleComment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModuleComment {
@@ -5673,6 +7425,50 @@ impl serde::Serialize for ModuleComment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for ModuleComment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("ModuleComment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::ModuleComment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_child_comment_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_imported_comment = generator.subschema_for::<ImportedComment>();
+        let p_parent_comment_uri = generator.subschema_for::<String>();
+        let p_referred_work_item_uri = generator.subschema_for::<String>();
+        let p_resolved = generator.subschema_for::<bool>();
+        let p_tags = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_text = generator.subschema_for::<Text>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "childCommentURIs": p_child_comment_ur_is,
+                "created": p_created,
+                "id": p_id,
+                "importedComment": p_imported_comment,
+                "parentCommentURI": p_parent_comment_uri,
+                "referredWorkItemURI": p_referred_work_item_uri,
+                "resolved": p_resolved,
+                "tags": p_tags,
+                "text": p_text,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `PdfProperties` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PdfProperties {
@@ -5747,6 +7543,38 @@ impl serde::Serialize for PdfProperties {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PdfProperties {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PdfProperties")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PdfProperties")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_paper_size = generator.subschema_for::<String>();
+        let p_orientation = generator.subschema_for::<String>();
+        let p_fit_to_page_width = generator.subschema_for::<bool>();
+        let p_generate_bookmarks = generator.subschema_for::<bool>();
+        let p_include_header_footer = generator.subschema_for::<bool>();
+        let p_repeat_table_headers = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "paperSize": p_paper_size,
+                "orientation": p_orientation,
+                "fitToPageWidth": p_fit_to_page_width,
+                "generateBookmarks": p_generate_bookmarks,
+                "includeHeaderFooter": p_include_header_footer,
+                "repeatTableHeaders": p_repeat_table_headers,
+            },
+            "required": ["paperSize", "orientation", "fitToPageWidth", "generateBookmarks", "includeHeaderFooter", "repeatTableHeaders"],
+        })
+    }
+}
+
 /// `PlanningConstraint` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PlanningConstraint {
@@ -5802,6 +7630,30 @@ impl serde::Serialize for PlanningConstraint {
             map.serialize_entry("date", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PlanningConstraint {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PlanningConstraint")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PlanningConstraint")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_constraint = generator.subschema_for::<EnumOptionId>();
+        let p_date = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "constraint": p_constraint,
+                "date": p_date,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -5907,6 +7759,44 @@ impl serde::Serialize for PriorityOpt {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PriorityOpt {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PriorityOpt")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PriorityOpt")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_default_ = generator.subschema_for::<bool>();
+        let p_enum_id = generator.subschema_for::<String>();
+        let p_hidden = generator.subschema_for::<bool>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_phantom = generator.subschema_for::<bool>();
+        let p_properties = generator.subschema_for::<Vec<Property>>();
+        let p_sequence_number = generator.subschema_for::<i32>();
+        let p_float = generator.subschema_for::<f32>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "default": p_default_,
+                "enumId": p_enum_id,
+                "hidden": p_hidden,
+                "id": p_id,
+                "name": p_name,
+                "phantom": p_phantom,
+                "properties": p_properties,
+                "sequenceNumber": p_sequence_number,
+                "float": p_float,
+            },
+            "required": ["default", "hidden", "phantom", "sequenceNumber", "float"],
+        })
+    }
+}
+
 /// `PriorityOptionId` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PriorityOptionId {
@@ -5956,6 +7846,28 @@ impl serde::Serialize for PriorityOptionId {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for PriorityOptionId {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("PriorityOptionId")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::PriorityOptionId")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_id = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "id": p_id,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Row` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Row {
@@ -6002,6 +7914,28 @@ impl serde::Serialize for Row {
             map.serialize_entry("values", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Row {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Row")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Row")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_values = generator.subschema_for::<Vec<Text>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "values": p_values,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -6060,6 +7994,30 @@ impl serde::Serialize for Table {
             map.serialize_entry("rows", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Table {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Table")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Table")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_keys = generator.subschema_for::<Vec<String>>();
+        let p_rows = generator.subschema_for::<Vec<Row>>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "keys": p_keys,
+                "rows": p_rows,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -6190,6 +8148,46 @@ impl serde::Serialize for TestRunAttachment {
             map.serialize_entry("unresolvable", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestRunAttachment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestRunAttachment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestRunAttachment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_file_name = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_length = generator.subschema_for::<i64>();
+        let p_test_run_uri = generator.subschema_for::<String>();
+        let p_title = generator.subschema_for::<String>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_url = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "fileName": p_file_name,
+                "id": p_id,
+                "length": p_length,
+                "testRunURI": p_test_run_uri,
+                "title": p_title,
+                "updated": p_updated,
+                "url": p_url,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -6334,6 +8332,48 @@ impl serde::Serialize for TestRunComment {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TestRunComment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TestRunComment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TestRunComment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_child_comment_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_parent_comment_uri = generator.subschema_for::<String>();
+        let p_resolved = generator.subschema_for::<bool>();
+        let p_tags = generator.subschema_for::<Vec<EnumOptionId>>();
+        let p_text = generator.subschema_for::<Text>();
+        let p_title = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "childCommentURIs": p_child_comment_ur_is,
+                "created": p_created,
+                "id": p_id,
+                "parentCommentURI": p_parent_comment_uri,
+                "resolved": p_resolved,
+                "tags": p_tags,
+                "text": p_text,
+                "title": p_title,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `TimePoint` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TimePoint {
@@ -6443,6 +8483,42 @@ impl serde::Serialize for TimePoint {
             map.serialize_entry("unresolvable", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for TimePoint {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("TimePoint")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::TimePoint")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_closed = generator.subschema_for::<bool>();
+        let p_description = generator.subschema_for::<Text>();
+        let p_earliest_planned_start = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_time = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "closed": p_closed,
+                "description": p_description,
+                "earliestPlannedStart": p_earliest_planned_start,
+                "id": p_id,
+                "name": p_name,
+                "time": p_time,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -6646,6 +8722,60 @@ impl serde::Serialize for WikiPage {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for WikiPage {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("WikiPage")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::WikiPage")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_attachments = generator.subschema_for::<Vec<WikiPageAttachment>>();
+        let p_author = generator.subschema_for::<User>();
+        let p_created = generator.subschema_for::<String>();
+        let p_home_page_content = generator.subschema_for::<Text>();
+        let p_id = generator.subschema_for::<String>();
+        let p_linked_page_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_location = generator.subschema_for::<String>();
+        let p_page_location = generator.subschema_for::<String>();
+        let p_page_name = generator.subschema_for::<String>();
+        let p_project = generator.subschema_for::<Project>();
+        let p_space_id = generator.subschema_for::<String>();
+        let p_title = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<String>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_updated_by = generator.subschema_for::<User>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "attachments": p_attachments,
+                "author": p_author,
+                "created": p_created,
+                "homePageContent": p_home_page_content,
+                "id": p_id,
+                "linkedPageURIs": p_linked_page_ur_is,
+                "location": p_location,
+                "pageLocation": p_page_location,
+                "pageName": p_page_name,
+                "project": p_project,
+                "spaceId": p_space_id,
+                "title": p_title,
+                "type": p_type_,
+                "updated": p_updated,
+                "updatedBy": p_updated_by,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `WikiPageAttachment` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WikiPageAttachment {
@@ -6764,6 +8894,44 @@ impl serde::Serialize for WikiPageAttachment {
             map.serialize_entry("unresolvable", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for WikiPageAttachment {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("WikiPageAttachment")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::WikiPageAttachment")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<User>();
+        let p_file_name = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_length = generator.subschema_for::<i64>();
+        let p_title = generator.subschema_for::<String>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_url = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "fileName": p_file_name,
+                "id": p_id,
+                "length": p_length,
+                "title": p_title,
+                "updated": p_updated,
+                "url": p_url,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
     }
 }
 
@@ -7240,6 +9408,111 @@ impl serde::Serialize for WorkItem {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for WorkItem {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("WorkItem")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::WorkItem")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_approvals = generator.subschema_for::<Vec<Approval>>();
+        let p_assignee = generator.subschema_for::<Vec<User>>();
+        let p_attachments = generator.subschema_for::<Vec<Attachment>>();
+        let p_author = generator.subschema_for::<User>();
+        let p_categories = generator.subschema_for::<Vec<Category>>();
+        let p_comments = generator.subschema_for::<Vec<Comment>>();
+        let p_created = generator.subschema_for::<String>();
+        let p_description = generator.subschema_for::<Text>();
+        let p_due_date = generator.subschema_for::<String>();
+        let p_externally_linked_work_items =
+            generator.subschema_for::<Vec<ExternallyLinkedWorkItem>>();
+        let p_hyperlinks = generator.subschema_for::<Vec<Hyperlink>>();
+        let p_id = generator.subschema_for::<String>();
+        let p_initial_estimate = generator.subschema_for::<String>();
+        let p_linked_oslc_resources = generator.subschema_for::<Vec<LinkedOslcResource>>();
+        let p_linked_revisions = generator.subschema_for::<Vec<Revision>>();
+        let p_linked_revisions_derived = generator.subschema_for::<Vec<Revision>>();
+        let p_linked_work_items = generator.subschema_for::<Vec<LinkedWorkItem>>();
+        let p_linked_work_items_derived = generator.subschema_for::<Vec<LinkedWorkItem>>();
+        let p_location = generator.subschema_for::<String>();
+        let p_module_uri = generator.subschema_for::<String>();
+        let p_outline_number = generator.subschema_for::<String>();
+        let p_planned_end = generator.subschema_for::<String>();
+        let p_planned_in_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_planned_start = generator.subschema_for::<String>();
+        let p_planning_constraints = generator.subschema_for::<Vec<PlanningConstraint>>();
+        let p_previous_status = generator.subschema_for::<EnumOptionId>();
+        let p_priority = generator.subschema_for::<PriorityOptionId>();
+        let p_project = generator.subschema_for::<Project>();
+        let p_remaining_estimate = generator.subschema_for::<String>();
+        let p_resolution = generator.subschema_for::<EnumOptionId>();
+        let p_resolved_on = generator.subschema_for::<String>();
+        let p_severity = generator.subschema_for::<EnumOptionId>();
+        let p_status = generator.subschema_for::<EnumOptionId>();
+        let p_time_point = generator.subschema_for::<TimePoint>();
+        let p_time_spent = generator.subschema_for::<String>();
+        let p_title = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<EnumOptionId>();
+        let p_updated = generator.subschema_for::<String>();
+        let p_work_records = generator.subschema_for::<Vec<WorkRecord>>();
+        let p_custom_fields = generator.subschema_for::<Vec<Custom>>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "approvals": p_approvals,
+                "assignee": p_assignee,
+                "attachments": p_attachments,
+                "author": p_author,
+                "categories": p_categories,
+                "comments": p_comments,
+                "created": p_created,
+                "description": p_description,
+                "dueDate": p_due_date,
+                "externallyLinkedWorkItems": p_externally_linked_work_items,
+                "hyperlinks": p_hyperlinks,
+                "id": p_id,
+                "initialEstimate": p_initial_estimate,
+                "linkedOslcResources": p_linked_oslc_resources,
+                "linkedRevisions": p_linked_revisions,
+                "linkedRevisionsDerived": p_linked_revisions_derived,
+                "linkedWorkItems": p_linked_work_items,
+                "linkedWorkItemsDerived": p_linked_work_items_derived,
+                "location": p_location,
+                "moduleURI": p_module_uri,
+                "outlineNumber": p_outline_number,
+                "plannedEnd": p_planned_end,
+                "plannedInURIs": p_planned_in_ur_is,
+                "plannedStart": p_planned_start,
+                "planningConstraints": p_planning_constraints,
+                "previousStatus": p_previous_status,
+                "priority": p_priority,
+                "project": p_project,
+                "remainingEstimate": p_remaining_estimate,
+                "resolution": p_resolution,
+                "resolvedOn": p_resolved_on,
+                "severity": p_severity,
+                "status": p_status,
+                "timePoint": p_time_point,
+                "timeSpent": p_time_spent,
+                "title": p_title,
+                "type": p_type_,
+                "updated": p_updated,
+                "workRecords": p_work_records,
+                "customFields": p_custom_fields,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `WorkRecord` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorkRecord {
@@ -7352,6 +9625,42 @@ impl serde::Serialize for WorkRecord {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for WorkRecord {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("WorkRecord")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::WorkRecord")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_comment = generator.subschema_for::<String>();
+        let p_date = generator.subschema_for::<String>();
+        let p_id = generator.subschema_for::<String>();
+        let p_time_spent = generator.subschema_for::<String>();
+        let p_type_ = generator.subschema_for::<EnumOptionId>();
+        let p_user = generator.subschema_for::<User>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "comment": p_comment,
+                "date": p_date,
+                "id": p_id,
+                "timeSpent": p_time_spent,
+                "type": p_type_,
+                "user": p_user,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `WorkflowAction` in `http://ws.polarion.com/TrackerWebService-types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct WorkflowAction {
@@ -7457,6 +9766,42 @@ impl serde::Serialize for WorkflowAction {
             map.serialize_entry("unavailabilityMessage", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for WorkflowAction {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("WorkflowAction")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::WorkflowAction")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_action_id = generator.subschema_for::<i32>();
+        let p_action_name = generator.subschema_for::<String>();
+        let p_cleaned_features = generator.subschema_for::<Vec<String>>();
+        let p_native_action_id = generator.subschema_for::<String>();
+        let p_required_features = generator.subschema_for::<Vec<String>>();
+        let p_suggested_features = generator.subschema_for::<Vec<String>>();
+        let p_target_status = generator.subschema_for::<EnumOptionId>();
+        let p_unavailability_message = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "actionId": p_action_id,
+                "actionName": p_action_name,
+                "cleanedFeatures": p_cleaned_features,
+                "nativeActionId": p_native_action_id,
+                "requiredFeatures": p_required_features,
+                "suggestedFeatures": p_suggested_features,
+                "targetStatus": p_target_status,
+                "unavailabilityMessage": p_unavailability_message,
+            },
+            "required": ["actionId"],
+        })
     }
 }
 
@@ -7592,6 +9937,46 @@ impl serde::Serialize for Revision {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Revision {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Revision")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Revision")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_author = generator.subschema_for::<String>();
+        let p_branch = generator.subschema_for::<String>();
+        let p_created = generator.subschema_for::<String>();
+        let p_internal_commit = generator.subschema_for::<bool>();
+        let p_linked_work_item_ur_is = generator.subschema_for::<Vec<String>>();
+        let p_message = generator.subschema_for::<String>();
+        let p_name = generator.subschema_for::<String>();
+        let p_repository_name = generator.subschema_for::<String>();
+        let p_uri = generator.subschema_for::<String>();
+        let p_unresolvable = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "author": p_author,
+                "branch": p_branch,
+                "created": p_created,
+                "internalCommit": p_internal_commit,
+                "linkedWorkItemURIs": p_linked_work_item_ur_is,
+                "message": p_message,
+                "name": p_name,
+                "repositoryName": p_repository_name,
+                "uri": p_uri,
+                "unresolvable": p_unresolvable,
+            },
+            "required": [],
+        })
+    }
+}
+
 /// `Text` in `http://ws.polarion.com/types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Text {
@@ -7647,6 +10032,32 @@ impl serde::Serialize for Text {
     }
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Text {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Text")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Text")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_type_ = generator.subschema_for::<String>();
+        let p_content = generator.subschema_for::<String>();
+        let p_content_lossy = generator.subschema_for::<bool>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "type": p_type_,
+                "content": p_content,
+                "contentLossy": p_content_lossy,
+            },
+            "required": ["type", "content", "contentLossy"],
+        })
+    }
+}
+
 /// `property` in `http://ws.polarion.com/types`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Property {
@@ -7698,6 +10109,30 @@ impl serde::Serialize for Property {
             map.serialize_entry("value", v)?;
         }
         map.end()
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Property {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("Property")
+    }
+
+    fn schema_id() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("polarion_soap::types::Property")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let p_key = generator.subschema_for::<String>();
+        let p_value = generator.subschema_for::<String>();
+        schemars::json_schema!({
+            "type": "object",
+            "properties": {
+                "key": p_key,
+                "value": p_value,
+            },
+            "required": ["key"],
+        })
     }
 }
 
@@ -9101,5 +11536,22 @@ impl serde::Serialize for AnyValue {
                 map.end()
             }
         }
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for AnyValue {
+    fn schema_name() -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed("AnyValue")
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Any value: the decoded value itself (string, number, boolean, object or array), null for nil, or {xsiType, xml} for types the WSDLs do not define."
+        })
     }
 }

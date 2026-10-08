@@ -14,7 +14,7 @@ authors.workspace = true
 [dependencies]
 base64.workspace = true
 clap = { workspace = true, optional = true }
-polarion.workspace = true
+polarion = { workspace = true, features = ["schemars"] }
 polarion-commands-derive.workspace = true
 schemars = "1"
 serde.workspace = true
@@ -26,6 +26,7 @@ serde_path_to_error = "0.1"
 cli = ["dep:clap"]
 
 [dev-dependencies]
+jsonschema = { version = "0.58", default-features = false }
 tokio.workspace = true
 wiremock.workspace = true
 

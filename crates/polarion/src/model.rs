@@ -11,6 +11,7 @@ use crate::uri::{DocumentRef, ItemRef};
 
 /// Rich text (`text/html` or `text/plain`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Text {
     /// MIME type; `type` in JSON.
     #[serde(rename = "type")]
@@ -49,6 +50,23 @@ pub enum FieldValue {
     },
 }
 
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for FieldValue {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "FieldValue".into()
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A custom field value: a string (also enum option ids, dates and decimals), number, boolean, a list of values, rich text {type, content}, or {xsiType, xml} for unmapped types"
+        })
+    }
+}
+
 impl FieldValue {
     /// The value as text, for enum ids, strings, dates and numbers kept as text.
     pub fn as_str(&self) -> Option<&str> {
@@ -67,6 +85,7 @@ impl FieldValue {
 
 /// A link between two work items.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Link {
     /// Link role id, e.g. `parent` or `verifies`.
@@ -83,6 +102,7 @@ pub struct Link {
 
 /// A link from a work item to a web resource.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Hyperlink {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
@@ -91,6 +111,7 @@ pub struct Hyperlink {
 
 /// A work item. Fields not requested from the server are `None` or empty.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkItem {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,6 +209,7 @@ impl WorkItem {
 
 /// A revision in a source repository linked to a work item.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct LinkedRevision {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
@@ -196,6 +218,7 @@ pub struct LinkedRevision {
 
 /// A comment on a work item.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -228,6 +251,7 @@ pub struct Comment {
 
 /// Attachment metadata; the content is fetched with [`crate::WorkItems::attachment`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Attachment {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -250,6 +274,7 @@ pub struct Attachment {
 
 /// An approval of a work item.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Approval {
     /// User id of the approver.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -261,6 +286,7 @@ pub struct Approval {
 
 /// Time booked on a work item.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -283,6 +309,7 @@ pub struct WorkRecord {
 
 /// A workflow action (status transition) of a work item.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowAction {
     /// The id to pass to [`crate::WorkItems::perform_action`].
@@ -305,6 +332,7 @@ pub struct WorkflowAction {
 
 /// One revision in the history of a work item.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -323,6 +351,7 @@ pub struct Change {
 
 /// The change of one field in a [`Change`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FieldChange {
     pub field: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -339,6 +368,7 @@ pub struct FieldChange {
 
 /// The definition of a custom field.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct FieldDefinition {
     pub id: String,
@@ -365,6 +395,7 @@ pub struct FieldDefinition {
 
 /// An option of an enumeration (types, statuses, priorities, enum custom fields, ...).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct EnumOption {
     pub id: String,
@@ -381,6 +412,7 @@ pub struct EnumOption {
 
 /// A work item category.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Category {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -392,6 +424,7 @@ pub struct Category {
 
 /// A time point (milestone) of a project.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TimePoint {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -407,6 +440,7 @@ pub struct TimePoint {
 
 /// A document (called "module" in the SOAP API).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -464,6 +498,7 @@ impl Document {
 
 /// A project.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -489,6 +524,7 @@ pub struct Project {
 
 /// A user.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -500,6 +536,7 @@ pub struct User {
 
 /// A project group (folder of projects).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectGroup {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -521,6 +558,7 @@ pub struct ProjectGroup {
 
 /// A wiki page.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct WikiPage {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -557,6 +595,7 @@ pub struct WikiPage {
 
 /// A baseline: a named repository revision.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Baseline {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -582,6 +621,7 @@ pub struct Baseline {
 
 /// A repository revision (commit).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Revision {
     /// The revision id.
@@ -608,6 +648,7 @@ pub struct Revision {
 
 /// A test run (or test run template).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct TestRun {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -673,6 +714,7 @@ pub struct TestRun {
 
 /// The result of executing one test case in a test run.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct TestRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -708,6 +750,7 @@ pub struct TestRecord {
 
 /// The result of one test step.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TestStepResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<String>,
@@ -720,6 +763,7 @@ pub struct TestStepResult {
 /// The test steps of a test case: a table whose columns are `columns`
 /// (e.g. `step`, `description`, `expectedResult`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TestSteps {
     pub columns: Vec<String>,
     /// One row per step, one cell per column.
@@ -728,6 +772,7 @@ pub struct TestSteps {
 
 /// A plan (release, iteration) or plan template.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Plan {
     #[serde(skip_serializing_if = "Option::is_none")]

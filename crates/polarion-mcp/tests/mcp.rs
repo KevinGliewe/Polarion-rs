@@ -597,3 +597,81 @@ async fn arguments_are_checked_against_the_command() {
     let (text, error) = tool_text(&r[3]);
     assert!(error && text.contains("`item`"), "{text}");
 }
+
+// ---- output schemas
+
+/// `instance` satisfies `schema`.
+#[track_caller]
+fn conforms(schema: &Value, instance: &Value) {
+    let validator = jsonschema::validator_for(schema).unwrap();
+    let errors: Vec<String> = validator
+        .iter_errors(instance)
+        .map(|e| e.to_string())
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}\n{instance}\n{schema}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn results_come_with_output_schemas() {
+    let server = server().await;
+    mock(
+        &server,
+        &["getWorkItemById>", "projectId>P<", ">P-1<"],
+        &format!(
+            r#"<getWorkItemByIdResponse><getWorkItemByIdReturn uri="{URI}P${{WorkItem}}P-1"><id>P-1</id><title>Brakes</title><linkedWorkItems><LinkedWorkItem><role><id>parent</id></role><workItemURI>{URI}P${{WorkItem}}P-0</workItemURI></LinkedWorkItem></linkedWorkItems><type><id>requirement</id></type></getWorkItemByIdReturn></getWorkItemByIdResponse>"#
+        ),
+    )
+    .await;
+    mock(
+        &server,
+        &["getWorkItemsCount>"],
+        "<getWorkItemsCountResponse><getWorkItemsCountReturn>7</getWorkItemsCountReturn></getWorkItemsCountResponse>",
+    )
+    .await;
+
+    let r = session(
+        Some(&server),
+        &[("POLARION_PROJECT", "P"), ("POLARION_MCP_TOOLS", "all")],
+        &[
+            json!({"method": "tools/list"}),
+            call("get_work_item", json!({"item": "P-1"})),
+            call("count_work_items", json!({"query": "type:task"})),
+            call("polarion_describe", json!({"command": "items.count"})),
+        ],
+    )
+    .await;
+
+    let tools = r[1]["result"]["tools"].as_array().unwrap();
+    let output =
+        |name: &str| tools.iter().find(|t| t["name"] == name).unwrap()["outputSchema"].clone();
+    let item_schema = output("get_work_item");
+    assert_eq!(item_schema["type"], "object");
+    assert!(
+        item_schema["properties"]["title"].is_object(),
+        "{item_schema}"
+    );
+    // Not an object: wrapped, so clients of every protocol version accept it.
+    let count_schema = output("count_work_items");
+    assert_eq!(count_schema["required"], json!(["result"]));
+    assert_eq!(count_schema["properties"]["result"]["type"], "integer");
+    // Nothing to structure: no result (deletes), file content (attachments).
+    assert!(output("items_delete").is_null());
+    assert!(output("items_attachment").is_null());
+    assert_eq!(
+        output("items_query")["properties"]["result"]["type"],
+        "array"
+    );
+
+    let item = &r[2]["result"];
+    let text: Value = serde_json::from_str(item["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(item["structuredContent"], text);
+    assert_eq!(item["structuredContent"]["links"][0]["role"], "parent");
+    conforms(&item_schema, &item["structuredContent"]);
+
+    let count = &r[3]["result"];
+    assert_eq!(count["structuredContent"], json!({"result": 7}));
+    conforms(&count_schema, &count["structuredContent"]);
+
+    let described: Value = serde_json::from_str(&tool_text(&r[4]).0).unwrap();
+    assert_eq!(described["outputSchema"]["type"], "integer");
+}

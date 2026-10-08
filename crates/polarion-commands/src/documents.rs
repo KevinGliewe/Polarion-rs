@@ -399,7 +399,7 @@ pub struct Create {
 }
 
 /// A new or reused document: its reference and URI.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct CreatedDocument {
     pub document: polarion::DocumentRef,
     pub uri: String,

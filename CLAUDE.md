@@ -13,6 +13,10 @@ The repository is English only: code, comments, docs and commit messages.
   WSDL quirks are handled in `xtask/src/soap/emit.rs`: params documented as accepting null become `Option`
   (`nullable_params`), plus `NILLABLE_PARAMS`/`OPTIONAL_PARAMS` overrides; `READ_PREFIXES`/`OTHER_READS` decide what
   read-only clients allow; subtype elements (e.g. `EnumCustomFieldType.enumId`) are decoded into the base struct.
+- JSON Schemas of results (feature `schemars` in `polarion-soap` and `polarion`) must match what `Serialize`
+  writes: the SOAP generator emits them next to the `Serialize` impls; library types derive them; a type with a
+  hand-written `Serialize` (`ItemRef`, `DocumentRef`, `Download`) needs a hand-written schema
+  (`polarion-commands/tests/output_schemas.rs` validates real values against them).
 - `polarion`: one handle per area (`items.rs`, `documents.rs`, `schema.rs`, `tests_mgmt.rs`, `plans.rs`, `wiki.rs`,
   `baselines.rs`, `revisions.rs`, `activities.rs`, `folders.rs`, `projects.rs`, `security.rs`, `builds.rs`), domain types in
   `model.rs` (serde, camelCase, empty fields skipped), write inputs and JSON coercion in `write.rs`, SOAP ↔ domain
@@ -23,7 +27,8 @@ The repository is English only: code, comments, docs and commit messages.
   reason; new operations from a newer WSDL must be exposed or excluded there. Writes are verified against wiremock only; keep the
   "Not yet verified" list in README.md current.
 - `polarion-commands`: one module per area (mirroring the library handles); every command is a DTO struct with
-  `#[cmd(write?, view = ...)]` and a hand-written `impl Run` (`type Output` is the typed result). The name comes
+  `#[cmd(write?, view = ...)]` and a hand-written `impl Run` (`type Output` is the typed result; it must implement
+  `JsonSchema` describing its serialized form, which becomes the MCP output schema). The name comes
   from the type name (kebab-case), the summary and help from doc comments; `#[positional]` and `#[flatten]` mark
   fields, a field named `project` is the default-project override. Every DTO must be listed in `registry!` in
   `lib.rs`, which generates `AnyCommand`/`AnyOutput`, the catalog (`Entry`) and the clap tree (feature `cli`).

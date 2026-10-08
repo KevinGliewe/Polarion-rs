@@ -116,7 +116,7 @@ fn list(globals: &Globals, area: Option<&str>) -> ExitCode {
     if globals.json {
         let list: Vec<Value> = selected
             .iter()
-            .map(|e| json!({"name": e.full_name(), "summary": e.summary, "write": e.write, "input": e.input_schema()}))
+            .map(|e| json!({"name": e.full_name(), "summary": e.summary, "write": e.write, "input": e.input_schema(), "output": e.output_schema()}))
             .collect();
         println!(
             "{}",
