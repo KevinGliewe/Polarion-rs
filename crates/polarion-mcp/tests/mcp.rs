@@ -1,8 +1,11 @@
 //! The `polarion-mcp` binary end to end: JSON-RPC lines on stdin against a mock SOAP server.
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::Stdio;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 use wiremock::matchers::{body_string_contains, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -22,6 +25,7 @@ const VARS: &[&str] = &[
     "POLARION_WRITE_PROJECTS",
     "POLARION_ALLOW_GLOBAL_WRITES",
     "POLARION_MCP_TOOLS",
+    "POLARION_MCP_FILES",
 ];
 
 fn envelope(header: &str, body: &str) -> String {
@@ -362,4 +366,208 @@ async fn writes_go_through_with_write_projects() {
             .contains("Writes are enabled for: Sandbox.")
     );
     assert_eq!(tool_text(&r[1]), (r#"{"changed":true}"#.to_owned(), false));
+}
+
+// ---- attachments
+
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+const PDF: &[u8] = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n";
+
+/// A work item attachment the mock serves once.
+async fn attachment(server: &MockServer, id: &str, data: &[u8]) {
+    mock(
+        server,
+        &["getAttachment>", &format!("attachmentId>{id}<")],
+        &format!(
+            "<getAttachmentResponse><getAttachmentReturn>{}</getAttachmentReturn></getAttachmentResponse>",
+            BASE64.encode(data)
+        ),
+    )
+    .await;
+}
+
+fn download(attachment: &str, extra: Value) -> Value {
+    let mut args = json!({"item": "P/P-1", "attachment": attachment});
+    args.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    call(
+        "polarion_call",
+        json!({"command": "items.attachment", "args": args}),
+    )
+}
+
+/// A fresh directory, removed on drop.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("polarion-mcp-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+
+    fn path(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn attachments_come_back_as_images_or_text() {
+    let server = server().await;
+    attachment(&server, "a-png", PNG).await;
+    attachment(&server, "a-txt", b"hello\nworld").await;
+    attachment(&server, "a-pdf", PDF).await;
+    let r = session(
+        Some(&server),
+        &[],
+        &[
+            download("a-png", json!({})),
+            download("a-txt", json!({})),
+            download("a-pdf", json!({})),
+            // Refused before anything is downloaded.
+            download("a-pdf", json!({"save_as": "spec.pdf"})),
+        ],
+    )
+    .await;
+
+    let image = &r[1]["result"]["content"][0];
+    assert_eq!(image["type"], "image", "{image}");
+    assert_eq!(image["mimeType"], "image/png");
+    assert_eq!(image["data"], BASE64.encode(PNG));
+
+    assert_eq!(tool_text(&r[2]), ("hello\nworld".to_owned(), false));
+
+    let (text, error) = tool_text(&r[3]);
+    assert!(!error, "{text}");
+    let summary: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(summary["type"], "application/pdf");
+    assert_eq!(summary["size"], PDF.len());
+    assert!(
+        summary["note"]
+            .as_str()
+            .unwrap()
+            .contains("POLARION_MCP_FILES")
+    );
+
+    let (text, error) = tool_text(&r[4]);
+    assert!(error && text.contains("POLARION_MCP_FILES"), "{text}");
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn files_are_exchanged_through_the_folder() {
+    let dir = TempDir::new("exchange");
+    std::fs::write(dir.0.join("notes.txt"), b"hello").unwrap();
+    std::os::unix::fs::symlink(dir.0.join("../outside.pdf"), dir.0.join("link.pdf")).unwrap();
+    let server = server().await;
+    attachment(&server, "a-pdf", PDF).await;
+    mock(
+        &server,
+        &["createAttachment>", ">notes.txt<", ">aGVsbG8=<"],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+
+    let r = session(
+        Some(&server),
+        &[
+            ("POLARION_MCP_FILES", dir.path()),
+            ("POLARION_WRITE_PROJECTS", "Sandbox"),
+        ],
+        &[
+            download("a-pdf", json!({"save_as": "spec.pdf"})),
+            download("a-pdf", json!({"save_as": "../spec.pdf"})),
+            download("a-pdf", json!({"save_as": "link.pdf"})),
+            call(
+                "polarion_call",
+                json!({"command": "items.add-attachment", "args": {
+                    "item": "Sandbox/SB-1", "file-name": "notes.txt", "title": "Notes", "data-file": "notes.txt"
+                }}),
+            ),
+        ],
+    )
+    .await;
+
+    let instructions = r[0]["result"]["instructions"].as_str().unwrap();
+    assert!(instructions.contains(dir.path()), "{instructions}");
+
+    let (text, error) = tool_text(&r[1]);
+    assert!(!error, "{text}");
+    let saved: Value = serde_json::from_str(&text).unwrap();
+    assert!(saved["savedTo"].as_str().unwrap().ends_with("spec.pdf"));
+    assert_eq!(saved["size"], PDF.len());
+    assert_eq!(std::fs::read(dir.0.join("spec.pdf")).unwrap(), PDF);
+
+    let (text, error) = tool_text(&r[2]);
+    assert!(error && text.contains("plain file name"), "{text}");
+    let (text, error) = tool_text(&r[3]);
+    assert!(error && text.contains("symbolic link"), "{text}");
+    assert!(!dir.0.join("../outside.pdf").exists());
+
+    assert_eq!(tool_text(&r[4]), ("done".to_owned(), false));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn exchange_arguments_are_advertised_only_with_a_folder() {
+    let dir = TempDir::new("advertised");
+    for with_folder in [false, true] {
+        let mut env = vec![("POLARION_MCP_TOOLS", "all")];
+        if with_folder {
+            env.push(("POLARION_MCP_FILES", dir.path()));
+        }
+        let r = session(
+            None,
+            &env,
+            &[
+                json!({"method": "tools/list"}),
+                call(
+                    "polarion_describe",
+                    json!({"command": "items.add-attachment"}),
+                ),
+            ],
+        )
+        .await;
+        let tools = r[1]["result"]["tools"].as_array().unwrap();
+        let schema =
+            |name: &str| tools.iter().find(|t| t["name"] == name).unwrap()["inputSchema"].clone();
+        let download = schema("items_attachment");
+        assert_eq!(download["properties"].get("save_as").is_some(), with_folder);
+        let upload = schema("items_add_attachment");
+        assert_eq!(upload["properties"].get("data-file").is_some(), with_folder);
+        let data_required = upload["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("data"));
+        assert_eq!(data_required, !with_folder);
+
+        let described: Value = serde_json::from_str(&tool_text(&r[2]).0).unwrap();
+        assert_eq!(described["inputSchema"], upload);
+    }
+}
+
+#[test]
+fn a_missing_exchange_folder_stops_the_server() {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    for var in VARS {
+        cmd.env_remove(var);
+    }
+    let out = cmd
+        .env("POLARION_MCP_FILES", "/nonexistent/polarion-mcp-exchange")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8(out.stderr)
+            .unwrap()
+            .contains("POLARION_MCP_FILES")
+    );
 }

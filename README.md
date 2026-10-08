@@ -94,6 +94,20 @@ Results are the library's JSON. Failures, including refused writes, are tool err
 `error (readOnly): ...`. The server is read-only unless `POLARION_WRITE_PROJECTS` is set, and it tells the agent so
 when it connects.
 
+**Attachments.** Work item attachments (`items.attachment`) and PDF exports (`documents.export-pdf`) never reach the
+agent as base64: images (PNG, JPEG, GIF, WebP up to 4 MB) come back as image content the model can look at, UTF-8
+text (up to 100 KB) as text, anything else as its size and type. For real files, set an exchange folder,
+`POLARION_MCP_FILES=/path/to/dir` (off by default):
+
+- downloads take `save_as: "spec.pdf"` and are written to that folder (the result says where);
+- uploads (`items.add-attachment`, `tests.add-attachment`, ...) take `data-file: "notes.txt"` instead of base64
+  `data` and read the file from that folder.
+
+Only plain file names inside the folder are accepted (no paths, no `..`, no symbolic links). With stdio the folder
+is on your machine, so the agent can open what it saved; over HTTP it is on the server and shared by all clients.
+Test run attachments can be listed but their content is not available through SOAP; documents, wiki pages and
+plans have no attachment operations at all.
+
 Claude Code:
 
 ```sh

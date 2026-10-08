@@ -7,6 +7,7 @@
 //! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them). `POLARION_MCP_TOOLS=all`
 //! registers every command as its own tool.
 
+mod files;
 mod http;
 mod server;
 mod stdio;
@@ -26,7 +27,10 @@ MCP server for Siemens Polarion ALM. Speaks stdio by default; with --http ADDR
 Environment:
   POLARION_URL, POLARION_TOKEN (or POLARION_USER + POLARION_PASSWORD), POLARION_PROJECT,
   POLARION_INSECURE, POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES
-  POLARION_MCP_TOOLS=all          every command as its own tool
+    POLARION_MCP_TOOLS=all          every command as its own tool
+  POLARION_MCP_FILES=DIR          exchange folder: attachments and PDFs saved there (save_as),
+                                  uploads read from there (data-file)
+
   POLARION_MCP_HTTP=ADDR          same as --http ADDR
   POLARION_MCP_AUTH_TOKEN         HTTP: required bearer token for clients (16+ characters)
   POLARION_MCP_ALLOWED_ORIGINS    HTTP: browser origins allowed to connect, with scheme and port
@@ -63,8 +67,20 @@ fn main() -> ExitCode {
 
     let config = Config::from_env();
     let all_tools = std::env::var("POLARION_MCP_TOOLS").is_ok_and(|v| v.trim() == "all");
+    let exchange = match files::Exchange::from_env() {
+        Ok(exchange) => exchange,
+        Err(message) => {
+            eprintln!("polarion-mcp: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
     let Some(addr) = http_addr else {
-        return match stdio::run(PolarionMcp::new(config, all_tools, Transport::Stdio)) {
+        return match stdio::run(PolarionMcp::new(
+            config,
+            all_tools,
+            Transport::Stdio,
+            exchange,
+        )) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 eprintln!("polarion-mcp: {message}");
@@ -83,7 +99,7 @@ fn main() -> ExitCode {
         .enable_all()
         .build()
         .expect("tokio runtime");
-    let server = PolarionMcp::new(config, all_tools, Transport::Http);
+    let server = PolarionMcp::new(config, all_tools, Transport::Http, exchange);
     match runtime.block_on(http::run(&addr, server, settings)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

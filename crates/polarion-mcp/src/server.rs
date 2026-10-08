@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use polarion::Polarion;
-use polarion_commands::{AREAS, Args, Command, CommandError, Config, commands, find};
+use polarion_commands::{AREAS, Args, Command, CommandError, Config, Output, commands, find};
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerConfig, Tool,
@@ -14,6 +14,8 @@ use rmcp::model::{
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 use serde_json::{Map, Value, json};
+
+use crate::files::{self, Exchange};
 
 /// Everyday reads as dedicated tools: (tool name, command).
 const CURATED: &[(&str, &str)] = &[
@@ -93,11 +95,11 @@ fn tool(
     Entry { tool, kind }
 }
 
-fn command_tool(name: String, command: &'static Command) -> Entry {
+fn command_tool(name: String, command: &'static Command, exchange: Option<&Exchange>) -> Entry {
     tool(
         name,
         command.description(),
-        command.input_schema(),
+        files::schema(command, exchange),
         !command.write,
         ToolKind::Command(command),
     )
@@ -108,6 +110,7 @@ struct Shared {
     polarion: Result<Polarion, CommandError>,
     config: Config,
     transport: Transport,
+    exchange: Option<Exchange>,
 }
 
 /// The tool set and the Polarion client; clones share both (one per HTTP request, all alike).
@@ -125,15 +128,19 @@ impl std::fmt::Debug for PolarionMcp {
 }
 
 impl PolarionMcp {
-    /// `all_tools`: also register every command as its own tool.
-    pub fn new(config: Config, all_tools: bool, transport: Transport) -> Self {
+    /// `all_tools`: also register every command as its own tool. `exchange`: the folder files
+    /// are saved to and uploaded from.
+    pub fn new(
+        config: Config,
+        all_tools: bool,
+        transport: Transport,
+        exchange: Option<Exchange>,
+    ) -> Self {
         let mut tools: Vec<Entry> = CURATED
             .iter()
             .map(|(name, command)| {
-                command_tool(
-                    (*name).to_owned(),
-                    find(command).expect("curated commands exist"),
-                )
+                let command = find(command).expect("curated commands exist");
+                command_tool((*name).to_owned(), command, exchange.as_ref())
             })
             .collect();
         tools.push(tool(
@@ -183,7 +190,7 @@ impl PolarionMcp {
                 transport == Transport::Stdio || !SESSION_BOUND.contains(&c.full_name().as_str())
             };
             for c in commands().iter().filter(available) {
-                tools.push(command_tool(tool_name(c), c));
+                tools.push(command_tool(tool_name(c), c, exchange.as_ref()));
             }
         }
         Self(Arc::new(Shared {
@@ -191,6 +198,7 @@ impl PolarionMcp {
             polarion: config.connect(),
             config,
             transport,
+            exchange,
         }))
     }
 
@@ -228,7 +236,20 @@ impl PolarionMcp {
         } else {
             ""
         };
-        format!("{INSTRUCTIONS}{writes}{project}{shared}")
+        let files = match &self.0.exchange {
+            Some(exchange) => format!(
+                " Attachment downloads and PDF exports can be saved with `save_as`, and uploads read \
+                 with `data-file`, in the exchange folder {}{}.",
+                exchange.dir().display(),
+                if self.0.transport == Transport::Http {
+                    " (on the server)"
+                } else {
+                    ""
+                }
+            ),
+            None => String::new(),
+        };
+        format!("{INSTRUCTIONS}{writes}{project}{shared}{files}")
     }
 
     async fn run(&self, command: &Command, arguments: Value) -> Result<Value, CommandError> {
@@ -245,6 +266,24 @@ impl PolarionMcp {
         })?;
         let args = Args::from_value(arguments, self.0.config.project.clone())?;
         (command.run)(polarion, &args).await
+    }
+
+    /// Run a command for the agent: exchange arguments in, byte results as image/text blocks.
+    async fn execute(&self, command: &Command, arguments: Value) -> CallToolResult {
+        let exchange = self.0.exchange.as_ref();
+        let outcome = async {
+            let (arguments, save_as) = files::prepare(command, arguments, exchange)?;
+            let value = self.run(command, arguments).await?;
+            if matches!(command.output, Output::Bytes) {
+                files::present(&value, save_as.as_deref(), exchange)
+            } else {
+                Ok(vec![ContentBlock::text(text(&value))])
+            }
+        };
+        match outcome.await {
+            Ok(content) => CallToolResult::success(content),
+            Err(e) => error_result(&e),
+        }
     }
 
     /// End the Polarion session.
@@ -297,35 +336,39 @@ impl ServerHandler for PolarionMcp {
                 McpError::invalid_params(format!("unknown tool `{}`", request.name), None)
             })?;
         let arguments = request.arguments.map_or(Value::Null, Value::Object);
-        let outcome = match &entry.kind {
-            ToolKind::Command(c) => self.run(c, arguments).await,
-            ToolKind::ListCommands => list_commands(&arguments),
-            ToolKind::Describe => describe(&arguments),
+        let lookup = match &entry.kind {
+            ToolKind::Command(c) => return Ok(self.execute(c, arguments).await.into()),
             ToolKind::Call => {
                 let command = arguments
                     .get("command")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 match find(command) {
+                    Some(c) => {
+                        let args = arguments.get("args").cloned().unwrap_or(Value::Null);
+                        return Ok(self.execute(c, args).await.into());
+                    }
                     None => Err(CommandError::invalid(format!(
                         "unknown command `{command}` (see polarion_commands)"
                     ))),
-                    Some(c) => {
-                        self.run(c, arguments.get("args").cloned().unwrap_or(Value::Null))
-                            .await
-                    }
                 }
             }
+            ToolKind::ListCommands => list_commands(&arguments),
+            ToolKind::Describe => describe(&arguments, self.0.exchange.as_ref()),
         };
-        Ok(match outcome {
+        Ok(match lookup {
             Ok(value) => CallToolResult::success(vec![ContentBlock::text(text(&value))]),
-            Err(e) => CallToolResult::error(vec![ContentBlock::text(format!(
-                "error ({}): {}",
-                e.code, e.message
-            ))]),
+            Err(e) => error_result(&e),
         }
         .into())
     }
+}
+
+fn error_result(e: &CommandError) -> CallToolResult {
+    CallToolResult::error(vec![ContentBlock::text(format!(
+        "error ({}): {}",
+        e.code, e.message
+    ))])
 }
 
 /// The result as tool text: compact JSON, `done` for no result.
@@ -371,7 +414,7 @@ fn list_commands(arguments: &Value) -> Result<Value, CommandError> {
     }
 }
 
-fn describe(arguments: &Value) -> Result<Value, CommandError> {
+fn describe(arguments: &Value, exchange: Option<&Exchange>) -> Result<Value, CommandError> {
     let name = arguments
         .get("command")
         .and_then(Value::as_str)
@@ -383,6 +426,6 @@ fn describe(arguments: &Value) -> Result<Value, CommandError> {
         "name": c.full_name(),
         "description": c.description(),
         "write": c.write,
-        "inputSchema": c.input_schema(),
+        "inputSchema": files::schema(c, exchange),
     }))
 }

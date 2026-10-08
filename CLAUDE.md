@@ -32,7 +32,9 @@ The repository is English only: code, comments, docs and commit messages.
   command's `Output`); JSON output is the library's serde form, don't reshape it. The MCP server is an
   `rmcp` `ServerHandler` (`server.rs`) whose tools are built at runtime from the catalog (no `#[tool]` macros),
   served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a bearer-token layer (`http.rs`:
-  stateless, JSON replies, rmcp's Host/Origin checks); its curated tools are the `CURATED` table. Over HTTP all clients share one Polarion
+  stateless, JSON replies, rmcp's Host/Origin checks); its curated tools are the `CURATED` table. Byte results
+  are shown as image/text blocks or saved to the opt-in exchange folder (`files.rs`, `POLARION_MCP_FILES`:
+  `save_as`, `<param>-file`, plain file names only). Over HTTP all clients share one Polarion
   session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`tests/cli.rs`,
   `tests/mcp.rs`) spawn the binaries against wiremock.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
