@@ -1,0 +1,14 @@
+[package]
+name = "polarion-rest"
+description = "Low-level async client for the Siemens Polarion ALM REST API (v1), generated from the OpenAPI spec"
+keywords = ["polarion", "alm", "rest", "api"]
+categories = ["api-bindings", "web-programming::http-client"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
