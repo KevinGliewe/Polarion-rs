@@ -60,7 +60,10 @@ pub(crate) const COMMANDS: &[Command] = &[
 ];
 
 async fn check(p: &Polarion, _: &Args) -> Result<Value> {
-    p.login().await?;
+    // Logging in again would open a second session and leave the first one behind.
+    if !p.has_session().await? {
+        p.login().await?;
+    }
     out(p.has_session().await?)
 }
 

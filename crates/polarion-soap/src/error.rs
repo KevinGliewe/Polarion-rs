@@ -23,6 +23,13 @@ pub enum Error {
     #[error("login failed: {0}")]
     Login(String),
 
+    /// The session expired while an explicit transaction was open. The transaction is lost; the
+    /// next call logs in again. (Outside a transaction the client logs in again by itself.)
+    #[error(
+        "the Polarion session expired during an explicit transaction; its uncommitted changes are lost"
+    )]
+    SessionExpired,
+
     /// The server answered with an unexpected HTTP status and no SOAP fault.
     #[error("unexpected HTTP status {status}: {}", truncate(.body))]
     Status { status: StatusCode, body: String },

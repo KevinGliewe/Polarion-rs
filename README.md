@@ -234,6 +234,9 @@ need one run against a sandbox project (the smoke example checks the first two r
   `subterra:data-service:objects:/default/${User}ID`.
 - Update operations for documents, test runs and plans sending only the changed fields (as `updateWorkItem` is
   documented to accept).
+- Session renewal (reads too): a call with an expired session fails with a SOAP fault or HTTP error, and
+  `hasSubject` then answers `false` (or a fault). The fault Polarion sends is undocumented, so the client asks
+  instead of matching its text.
 
 The raw SOAP client stays available through `Polarion::soap()`. Try it against a real server (read-only, about twenty
 small requests, prints the JSON of each result):
@@ -319,7 +322,10 @@ for field in item.custom_fields.unwrap_or_default() {
 - **Coverage:** all 302 operations of the 7 services (Session, Project, Tracker, TestManagement, Planning, Security,
   Builder), with Javadoc from the WSDLs as method docs.
 - **Session:** logs in lazily with a personal access token (`logInWithToken`) or user/password and keeps the
-  session (`sessionID` header plus cookie) for all services.
+  session (`sessionID` header plus cookie) for all services. Concurrent calls share one login. When a call fails with
+  a fault or HTTP error and `hasSubject` says the session is gone, the client logs in again and repeats the call
+  once, so long-running processes (the MCP server) survive the server's session timeout. Inside an explicit
+  transaction it reports `Error::SessionExpired` instead, since the transaction's changes are lost.
 - **Untyped values:** custom field values and other untyped elements are `AnyValue`, decoded from the `xsi:type` the
   server sends (enum options, rich text, dates, numbers, arrays, ...). Unknown types are kept as raw XML, never
   dropped.

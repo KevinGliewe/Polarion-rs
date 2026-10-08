@@ -9,7 +9,7 @@ The repository is English only: code, comments, docs and commit messages.
 - Never edit `crates/*/src/generated/*` or `crates/*/tests/spec_examples.rs` by hand. Change the generator
   (`xtask/src/` for REST, `xtask/src/soap/` for SOAP) and run `cargo xtask codegen`.
 - Hand-written REST runtime: `client.rs` (HTTP plumbing, pagination), `jsonapi.rs` (envelope types), `query.rs`, `error.rs`.
-- Hand-written SOAP runtime: `client.rs` (envelope, session, faults, read-only allowlist), `xml.rs` (XML helpers), `error.rs`.
+- Hand-written SOAP runtime: `client.rs` (envelope, session incl. renewal after expiry, faults, read-only allowlist), `xml.rs` (XML helpers), `error.rs`.
   WSDL quirks are handled in `xtask/src/soap/emit.rs`: params documented as accepting null become `Option`
   (`nullable_params`), plus `NILLABLE_PARAMS`/`OPTIONAL_PARAMS` overrides; `READ_PREFIXES`/`OTHER_READS` decide what
   read-only clients allow; subtype elements (e.g. `EnumCustomFieldType.enumId`) are decoded into the base struct.

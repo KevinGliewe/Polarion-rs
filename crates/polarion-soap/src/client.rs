@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -43,6 +44,12 @@ impl std::fmt::Debug for Auth {
 /// The client logs in lazily on the first call and keeps the session (the
 /// `sessionID` SOAP header plus cookies) for all services. Cheap to clone;
 /// clones share the session.
+///
+/// When a call fails with a SOAP fault or an HTTP error, the client asks the
+/// server whether the session is still valid (`hasSubject`). If it has
+/// expired, the client logs in again and repeats the call once. Inside an
+/// explicit transaction (`beginTransaction`) it does not: the transaction is
+/// gone with the session, so the call fails with [`Error::SessionExpired`].
 #[derive(Debug, Clone)]
 pub struct Client {
     inner: Arc<Inner>,
@@ -55,6 +62,12 @@ struct Inner {
     auth: Auth,
     read_only: bool,
     session: Mutex<Option<String>>,
+    /// Serializes logins, so concurrent calls never open more than one session.
+    login_lock: tokio::sync::Mutex<()>,
+    /// Incremented by every login; tells a failed call whether another call already logged in again.
+    generation: AtomicU64,
+    /// An explicit transaction is open in the current session.
+    in_transaction: AtomicBool,
 }
 
 impl Client {
@@ -93,6 +106,12 @@ impl Client {
 
     /// Log in now instead of on the first call (e.g. to fail fast on bad credentials).
     pub async fn login(&self) -> Result<()> {
+        let _login = self.inner.login_lock.lock().await;
+        self.log_in().await
+    }
+
+    /// Log in (callers hold `login_lock`; session operations never take it).
+    async fn log_in(&self) -> Result<()> {
         self.clear_session();
         match &self.inner.auth {
             Auth::Token(token) => {
@@ -107,11 +126,13 @@ impl Client {
                 "the server did not return a sessionID header".into(),
             ));
         }
+        self.inner.generation.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
     /// End the session on the server.
     pub async fn logout(&self) -> Result<()> {
+        let _login = self.inner.login_lock.lock().await;
         if self.session_id().is_some() {
             self.session().end_session().await?;
             self.clear_session();
@@ -121,6 +142,44 @@ impl Client {
 
     fn clear_session(&self) {
         *self.inner.session.lock().expect("session lock") = None;
+        self.inner.in_transaction.store(false, Ordering::SeqCst);
+    }
+
+    /// Log in unless another call did so while this one waited for the lock.
+    async fn ensure_session(&self) -> Result<()> {
+        let _login = self.inner.login_lock.lock().await;
+        if self.session_id().is_none() {
+            self.log_in().await?;
+        }
+        Ok(())
+    }
+
+    /// A call made in login `generation` (inside an explicit transaction or not) failed with a
+    /// fault or HTTP error: log in again if the session has expired. `Ok(true)` means the call
+    /// should be repeated.
+    async fn renew(&self, generation: u64, in_transaction: bool) -> Result<bool> {
+        let _login = self.inner.login_lock.lock().await;
+        // Another call may have found the session expired and logged in again already.
+        let renewed = self.inner.generation.load(Ordering::SeqCst) != generation;
+        if !renewed {
+            match self.session().has_subject().await {
+                Ok(true) => return Ok(false),
+                Ok(false) | Err(Error::Fault { .. }) => {}
+                // The server is not answering properly; the original error says more.
+                Err(_) => return Ok(false),
+            }
+        }
+        if in_transaction {
+            // The transaction ended with its session; repeating the call would apply it on its own.
+            if !renewed {
+                self.clear_session();
+            }
+            return Err(Error::SessionExpired);
+        }
+        if !renewed {
+            self.log_in().await?;
+        }
+        Ok(true)
     }
 
     /// Send one operation and decode the response wrapper element with `decode`.
@@ -137,11 +196,42 @@ impl Client {
                 operation: format!("{service}.{operation}"),
             });
         }
-        if service != SESSION_SERVICE && self.session_id().is_none() {
-            Box::pin(self.login()).await?;
+        let needs_session = !(service == SESSION_SERVICE
+            && matches!(
+                operation,
+                "logIn" | "logInWithToken" | "endSession" | "hasSubject"
+            ));
+        if needs_session && self.session_id().is_none() {
+            Box::pin(self.ensure_session()).await?;
         }
+        let generation = self.inner.generation.load(Ordering::SeqCst);
+        let in_transaction = self.inner.in_transaction.load(Ordering::SeqCst);
+        // Taken by the attempt that succeeds; still there when the first one failed.
+        let mut decode = Some(decode);
+        match self.send(service, operation, &body, &mut decode).await {
+            Err(e @ (Error::Fault { .. } | Error::Status { .. })) if needs_session => {
+                if Box::pin(self.renew(generation, in_transaction)).await? {
+                    self.send(service, operation, &body, &mut decode).await
+                } else {
+                    Err(e)
+                }
+            }
+            result => result,
+        }
+    }
 
-        let envelope = envelope(self.session_id().as_deref(), &body);
+    /// One request: send the envelope, check for faults, decode the response.
+    async fn send<T, D>(
+        &self,
+        service: &str,
+        operation: &str,
+        body: &str,
+        decode: &mut Option<D>,
+    ) -> Result<T>
+    where
+        D: FnOnce(Node<'_, '_>) -> Result<T>,
+    {
+        let envelope = envelope(self.session_id().as_deref(), body);
         let url = self.inner.services.join(service)?;
         let resp = self
             .inner
@@ -167,8 +257,13 @@ impl Client {
         if let Some(id) = session_header(root) {
             *self.inner.session.lock().expect("session lock") = Some(id);
         }
-        let body_node =
-            child(root, SOAP_ENV, "Body").ok_or_else(|| Error::decode("Envelope", "no Body"))?;
+        let Some(body_node) = child(root, SOAP_ENV, "Body") else {
+            // An error page that happens to be well-formed XML (proxies, gateways).
+            if !status.is_success() {
+                return Err(Error::Status { status, body: text });
+            }
+            return Err(Error::decode("Envelope", "no Body"));
+        };
         let payload = body_node.children().find(|n| n.is_element());
         if let Some(fault) = payload.filter(|n| n.tag_name().name() == "Fault") {
             return Err(parse_fault(fault));
@@ -176,8 +271,16 @@ impl Client {
         if status != StatusCode::OK {
             return Err(Error::Status { status, body: text });
         }
+        if service == SESSION_SERVICE {
+            match operation {
+                "beginTransaction" => self.inner.in_transaction.store(true, Ordering::SeqCst),
+                "endTransaction" => self.inner.in_transaction.store(false, Ordering::SeqCst),
+                _ => {}
+            }
+        }
         let payload =
             payload.ok_or_else(|| Error::decode("Body", format!("no {operation}Response")))?;
+        let decode = decode.take().expect("decoded at most once");
         decode(payload)
     }
 }
@@ -310,6 +413,9 @@ impl ClientBuilder {
                 auth: self.auth,
                 read_only: self.read_only,
                 session: Mutex::new(None),
+                login_lock: tokio::sync::Mutex::new(()),
+                generation: AtomicU64::new(0),
+                in_transaction: AtomicBool::new(false),
             }),
         })
     }

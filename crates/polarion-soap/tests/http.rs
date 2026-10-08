@@ -245,3 +245,179 @@ async fn read_only_client_refuses_writes_before_sending() {
         .unwrap();
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
+
+// ---- session renewal
+
+const SESSION: &str = "/polarion/ws/services/SessionWebService";
+const TRACKER: &str = "/polarion/ws/services/TrackerWebService";
+
+/// Logins answer with these session ids, one per login, in order (each expected exactly once).
+async fn logins(server: &MockServer, ids: &[&str]) {
+    for (i, id) in ids.iter().enumerate() {
+        let header = format!(
+            r#"<soapenv:Header><ns1:sessionID xmlns:ns1="http://ws.polarion.com/session">{id}</ns1:sessionID></soapenv:Header>"#
+        );
+        Mock::given(path(SESSION))
+            .and(body_string_contains("logInWithToken>"))
+            .respond_with(xml(envelope(&header, "<logInWithTokenResponse/>")))
+            .up_to_n_times(1)
+            .with_priority(u8::try_from(i + 1).unwrap())
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+}
+
+/// Requests sent with this session id.
+fn session_is(id: &str) -> wiremock::matchers::BodyContainsMatcher {
+    body_string_contains(format!(">{id}</ses:sessionID>"))
+}
+
+fn fault(message: &str) -> ResponseTemplate {
+    ResponseTemplate::new(500).set_body_raw(
+        envelope(
+            "",
+            &format!(
+                "<soapenv:Fault><faultcode>soapenv:Server.userException</faultcode><faultstring>{message}</faultstring></soapenv:Fault>"
+            ),
+        ),
+        "text/xml",
+    )
+}
+
+async fn has_subject(server: &MockServer, session: &str, answer: ResponseTemplate) {
+    Mock::given(path(SESSION))
+        .and(body_string_contains("hasSubject>"))
+        .and(session_is(session))
+        .respond_with(answer)
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+fn subject(valid: bool) -> ResponseTemplate {
+    xml(envelope(
+        "",
+        &format!(
+            "<hasSubjectResponse><hasSubjectReturn>{valid}</hasSubjectReturn></hasSubjectResponse>"
+        ),
+    ))
+}
+
+async fn get_item(server: &MockServer, session: &str, answer: ResponseTemplate, times: u64) {
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("getWorkItemById>"))
+        .and(session_is(session))
+        .respond_with(answer)
+        .expect(times)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn expired_sessions_are_renewed() {
+    let (server, client) = setup(true).await;
+    logins(&server, &["s1", "s2"]).await;
+    get_item(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    get_item(&server, "s2", xml(work_item_response()), 1).await;
+
+    let item = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap();
+    assert_eq!(item.id.as_deref(), Some("PROJ-1"));
+    assert_eq!(client.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn faults_with_a_live_session_are_not_retried() {
+    let (server, client) = setup(true).await;
+    logins(&server, &["s1"]).await;
+    get_item(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(true)).await;
+
+    let err = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Fault { message, .. } if message == "Not authorized."),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn server_errors_are_not_mistaken_for_expiry() {
+    let (server, client) = setup(true).await;
+    logins(&server, &["s1"]).await;
+    let bad_gateway = || ResponseTemplate::new(502).set_body_string("<html>Bad gateway</html>");
+    get_item(&server, "s1", bad_gateway(), 1).await;
+    has_subject(&server, "s1", bad_gateway()).await;
+
+    let err = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Status { status, .. } if status.as_u16() == 502),
+        "{err:?}"
+    );
+}
+
+#[tokio::test]
+async fn expiry_inside_a_transaction_is_reported() {
+    let (server, client) = setup(false).await;
+    logins(&server, &["s1", "s2"]).await;
+    Mock::given(path(SESSION))
+        .and(body_string_contains("beginTransaction>"))
+        .and(session_is("s1"))
+        .respond_with(xml(envelope("", "<beginTransactionResponse/>")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    get_item(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    get_item(&server, "s2", xml(work_item_response()), 1).await;
+
+    // A session operation as the first call logs in, too.
+    client.session().begin_transaction().await.unwrap();
+    let err = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::SessionExpired), "{err:?}");
+    assert_eq!(client.session_id(), None);
+
+    // The next call starts a new session.
+    client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap();
+    assert_eq!(client.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn concurrent_first_calls_log_in_once() {
+    let (server, client) = setup(true).await;
+    Mock::given(path(SESSION))
+        .and(body_string_contains("logInWithToken>"))
+        .respond_with(xml(login_response()).set_delay(std::time::Duration::from_millis(200)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    get_item(&server, "-1234567", xml(work_item_response()), 2).await;
+
+    let tracker = client.tracker();
+    let (a, b) = tokio::join!(
+        tracker.get_work_item_by_id("PROJ", "PROJ-1"),
+        tracker.get_work_item_by_id("PROJ", "PROJ-1"),
+    );
+    a.unwrap();
+    b.unwrap();
+}
