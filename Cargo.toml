@@ -17,6 +17,7 @@ polarion-rest = { path = "crates/polarion-rest", version = "0.1.0" }
 polarion-soap = { path = "crates/polarion-soap", version = "0.1.0" }
 
 anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 base64 = "0.23"
 clap = { version = "4", features = ["env", "string"] }
 heck = "0.5"

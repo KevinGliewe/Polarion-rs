@@ -9,7 +9,7 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 | [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
 | [`polarion-commands`](crates/polarion-commands) | usable | Every library method as a named JSON command with a parameter schema; shared by the CLI and the MCP server |
 | [`polarion-cli`](crates/polarion-cli) | usable (writes mock-tested only) | `polarion` command-line tool covering the whole library, with JSON output for automation |
-| [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | MCP server (stdio) so AI agents can work with Polarion |
+| [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | MCP server (stdio or Streamable HTTP) so AI agents can work with Polarion |
 
 Both front ends are **read-only unless writes are enabled** for named projects (see [Writes](#writes)).
 
@@ -78,8 +78,8 @@ polarion items attachment MP-42 --attachment 1-spec.pdf --out spec.pdf
 cargo install --path crates/polarion-mcp    # installs the `polarion-mcp` binary
 ```
 
-An [MCP](https://modelcontextprotocol.io) server over stdio, configured by the same environment variables as the
-CLI. It offers:
+An [MCP](https://modelcontextprotocol.io) server over stdio (default) or Streamable HTTP (`--http`, see below),
+configured by the same environment variables as the CLI. It offers:
 
 - **Dedicated tools for everyday reads:** `get_work_item`, `query_work_items`, `count_work_items`,
   `work_item_links`, `work_item_history`, `list_documents`, `get_document`, `document_work_items`, `custom_fields`,
@@ -116,6 +116,47 @@ Claude Desktop and other clients (`claude_desktop_config.json`, `.mcp.json`):
   }
 }
 ```
+
+### Shared server over HTTP
+
+`polarion-mcp --http ADDR` (or `POLARION_MCP_HTTP=ADDR`) serves MCP's Streamable HTTP transport at
+`http://ADDR/mcp` for any number of clients, all using the server's Polarion account:
+
+```sh
+export POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=<service account token>
+export POLARION_MCP_AUTH_TOKEN=$(openssl rand -hex 32)   # clients send it as a bearer token
+polarion-mcp --http 127.0.0.1:8787
+```
+
+```sh
+claude mcp add --transport http polarion https://mcp.example.com/mcp \
+  --header "Authorization: Bearer $POLARION_MCP_AUTH_TOKEN"
+```
+
+```json
+{
+  "mcpServers": {
+    "polarion": {
+      "type": "http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {"Authorization": "Bearer ${POLARION_MCP_AUTH_TOKEN}"}
+    }
+  }
+}
+```
+
+- **Access:** `POLARION_MCP_AUTH_TOKEN` (at least 16 characters) is required; requests without it get 401.
+  Requests from browsers (with an `Origin` header) are refused unless the origin is listed in
+  `POLARION_MCP_ALLOWED_ORIGINS`. The server speaks plain HTTP: bind it to localhost and put a TLS reverse proxy in
+  front for anything else.
+- **One identity:** everyone with the bearer token acts as the service account; Polarion's history shows that
+  account, not the person. Give it the narrowest Polarion role that works (read-only for production), and enable
+  writes with `POLARION_WRITE_PROJECTS` only where they are meant to happen.
+- **One Polarion session** for all clients (logged in again when it expires, ended on Ctrl-C/SIGTERM). Explicit
+  transactions (`session.begin-transaction`, `commit`, `rollback`) are therefore refused over HTTP; use stdio for
+  them.
+- **Not included:** OAuth (so no claude.ai web connectors), server-initiated SSE streams, `Mcp-Session-Id`
+  sessions. Every request is answered with plain JSON.
 
 ## polarion-commands
 

@@ -30,7 +30,9 @@ The repository is English only: code, comments, docs and commit messages.
 - `polarion-cli` and `polarion-mcp` contain no Polarion logic: the clap tree (`cli.rs`) and the MCP tools
   (`server.rs`) are generated from the catalog. CLI text output in `render.rs` (table columns come from the
   command's `Output`); JSON output is the library's serde form, don't reshape it. The MCP server speaks
-  newline-delimited JSON-RPC on stdio; its curated tools are the `CURATED` table. End-to-end tests (`tests/cli.rs`,
+  newline-delimited JSON-RPC on stdio (`stdio.rs`) or Streamable HTTP (`http.rs`: bearer token, Origin check,
+  stateless, JSON replies); its curated tools are the `CURATED` table. Over HTTP all clients share one Polarion
+  session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`tests/cli.rs`,
   `tests/mcp.rs`) spawn the binaries against wiremock.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace`.

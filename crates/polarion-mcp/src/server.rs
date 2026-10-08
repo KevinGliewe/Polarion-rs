@@ -5,7 +5,23 @@ use polarion_commands::{AREAS, Args, Command, CommandError, Config, commands, fi
 use serde_json::{Map, Value, json};
 
 /// Protocol versions this server speaks, newest first.
-const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+pub const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// Commands that need a Polarion session of their own: refused over HTTP, where all clients share one.
+const SESSION_BOUND: &[&str] = &[
+    "session.begin-transaction",
+    "session.commit",
+    "session.rollback",
+];
+
+/// How clients reach the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Transport {
+    /// One client, the process that started the server.
+    Stdio,
+    /// Any number of clients sharing the server's Polarion session.
+    Http,
+}
 
 /// Everyday reads as dedicated tools: (tool name, command).
 const CURATED: &[(&str, &str)] = &[
@@ -52,11 +68,12 @@ struct Tool {
     kind: ToolKind,
 }
 
-/// One MCP session: the tool set and the Polarion client.
+/// The tool set and the Polarion client, shared by every client of the transport.
 pub struct Server {
     tools: Vec<Tool>,
     polarion: Result<Polarion, CommandError>,
     config: Config,
+    transport: Transport,
 }
 
 impl std::fmt::Debug for Server {
@@ -64,6 +81,7 @@ impl std::fmt::Debug for Server {
         f.debug_struct("Server")
             .field("tools", &self.tools.len())
             .field("config", &self.config)
+            .field("transport", &self.transport)
             .finish_non_exhaustive()
     }
 }
@@ -75,7 +93,7 @@ fn tool_name(command: &Command) -> String {
 
 impl Server {
     /// `all_tools`: also register every command as its own tool.
-    pub fn new(config: Config, all_tools: bool) -> Self {
+    pub fn new(config: Config, all_tools: bool, transport: Transport) -> Self {
         let mut tools: Vec<Tool> = CURATED
             .iter()
             .map(|(name, command)| {
@@ -133,7 +151,10 @@ impl Server {
             kind: ToolKind::Call,
         });
         if all_tools {
-            for c in commands() {
+            let available = |c: &&Command| {
+                transport == Transport::Stdio || !SESSION_BOUND.contains(&c.full_name().as_str())
+            };
+            for c in commands().iter().filter(available) {
                 tools.push(Tool {
                     name: tool_name(c),
                     description: c.description(),
@@ -147,6 +168,24 @@ impl Server {
             tools,
             polarion: config.connect(),
             config,
+            transport,
+        }
+    }
+
+    /// What may be written: the projects, plus `global writes`; `None` when read-only.
+    fn write_scope(&self) -> Option<String> {
+        let mut scope = self.config.write_projects.clone();
+        if self.config.global_writes {
+            scope.push("global writes".to_owned());
+        }
+        (!scope.is_empty()).then(|| scope.join(", "))
+    }
+
+    /// `read-only`, or what may be written.
+    pub fn access(&self) -> String {
+        match self.write_scope() {
+            Some(scope) => format!("writes enabled for {scope}"),
+            None => "read-only".to_owned(),
         }
     }
 
@@ -180,18 +219,9 @@ impl Server {
         let version = requested
             .filter(|v| PROTOCOL_VERSIONS.contains(v))
             .unwrap_or(PROTOCOL_VERSIONS[0]);
-        let writes = if self.config.writes_enabled() {
-            format!(
-                " Writes are enabled for: {}{}.",
-                self.config.write_projects.join(", "),
-                if self.config.global_writes {
-                    " (and global writes)"
-                } else {
-                    ""
-                }
-            )
-        } else {
-            " This server is read-only.".to_owned()
+        let writes = match self.write_scope() {
+            Some(scope) => format!(" Writes are enabled for: {scope}."),
+            None => " This server is read-only.".to_owned(),
         };
         let project = self
             .config
@@ -199,11 +229,16 @@ impl Server {
             .as_deref()
             .map(|p| format!(" The default project is {p}."))
             .unwrap_or_default();
+        let shared = if self.transport == Transport::Http {
+            " Transactions are not available: all clients share one Polarion session."
+        } else {
+            ""
+        };
         json!({
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": false}},
             "serverInfo": {"name": "polarion-mcp", "version": env!("CARGO_PKG_VERSION")},
-            "instructions": format!("{INSTRUCTIONS}{writes}{project}"),
+            "instructions": format!("{INSTRUCTIONS}{writes}{project}{shared}"),
         })
     }
 
@@ -267,6 +302,13 @@ impl Server {
     }
 
     async fn run(&self, command: &Command, arguments: Value) -> Result<Value, CommandError> {
+        if self.transport == Transport::Http
+            && SESSION_BOUND.contains(&command.full_name().as_str())
+        {
+            return Err(CommandError::invalid(
+                "transactions are not available over HTTP: all clients share one Polarion session",
+            ));
+        }
         let polarion = self.polarion.as_ref().map_err(|e| CommandError {
             code: e.code,
             message: e.message.clone(),

@@ -1,6 +1,6 @@
 [package]
 name = "polarion-mcp"
-description = "MCP server giving AI agents access to Siemens Polarion ALM (read-only unless writes are enabled)"
+description = "MCP server (stdio or Streamable HTTP) giving AI agents access to Siemens Polarion ALM (read-only unless writes are enabled)"
 keywords = ["polarion", "alm", "mcp", "ai", "agent"]
 categories = ["command-line-utilities"]
 readme = "../../README.md"
@@ -16,12 +16,14 @@ name = "polarion-mcp"
 path = "src/main.rs"
 
 [dependencies]
+axum.workspace = true
 polarion.workspace = true
 polarion-commands.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "signal"] }
 
 [dev-dependencies]
+reqwest.workspace = true
 wiremock.workspace = true
 
 [lints]
