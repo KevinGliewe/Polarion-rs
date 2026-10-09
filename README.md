@@ -14,6 +14,9 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 
 Both front ends are **read-only unless writes are enabled** for named projects (see [Writes](#writes)).
 
+How the crates fit together, how a call flows through them and how the code is generated and tested is described,
+with diagrams, in [docs/](docs/README.md).
+
 ## polarion (command line)
 
 ```sh
@@ -203,49 +206,10 @@ claude mcp add --transport http polarion https://mcp.example.com/mcp \
 
 ## polarion-commands
 
-Every library method as a command: a DTO with typed arguments (references, enums, rich text, field selections,
-binary data) and a typed result, run against a `Context`. Serialization only happens at the boundaries, and it is
-generated: `#[cmd]` derives serde (so a command or its result can be JSON, YAML or any other serde format), the
-JSON Schema of the arguments (for MCP) and the clap arguments (feature `cli`); `registry!` generates the typed
-`AnyCommand`/`AnyOutput` enums, the catalog and the command-line tree.
-
-```rust
-/// Assign a user.
-#[cmd(write, view = done)]
-pub struct AddAssignee {
-    /// Work item: ID (in the default project), PROJECT/ID, or URI
-    #[positional]
-    pub item: ItemArg,
-    /// User id
-    pub user: String,
-}
-
-impl Run for AddAssignee {
-    type Output = Changed;
-
-    async fn run(self, cx: &Context<'_>) -> Result<Changed> {
-        Ok(cx.polarion.items().add_assignee(&self.item.resolve(cx)?, &self.user).await?.into())
-    }
-}
-```
-
-Its name (`items.add-assignee`) comes from the area and the type name, the summary and the parameter help from the
-doc comments. From JSON, arguments are checked against the schema: unknown keys are refused, and scalars are
-accepted as people write them (`"5"` for 5, `"a,b"` for a list). Custom field values stay JSON in the DTOs, because
-their types are only known from Polarion's field definitions at run time.
-
-```rust
-let config = polarion_commands::Config::from_env();
-let polarion = config.connect()?;
-let cx = polarion_commands::Context::new(&polarion, config.project.as_deref());
-
-let item: polarion::WorkItem = items::Get { item: "MP-42".parse()?, fields: None, custom: vec![] }.run(&cx).await?;
-let output = polarion_commands::call(&cx, "items.count", json!({"query": "type:task"})).await?;  // by name, JSON in
-println!("{}", serde_json::to_string(&output)?);                                                 // serialized out
-```
-
-`tests/coverage.rs` fails when a library method has no command; `tests/registry.rs` checks that every command parses
-from its schema and survives a serialization round trip.
+Every library method as a command: a DTO with typed arguments and a typed result, from which the macros generate
+serde, the JSON Schema of the arguments and of the result, the clap arguments and the command catalog. The CLI and
+the MCP server are built from that catalog. Commands can also be called from Rust, typed or by name with JSON
+arguments; see [docs/commands.md](docs/commands.md).
 
 ## polarion
 
@@ -437,17 +401,14 @@ for field in item.custom_fields.unwrap_or_default() {
 
 - **Coverage:** all 302 operations of the 7 services (Session, Project, Tracker, TestManagement, Planning, Security,
   Builder), with Javadoc from the WSDLs as method docs.
-- **Session:** logs in lazily with a personal access token (`logInWithToken`) or user/password and keeps the
-  session (`sessionID` header plus cookie) for all services. Concurrent calls share one login. When a call fails with
-  a fault or HTTP error and `hasSubject` says the session is gone, the client logs in again and repeats the call
-  once, so long-running processes (the MCP server) survive the server's session timeout. Inside an explicit
-  transaction it reports `Error::SessionExpired` instead, since the transaction's changes are lost.
-- **Untyped values:** custom field values and other untyped elements are `AnyValue`, decoded from the `xsi:type` the
-  server sends (enum options, rich text, dates, numbers, arrays, ...). Unknown types are kept as raw XML, never
-  dropped.
+- **Session:** logs in lazily (token or user/password), shares one session across services and concurrent calls,
+  and logs in again when the session expires (except inside a transaction).
+- **Untyped values:** custom field values and other untyped elements are `AnyValue`, decoded from their `xsi:type`;
+  unknown types are kept as raw XML.
 - **Errors:** SOAP faults surface with their code and message (`Error::Fault`).
-- **Read-only mode:** `read_only(true)` refuses every operation not named `get…`, `query…`, `list…`, `search…`,
-  `has…`, `can…`, `is…`, `was…` or `export…` (plus `generateHistory` and login/logout) before anything is sent.
+- **Read-only mode:** `read_only(true)` refuses every operation that is not a read before anything is sent.
+
+How the session, renewal and read-only mode work: [docs/soap-client.md](docs/soap-client.md).
 
 Try it against a real server (read-only, at most seven small requests, each reported as OK or FAIL):
 
@@ -456,35 +417,18 @@ POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_P
   cargo run -p polarion-soap --example soap_smoke
 ```
 
-## Live tests (testdrive only)
-
-`crates/polarion-rest/tests/live.rs` runs against Siemens' public test drive server. The URL is hard-coded so the
-suite can never touch a production instance. `read_tour` is read-only; `work_item_lifecycle` creates three work
-items in your Sandbox project, exercises update, bulk update, query + pagination, links, comments and attachment
-upload/download, then deletes them again (also when a step fails).
-
-```sh
-export POLARION_TESTDRIVE_TOKEN=<personal access token created on testdrive.polarion.com>
-export POLARION_TESTDRIVE_PROJECT=<your project in the testdrive Sandbox>
-cargo test -p polarion-rest --test live -- --ignored --nocapture --test-threads=1
-```
-
 ## Code generation
 
-`crates/polarion-rest/src/generated/` and `crates/polarion-rest/tests/spec_examples.rs` are generated from
-`spec/polarion-openapi.json`, `crates/polarion-soap/src/generated/` and `crates/polarion-soap/tests/spec_examples.rs`
-from `spec/soap/*.wsdl`, both by the generators in [`xtask/`](xtask). The generated code is committed; CI fails if
-it is stale.
+The REST client is generated from `spec/polarion-openapi.json`, the SOAP client from `spec/soap/*.wsdl` (both
+from Polarion 2410), by the generators in [`xtask/`](xtask). The generated code is committed; CI fails if it is
+stale. How the generators work and how to target another Polarion version: [docs/code-generation.md](docs/code-generation.md).
 
 ```sh
 cargo xtask codegen          # regenerate
 cargo xtask codegen --check  # verify it is up to date
 ```
 
-The committed spec is the definition served by a Polarion **2410** server (Apache-2.0). Newer releases add
-endpoints (testdrive's spec has 284 operations, including Pages, licensing, jobs and `GET /user`). To target
-another version, replace the spec with the one your server serves at `<polarion>/rest/v1/definition` (the `rest_smoke`
-example's `POLARION_SAVE_SPEC` does this) and regenerate.
+Tests, including the opt-in live tests against testdrive.polarion.com: [docs/testing.md](docs/testing.md).
 
 ## REST permissions
 
@@ -493,14 +437,6 @@ configured in the Global context). By default only `admin` and `project_admin` h
 `403 Forbidden` on every endpoint even with a valid token, including for projects they can open in the UI. An
 administrator has to grant at least `GET`, e.g. to `project_user`. See
 [Siemens: REST API authorization](https://developer.siemens.com/polarion/authorization.html).
-
-The WSDLs were fetched from the same 2410 server (`<polarion>/ws/services/<Name>WebService?wsdl`, no login needed).
-Unlike REST, the SOAP API barely changes between versions: compared with testdrive's newer release, all 302
-operations are the same and the only type difference is `Hyperlink.title`, which 2410 lacks.
-
-Both `spec_examples.rs` test suites build an example document from every schema (independently of the generator)
-and check it round-trips through the generated types, so mapping gaps show up as test failures rather than silently
-dropped fields.
 
 ## License
 

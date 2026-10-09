@@ -51,6 +51,8 @@ The repository is English only: code, comments, docs and commit messages.
   session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`tests/cli.rs`,
   `tests/mcp.rs`) spawn the binaries against wiremock.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
+- Architecture docs are in `docs/` (Markdown with Mermaid diagrams; README.md covers usage). The diagrams name real
+  functions, types and files: when you change a mechanism a page shows, update the page in the same change.
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace`.
 - Live tests (`crates/polarion-rest/tests/live.rs`) only ever target testdrive.polarion.com; never point anything
   that writes at another server. They need `POLARION_TESTDRIVE_TOKEN` and `POLARION_TESTDRIVE_PROJECT`.
