@@ -88,11 +88,33 @@ protocol version (up to `2026-07-28`). It is configured by the same environment 
   `field_options`, `search_test_runs`, `get_test_run`, `search_plans`, `get_project`, `get_user`.
 - **Three generic tools that reach every command:** `polarion_commands` (areas, or the commands of one area),
   `polarion_describe` (a command's argument schema) and `polarion_call` (run a command).
-- With `POLARION_MCP_TOOLS=all`, every command is also registered as its own tool (`items_add_link`, ...). That
-  is about 270 tools, which costs the agent context on every turn; the default set is usually better.
+- More dedicated tools, or fewer, are chosen with a config file (below).
+
+**Choosing tools.** Every tool definition costs the agent context. The default `tools/list` is about 57 KB: 44 KB of
+that is output schemas, about 12 KB is everything else. Every command as its own tool (`all`, about 250 tools) is
+about 320 KB, or 140 KB without output schemas. An optional TOML file, given with `--config FILE` or
+`POLARION_MCP_CONFIG=FILE`, picks what is offered; every key is optional:
+
+```toml
+# Commands with a tool of their own. Default: "default", the everyday reads above; "all": every command
+tools = ["default", "documents.*"]
+# Switched off everywhere: no tool, not listed by polarion_commands, refused by polarion_describe and
+# polarion_call. Generic tools can be left out by name.
+disable = ["*.delete", "security.*", "polarion_describe"]
+# outputSchema on tools and structuredContent on results (default: true)
+output_schemas = false
+```
+
+Selectors are command names (`items.get`, `items.*`, `*.delete`), tool names (`get_work_item`, `items_add_link`) or
+`default`/`all`; `*` is a wildcard. Commands that have a curated tool keep its name; the others are named
+`area_command` (`items_add_link`). `POLARION_MCP_TOOLS` takes the same selectors, comma-separated
+(`POLARION_MCP_TOOLS=all`), and wins over the file's `tools`. A selector that matches nothing, an unknown key or an
+unreadable file stops the server with an error. Disabling is a real restriction, not just a shorter list, so
+it doubles as a deny list.
 
 Results are the library's JSON, as text and as structured content: every tool that returns data declares an
-`outputSchema` generated from the command's result type, and its result carries `structuredContent` that matches it.
+`outputSchema` generated from the command's result type, and its result carries `structuredContent` that matches it
+(unless `output_schemas = false`).
 Results that are not JSON objects (lists, counts, flags) are wrapped as `{"result": ...}`, which every protocol
 version accepts. `polarion_describe` shows a command's output schema too. Failures, including refused writes, are
 tool errors with a message such as `error (readOnly): ...`. The server is read-only unless `POLARION_WRITE_PROJECTS` is set, and it tells the agent so

@@ -43,7 +43,9 @@ The repository is English only: code, comments, docs and commit messages.
   command's `View`); JSON output is the library's serde form, don't reshape it. The MCP server is an
   `rmcp` `ServerHandler` (`server.rs`) whose tools are built at runtime from the catalog (no `#[tool]` macros),
   served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a bearer-token layer (`http.rs`:
-  stateless, JSON replies, rmcp's Host/Origin checks); its curated tools are the `CURATED` table. Byte results
+  stateless, JSON replies, rmcp's Host/Origin checks); which tools are offered is `config.rs` (`--config`/`POLARION_MCP_CONFIG`
+  TOML file plus `POLARION_MCP_TOOLS`: `tools` and `disable` selectors, `output_schemas`; its `CURATED` table holds
+  the curated tools; a disabled command is refused by every tool, `polarion_call` included). Byte results
   are shown as image/text blocks or saved to the opt-in exchange folder (`files.rs`, `POLARION_MCP_FILES`:
   `save_as`, `<param>-file`, plain file names only). Over HTTP all clients share one Polarion
   session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`tests/cli.rs`,

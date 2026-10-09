@@ -4,30 +4,44 @@
 //! Configuration comes from the environment, as for the `polarion` command:
 //! `POLARION_URL`, `POLARION_TOKEN` (or `POLARION_USER` and `POLARION_PASSWORD`),
 //! `POLARION_PROJECT`, `POLARION_INSECURE`, and for writes `POLARION_WRITE_PROJECTS` /
-//! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them). `POLARION_MCP_TOOLS=all`
-//! registers every command as its own tool.
+//! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them). Which tools are offered comes from
+//! the optional config file (`--config FILE` or `POLARION_MCP_CONFIG`) and `POLARION_MCP_TOOLS`.
 
+mod config;
 mod files;
 mod http;
 mod server;
 mod stdio;
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use polarion_commands::Config;
 
+use crate::config::Selection;
 use crate::server::{PolarionMcp, Transport};
 
 const USAGE: &str = "\
-Usage: polarion-mcp [--http ADDR]
+Usage: polarion-mcp [--http ADDR] [--config FILE]
 
 MCP server for Siemens Polarion ALM. Speaks stdio by default; with --http ADDR
 (e.g. 127.0.0.1:8787) it serves Streamable HTTP at http://ADDR/mcp instead.
 
+The config file (TOML, optional) chooses the tools; every key is optional:
+  tools = [\"default\", \"documents.*\"]   commands with a tool of their own (default: \"default\",
+                                       the everyday reads; \"all\": every command)
+  disable = [\"*.delete\", \"wiki.*\"]     commands switched off everywhere (polarion_call too),
+                                       or generic tools (polarion_call, ...) to leave out
+  output_schemas = false               no outputSchema / structuredContent (smaller tool list)
+Selectors are command names (items.get), tool names (get_work_item) or `default`/`all`;
+`*` is a wildcard.
+
 Environment:
   POLARION_URL, POLARION_TOKEN (or POLARION_USER + POLARION_PASSWORD), POLARION_PROJECT,
   POLARION_INSECURE, POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES
-    POLARION_MCP_TOOLS=all          every command as its own tool
+  POLARION_MCP_CONFIG=FILE        same as --config FILE
+  POLARION_MCP_TOOLS=SELECTORS    the config file's `tools`, comma-separated (e.g. all); wins
+                                  over the file
   POLARION_MCP_FILES=DIR          exchange folder: attachments and PDFs saved there (save_as),
                                   uploads read from there (data-file)
 
@@ -43,12 +57,19 @@ fn main() -> ExitCode {
     let mut http_addr = std::env::var("POLARION_MCP_HTTP")
         .ok()
         .filter(|v| !v.trim().is_empty());
+    let mut config_file = std::env::var_os("POLARION_MCP_CONFIG")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--http" => match args.next() {
                 Some(addr) => http_addr = Some(addr),
                 None => return usage_error("--http needs an address, e.g. 127.0.0.1:8787"),
+            },
+            "--config" => match args.next() {
+                Some(file) => config_file = Some(file.into()),
+                None => return usage_error("--config needs a file"),
             },
             "-h" | "--help" => {
                 print!("{USAGE}");
@@ -58,15 +79,29 @@ fn main() -> ExitCode {
                 println!("polarion-mcp {}", env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
             }
-            other => match other.strip_prefix("--http=") {
-                Some(addr) => http_addr = Some(addr.to_owned()),
-                None => return usage_error(&format!("unknown argument `{other}`")),
-            },
+            other => {
+                if let Some(addr) = other.strip_prefix("--http=") {
+                    http_addr = Some(addr.to_owned());
+                } else if let Some(file) = other.strip_prefix("--config=") {
+                    config_file = Some(file.into());
+                } else {
+                    return usage_error(&format!("unknown argument `{other}`"));
+                }
+            }
         }
     }
 
     let config = Config::from_env();
-    let all_tools = std::env::var("POLARION_MCP_TOOLS").is_ok_and(|v| v.trim() == "all");
+    let tools = std::env::var("POLARION_MCP_TOOLS")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    let selection = match Selection::load(config_file.as_deref(), tools.as_deref()) {
+        Ok(selection) => selection,
+        Err(message) => {
+            eprintln!("polarion-mcp: {message}");
+            return ExitCode::FAILURE;
+        }
+    };
     let exchange = match files::Exchange::from_env() {
         Ok(exchange) => exchange,
         Err(message) => {
@@ -77,7 +112,7 @@ fn main() -> ExitCode {
     let Some(addr) = http_addr else {
         return match stdio::run(PolarionMcp::new(
             config,
-            all_tools,
+            selection,
             Transport::Stdio,
             exchange,
         )) {
@@ -99,7 +134,7 @@ fn main() -> ExitCode {
         .enable_all()
         .build()
         .expect("tokio runtime");
-    let server = PolarionMcp::new(config, all_tools, Transport::Http, exchange);
+    let server = PolarionMcp::new(config, selection, Transport::Http, exchange);
     match runtime.block_on(http::run(&addr, server, settings)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

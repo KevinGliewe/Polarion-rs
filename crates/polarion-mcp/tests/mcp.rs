@@ -25,6 +25,7 @@ const VARS: &[&str] = &[
     "POLARION_WRITE_PROJECTS",
     "POLARION_ALLOW_GLOBAL_WRITES",
     "POLARION_MCP_TOOLS",
+    "POLARION_MCP_CONFIG",
     "POLARION_MCP_FILES",
 ];
 
@@ -223,7 +224,12 @@ async fn every_command_can_be_a_tool() {
     )
     .await;
     let tools = r[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 18 + polarion_commands::catalog().len());
+    // Each command once (the everyday reads under their curated names), plus the generic tools.
+    assert_eq!(tools.len(), 3 + polarion_commands::catalog().len());
+    let names: std::collections::BTreeSet<&str> =
+        tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names.len(), tools.len());
+    assert!(names.contains("get_work_item") && !names.contains("items_get"));
     let delete = tools.iter().find(|t| t["name"] == "items_delete").unwrap();
     assert_eq!(delete["annotations"]["readOnlyHint"], false);
     assert!(
@@ -598,6 +604,167 @@ async fn arguments_are_checked_against_the_command() {
     assert!(error && text.contains("`item`"), "{text}");
 }
 
+// ---- tool selection
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_config_file_selects_and_disables_tools() {
+    let server = server().await;
+    mock(
+        &server,
+        &["getWorkItemById>", "projectId>P<", ">P-1<"],
+        &format!(
+            r#"<getWorkItemByIdResponse><getWorkItemByIdReturn uri="{URI}P${{WorkItem}}P-1"><id>P-1</id><title>Brakes</title></getWorkItemByIdReturn></getWorkItemByIdResponse>"#
+        ),
+    )
+    .await;
+    let dir = TempDir::new("config");
+    let file = dir.0.join("polarion-mcp.toml");
+    std::fs::write(
+        &file,
+        r#"
+        # Work items only, no deletes, no describe tool, no output schemas
+        tools = ["items.*"]
+        disable = ["items.delete", "polarion_describe"]
+        output_schemas = false
+        "#,
+    )
+    .unwrap();
+    let r = session(
+        Some(&server),
+        &[
+            ("POLARION_PROJECT", "P"),
+            ("POLARION_MCP_CONFIG", file.to_str().unwrap()),
+        ],
+        &[
+            json!({"method": "tools/list"}),
+            call("get_work_item", json!({"item": "P-1"})),
+            call(
+                "polarion_call",
+                json!({"command": "items.delete", "args": {"items": ["P-1"]}}),
+            ),
+            call("polarion_commands", json!({"area": "items"})),
+            call("polarion_commands", json!({})),
+        ],
+    )
+    .await;
+
+    let instructions = r[0]["result"]["instructions"].as_str().unwrap();
+    assert!(
+        instructions.contains("Some commands are disabled")
+            && !instructions.contains("polarion_describe"),
+        "{instructions}"
+    );
+    let tools = r[1]["result"]["tools"].as_array().unwrap();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    for name in [
+        "get_work_item",
+        "items_add_link",
+        "polarion_call",
+        "polarion_commands",
+    ] {
+        assert!(names.contains(&name), "{name} missing: {names:?}");
+    }
+    for name in [
+        "items_delete",
+        "polarion_describe",
+        "list_documents",
+        "items_get",
+    ] {
+        assert!(!names.contains(&name), "{name} listed: {names:?}");
+    }
+    assert!(tools.iter().all(|t| t.get("outputSchema").is_none()));
+
+    let item = &r[2]["result"];
+    assert!(tool_text(&r[2]).0.contains("Brakes"));
+    assert!(item.get("structuredContent").is_none(), "{item}");
+
+    let (text, error) = tool_text(&r[3]);
+    assert!(
+        error && text.contains("`items.delete` is disabled"),
+        "{text}"
+    );
+
+    let (text, _) = tool_text(&r[4]);
+    let listed: Value = serde_json::from_str(&text).unwrap();
+    let listed: Vec<&str> = listed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert!(listed.contains(&"items.get") && !listed.contains(&"items.delete"));
+
+    let (text, _) = tool_text(&r[5]);
+    let areas: Value = serde_json::from_str(&text).unwrap();
+    let items = areas
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["area"] == "items")
+        .unwrap();
+    assert_eq!(items["commands"], listed.len());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_tools_variable_takes_selectors_and_wins_over_the_file() {
+    let dir = TempDir::new("config-env");
+    let file = dir.0.join("polarion-mcp.toml");
+    std::fs::write(&file, "tools = \"all\"").unwrap();
+    let r = session(
+        None,
+        &[
+            ("POLARION_MCP_CONFIG", file.to_str().unwrap()),
+            ("POLARION_MCP_TOOLS", "documents.*, get_project"),
+        ],
+        &[json!({"method": "tools/list"})],
+    )
+    .await;
+    let tools = r[1]["result"]["tools"].as_array().unwrap();
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(
+        names[..3],
+        ["list_documents", "get_document", "document_work_items"]
+    );
+    assert!(names.contains(&"get_project") && names.contains(&"documents_create"));
+    assert!(!names.contains(&"get_work_item"), "{names:?}");
+}
+
+/// Start the server with `args` and `env`, expect it to stop with exit code 1; its stderr.
+#[track_caller]
+fn refused(args: &[String], env: &[(&str, &str)]) -> String {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    for var in VARS {
+        cmd.env_remove(var);
+    }
+    let out = cmd
+        .args(args)
+        .envs(env.iter().copied())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{args:?} {env:?}");
+    String::from_utf8(out.stderr).unwrap()
+}
+
+#[test]
+fn a_bad_config_stops_the_server() {
+    let dir = TempDir::new("config-bad");
+    let typo = dir.0.join("typo.toml");
+    std::fs::write(&typo, "tools = [\"itmes.*\"]").unwrap();
+    let unknown_key = dir.0.join("key.toml");
+    std::fs::write(&unknown_key, "tool = \"all\"").unwrap();
+    let missing = dir.0.join("missing.toml");
+
+    let stderr = refused(&["--config".into(), typo.display().to_string()], &[]);
+    assert!(stderr.contains("`itmes.*` matches no command"), "{stderr}");
+    let stderr = refused(&[format!("--config={}", unknown_key.display())], &[]);
+    assert!(stderr.contains("unknown field `tool`"), "{stderr}");
+    let stderr = refused(&[], &[("POLARION_MCP_CONFIG", missing.to_str().unwrap())]);
+    assert!(stderr.contains("missing.toml"), "{stderr}");
+    let stderr = refused(&[], &[("POLARION_MCP_TOOLS", "itmes.*")]);
+    assert!(stderr.contains("POLARION_MCP_TOOLS: `itmes.*`"), "{stderr}");
+}
+
 // ---- output schemas
 
 /// `instance` satisfies `schema`.
@@ -658,7 +825,7 @@ async fn results_come_with_output_schemas() {
     assert!(output("items_delete").is_null());
     assert!(output("items_attachment").is_null());
     assert_eq!(
-        output("items_query")["properties"]["result"]["type"],
+        output("query_work_items")["properties"]["result"]["type"],
         "array"
     );
 

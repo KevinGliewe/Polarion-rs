@@ -15,26 +15,8 @@ use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
 use serde_json::{Map, Value, json};
 
+use crate::config::{self, Selection};
 use crate::files::{self, Exchange};
-
-/// Everyday reads as dedicated tools: (tool name, command).
-const CURATED: &[(&str, &str)] = &[
-    ("get_work_item", "items.get"),
-    ("query_work_items", "items.query"),
-    ("count_work_items", "items.count"),
-    ("work_item_links", "items.links"),
-    ("work_item_history", "items.history"),
-    ("list_documents", "documents.list"),
-    ("get_document", "documents.get"),
-    ("document_work_items", "documents.work-items"),
-    ("custom_fields", "schema.custom-fields"),
-    ("field_options", "schema.field-options"),
-    ("search_test_runs", "tests.search"),
-    ("get_test_run", "tests.get"),
-    ("search_plans", "plans.search"),
-    ("get_project", "projects.get"),
-    ("get_user", "users.get"),
-];
 
 /// Commands that need a Polarion session of their own: refused over HTTP, where all clients share one.
 const SESSION_BOUND: &[&str] = &[
@@ -53,10 +35,7 @@ pub enum Transport {
 }
 
 const INSTRUCTIONS: &str = "\
-Access to a Siemens Polarion ALM server. The dedicated tools cover everyday reads; \
-`polarion_commands`, `polarion_describe` and `polarion_call` reach every operation \
-(about 250: work items, documents, test runs, plans, wiki, baselines, revisions, \
-schema, users, permissions, ...). Work items are given as ID (in the default \
+Work items are given as ID (in the default \
 project), PROJECT/ID or a URI; documents as SPACE/NAME or PROJECT/SPACE/NAME. Queries \
 use Polarion's Lucene syntax, e.g. `type:requirement AND status:open`, and return at \
 most 100 results unless `limit` or `all` is given. Commands marked as writes are \
@@ -75,11 +54,6 @@ struct Registered {
     kind: ToolKind,
 }
 
-/// `items.back-links` → `items_back_links`.
-fn tool_name(command: &Entry) -> String {
-    format!("{}_{}", command.area, command.name.replace('-', "_"))
-}
-
 fn tool(
     name: String,
     description: String,
@@ -95,15 +69,19 @@ fn tool(
     Registered { tool, kind }
 }
 
-fn command_tool(name: String, command: &'static Entry, exchange: Option<&Exchange>) -> Registered {
+fn command_tool(
+    command: &'static Entry,
+    exchange: Option<&Exchange>,
+    output_schemas: bool,
+) -> Registered {
     let mut registered = tool(
-        name,
+        config::tool_name(command),
         command.description.to_owned(),
         files::schema(command, exchange),
         !command.write,
         ToolKind::Command(command),
     );
-    if let Some((Value::Object(schema), _)) = output_schema(command) {
+    if let Some((Value::Object(schema), _)) = output_schema(command).filter(|_| output_schemas) {
         registered.tool = registered.tool.with_raw_output_schema(Arc::new(schema));
     }
     registered
@@ -133,8 +111,58 @@ fn output_schema(command: &Entry) -> Option<(Value, bool)> {
     Some((wrapper, true))
 }
 
+/// One of the tools that reach every command (`config::GENERIC`).
+fn generic_tool(name: &str) -> Registered {
+    match name {
+        "polarion_commands" => tool(
+            name.into(),
+            "List Polarion command areas, or the commands of one area (name, summary, whether it \
+             writes). Use polarion_describe for a command's arguments and polarion_call to run it."
+                .into(),
+            json!({
+                "type": "object",
+                "properties": {"area": {"type": "string", "description": "Area, e.g. `items`, `tests`, `plans`; omit to list the areas"}},
+                "additionalProperties": false
+            }),
+            true,
+            ToolKind::ListCommands,
+        ),
+        "polarion_describe" => tool(
+            name.into(),
+            "The description and JSON Schema of a command's arguments.".into(),
+            json!({
+                "type": "object",
+                "properties": {"command": {"type": "string", "description": "Command name, e.g. `items.history`"}},
+                "required": ["command"],
+                "additionalProperties": false
+            }),
+            true,
+            ToolKind::Describe,
+        ),
+        "polarion_call" => tool(
+            name.into(),
+            "Run any Polarion command by name with its arguments (see polarion_commands and \
+             polarion_describe)."
+                .into(),
+            json!({
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Command name, e.g. `plans.statistics`"},
+                    "args": {"type": "object", "description": "Arguments as described by polarion_describe"}
+                },
+                "required": ["command"],
+                "additionalProperties": false
+            }),
+            false,
+            ToolKind::Call,
+        ),
+        other => unreachable!("`{other}` is not a generic tool"),
+    }
+}
+
 struct Shared {
     tools: Vec<Registered>,
+    selection: Selection,
     polarion: Result<Polarion, CommandError>,
     config: Config,
     transport: Transport,
@@ -156,78 +184,51 @@ impl std::fmt::Debug for PolarionMcp {
 }
 
 impl PolarionMcp {
-    /// `all_tools`: also register every command as its own tool. `exchange`: the folder files
-    /// are saved to and uploaded from.
+    /// `selection`: the tools to offer and the commands switched off. `exchange`: the folder
+    /// files are saved to and uploaded from.
     pub fn new(
         config: Config,
-        all_tools: bool,
+        selection: Selection,
         transport: Transport,
         exchange: Option<Exchange>,
     ) -> Self {
-        let mut tools: Vec<Registered> = CURATED
+        let available = |c: &&&Entry| {
+            transport == Transport::Stdio || !SESSION_BOUND.contains(&c.full_name().as_str())
+        };
+        let (curated, others): (Vec<&&Entry>, Vec<&&Entry>) = selection
+            .tools
             .iter()
-            .map(|(name, command)| {
-                let command = find(command).expect("curated commands exist");
-                command_tool((*name).to_owned(), command, exchange.as_ref())
-            })
+            .filter(available)
+            .partition(|c| config::is_curated(c));
+        let command_tool =
+            |c: &&&'static Entry| command_tool(c, exchange.as_ref(), selection.output_schemas);
+        let tools = curated
+            .iter()
+            .map(command_tool)
+            .chain(selection.generic.iter().map(|g| generic_tool(g)))
+            .chain(others.iter().map(command_tool))
             .collect();
-        tools.push(tool(
-            "polarion_commands".into(),
-            "List Polarion command areas, or the commands of one area (name, summary, whether it \
-             writes). Use polarion_describe for a command's arguments and polarion_call to run it."
-                .into(),
-            json!({
-                "type": "object",
-                "properties": {"area": {"type": "string", "description": "Area, e.g. `items`, `tests`, `plans`; omit to list the areas"}},
-                "additionalProperties": false
-            }),
-            true,
-            ToolKind::ListCommands,
-        ));
-        tools.push(tool(
-            "polarion_describe".into(),
-            "The description and JSON Schema of a command's arguments.".into(),
-            json!({
-                "type": "object",
-                "properties": {"command": {"type": "string", "description": "Command name, e.g. `items.history`"}},
-                "required": ["command"],
-                "additionalProperties": false
-            }),
-            true,
-            ToolKind::Describe,
-        ));
-        tools.push(tool(
-            "polarion_call".into(),
-            "Run any Polarion command by name with its arguments (see polarion_commands and \
-             polarion_describe)."
-                .into(),
-            json!({
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "Command name, e.g. `plans.statistics`"},
-                    "args": {"type": "object", "description": "Arguments as described by polarion_describe"}
-                },
-                "required": ["command"],
-                "additionalProperties": false
-            }),
-            false,
-            ToolKind::Call,
-        ));
-        if all_tools {
-            let available = |c: &&Entry| {
-                transport == Transport::Stdio || !SESSION_BOUND.contains(&c.full_name().as_str())
-            };
-            for c in catalog().iter().filter(available) {
-                tools.push(command_tool(tool_name(c), c, exchange.as_ref()));
-            }
-        }
         Self(Arc::new(Shared {
             tools,
+            selection,
             polarion: config.connect(),
             config,
             transport,
             exchange,
         }))
+    }
+
+    /// A command by name for the generic tools: unknown and switched-off commands are errors.
+    fn command(&self, name: &str) -> Result<&'static Entry, CommandError> {
+        let command = find(name).ok_or_else(|| {
+            CommandError::invalid(format!("unknown command `{name}` (see polarion_commands)"))
+        })?;
+        if self.0.selection.is_disabled(command) {
+            return Err(CommandError::invalid(format!(
+                "command `{name}` is disabled on this server"
+            )));
+        }
+        Ok(command)
     }
 
     /// What may be written: the projects, plus `global writes`; `None` when read-only.
@@ -277,7 +278,47 @@ impl PolarionMcp {
             ),
             None => String::new(),
         };
-        format!("{INSTRUCTIONS}{writes}{project}{shared}{files}")
+        format!(
+            "Access to a Siemens Polarion ALM server. {}{INSTRUCTIONS}{writes}{project}{shared}{files}",
+            self.generic_instructions()
+        )
+    }
+
+    /// What the generic tools offer, as far as they are listed.
+    fn generic_instructions(&self) -> String {
+        let selection = &self.0.selection;
+        let mut text = String::new();
+        if selection.lists("polarion_call") {
+            let enabled = catalog()
+                .iter()
+                .filter(|c| !selection.is_disabled(c))
+                .count();
+            text.push_str(&format!(
+                "Besides the dedicated tools, `polarion_call` runs any of {enabled} commands \
+                 (work items, documents, test runs, plans, wiki, baselines, revisions, schema, \
+                 users, permissions, ...)"
+            ));
+            let helpers: Vec<&str> = [
+                ("polarion_commands", "`polarion_commands` lists them"),
+                (
+                    "polarion_describe",
+                    "`polarion_describe` shows their arguments",
+                ),
+            ]
+            .into_iter()
+            .filter(|(tool, _)| selection.lists(tool))
+            .map(|(_, text)| text)
+            .collect();
+            if !helpers.is_empty() {
+                text.push_str("; ");
+                text.push_str(&helpers.join(" and "));
+            }
+            text.push_str(". ");
+        }
+        if selection.disables_commands() {
+            text.push_str("Some commands are disabled on this server. ");
+        }
+        text
     }
 
     async fn run(&self, command: &Entry, arguments: Value) -> Result<Value, CommandError> {
@@ -377,24 +418,32 @@ impl ServerHandler for PolarionMcp {
             })?;
         let arguments = request.arguments.map_or(Value::Null, Value::Object);
         let lookup = match &entry.kind {
-            ToolKind::Command(c) => return Ok(self.execute(c, arguments, true).await.into()),
+            ToolKind::Command(c) => {
+                let structured = self.0.selection.output_schemas;
+                return Ok(self.execute(c, arguments, structured).await.into());
+            }
             ToolKind::Call => {
-                let command = arguments
+                let name = arguments
                     .get("command")
                     .and_then(Value::as_str)
                     .unwrap_or_default();
-                match find(command) {
-                    Some(c) => {
+                match self.command(name) {
+                    Ok(c) => {
                         let args = arguments.get("args").cloned().unwrap_or(Value::Null);
                         return Ok(self.execute(c, args, false).await.into());
                     }
-                    None => Err(CommandError::invalid(format!(
-                        "unknown command `{command}` (see polarion_commands)"
-                    ))),
+                    Err(e) => Err(e),
                 }
             }
-            ToolKind::ListCommands => list_commands(&arguments),
-            ToolKind::Describe => describe(&arguments, self.0.exchange.as_ref()),
+            ToolKind::ListCommands => list_commands(&arguments, &self.0.selection),
+            ToolKind::Describe => {
+                let name = arguments
+                    .get("command")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                self.command(name)
+                    .map(|c| describe(c, self.0.exchange.as_ref()))
+            }
         };
         Ok(match lookup {
             Ok(value) => CallToolResult::success(vec![ContentBlock::text(text(&value))]),
@@ -420,21 +469,30 @@ fn text(value: &Value) -> String {
     }
 }
 
-fn list_commands(arguments: &Value) -> Result<Value, CommandError> {
+/// The commands of `area` that are not switched off.
+fn enabled<'a>(
+    area: &'a str,
+    selection: &'a Selection,
+) -> impl Iterator<Item = &'static Entry> + 'a {
+    catalog()
+        .iter()
+        .filter(move |c| c.area == area && !selection.is_disabled(c))
+}
+
+fn list_commands(arguments: &Value, selection: &Selection) -> Result<Value, CommandError> {
     match arguments.get("area").and_then(Value::as_str) {
         None => Ok(Value::Array(
             AREAS
                 .iter()
-                .map(|(area, about)| {
-                    let count = catalog().iter().filter(|c| c.area == *area).count();
-                    json!({"area": area, "description": about, "commands": count})
+                .filter_map(|(area, about)| {
+                    let count = enabled(area, selection).count();
+                    (count > 0)
+                        .then(|| json!({"area": area, "description": about, "commands": count}))
                 })
                 .collect(),
         )),
         Some(area) => {
-            let list: Vec<Value> = catalog()
-                .iter()
-                .filter(|c| c.area == area)
+            let list: Vec<Value> = enabled(area, selection)
                 .map(|c| {
                     let mut entry = Map::new();
                     entry.insert("name".into(), Value::from(c.full_name()));
@@ -454,19 +512,12 @@ fn list_commands(arguments: &Value) -> Result<Value, CommandError> {
     }
 }
 
-fn describe(arguments: &Value, exchange: Option<&Exchange>) -> Result<Value, CommandError> {
-    let name = arguments
-        .get("command")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let c = find(name).ok_or_else(|| {
-        CommandError::invalid(format!("unknown command `{name}` (see polarion_commands)"))
-    })?;
-    Ok(json!({
+fn describe(c: &Entry, exchange: Option<&Exchange>) -> Value {
+    json!({
         "name": c.full_name(),
         "description": c.description,
         "write": c.write,
         "inputSchema": files::schema(c, exchange),
         "outputSchema": c.output_schema(),
-    }))
+    })
 }
