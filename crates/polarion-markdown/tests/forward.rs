@@ -1680,9 +1680,10 @@ mod robustness {
                 let out = html(&markdown);
                 let took = started.elapsed();
                 assert!(!out.contains("<a") && !out.contains("<b ") && !out.contains("<script"));
-                // Quadratic, this took minutes in a debug build.
+                // Quadratic, this took minutes in a debug build; linear, under a second here and
+                // about 13 s on a slow CI runner.
                 assert!(
-                    took < std::time::Duration::from_secs(5),
+                    took < std::time::Duration::from_secs(60),
                     "{unit:?}: {took:?}"
                 );
             }
