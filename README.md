@@ -426,6 +426,8 @@ MCP tiers and the bootstrap (see [docs/testing.md](docs/testing.md)) confirmed:
   list, an alert, a table, highlighted code as `<pre class="language-…">` with styled spans, a `workitemimg:` image);
   the uploaded SVG comes back unchanged and the description reads back as the same Markdown; writing the same text
   again sends nothing; a removed diagram's attachment is pruned.
+- Mermaid diagrams (SVG attachments shown through `workitemimg:`) display in the browser and in PDF and Word
+  exports (checked by hand).
 - Test steps (`setTestSteps`), test records (`addTestRecordToTestRun`, `updateTestRecordAtIndex`, and removing one
   with an empty record), test run fields and report, run, record and step attachments. The server stores record
   and step attachments as `<test case id>_<file name>` and `<test case id>_<step>_<file name>`.
@@ -443,7 +445,6 @@ MCP tiers and the bootstrap (see [docs/testing.md](docs/testing.md)) confirmed:
   (`subterra:data-service:objects:/default/${User}ID`).
 - Update operations for plans, and every write the live suite never makes (workflow actions, deletes, document
   structure, plans, baselines, users).
-- SVG attachments (the mermaid diagrams) displayed through `workitemimg:` in the browser and in PDF and Word exports.
 - A write repeated after a session renewal: only after a SOAP fault (the server refused it), never after an HTTP
   error, and through the write filter again (a create beyond the budget is not repeated).
 
