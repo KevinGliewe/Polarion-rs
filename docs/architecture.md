@@ -11,6 +11,7 @@ flowchart TB
     commands["polarion-commands<br/>one typed command per library method"]
     derive["polarion-commands-derive<br/>cmd, cmd_args, registry! macros"]
     lib["polarion<br/>area handles, domain types, write guard"]
+    md["polarion-markdown<br/>Markdown and Polarion HTML, mermaid to SVG; no I/O"]
     soap["polarion-soap<br/>SOAP client, generated from the WSDLs"]
     rest["polarion-rest<br/>REST client, generated from the OpenAPI spec"]
     xtask["xtask<br/>code generators"]
@@ -21,6 +22,7 @@ flowchart TB
     derive -. "expands into" .-> commands
     commands --> lib
     lib --> soap
+    lib -- "feature markdown" --> md
     soap --> server
     rest --> server
     xtask -. "generates" .-> soap
@@ -28,13 +30,15 @@ flowchart TB
 ```
 
 Every arrow is a Cargo dependency (the front ends also use `polarion` types directly). Dependencies only point
-down. `polarion-rest` stands alone: nothing builds on it.
+down. `polarion-rest` stands alone: nothing builds on it. `polarion-markdown` is pure conversion; `polarion` uses it
+behind its `markdown` feature (which `polarion-commands` turns on) for descriptions as Markdown.
 
 | Crate | Hand-written | Generated |
 |---|---|---|
-| [`polarion-soap`](../crates/polarion-soap) | `client.rs` (envelope, session, faults), `xml.rs`, `error.rs` | `src/generated/` (types, services), `tests/spec_examples.rs` |
+| [`polarion-soap`](../crates/polarion-soap) | `client.rs` (envelope, session, faults, read-only mode, write filter), `xml.rs`, `error.rs` | `src/generated/` (types, services), `tests/spec_examples.rs` |
 | [`polarion-rest`](../crates/polarion-rest) | `client.rs` (HTTP, pagination), `jsonapi.rs`, `query.rs`, `error.rs` | `src/generated/` (models, operations), `tests/spec_examples.rs` |
 | [`polarion`](../crates/polarion) | everything | nothing |
+| [`polarion-markdown`](../crates/polarion-markdown) | everything | nothing |
 | [`polarion-commands`](../crates/polarion-commands) | the DTOs and their `impl Run` | serde, schemas, clap and the catalog, by the macros |
 | [`polarion-cli`](../crates/polarion-cli), [`polarion-mcp`](../crates/polarion-mcp) | the front-end plumbing | the commands and tools, at compile or run time, from the catalog |
 
@@ -60,7 +64,10 @@ reachable through a library method, and every library method through a command (
 | SOAP types to domain types | [`polarion/src/convert.rs`](../crates/polarion/src/convert.rs) |
 | Write inputs, typing of custom field JSON | [`polarion/src/write.rs`](../crates/polarion/src/write.rs) |
 | Work item and document references, URIs | [`polarion/src/uri.rs`](../crates/polarion/src/uri.rs) |
-| The write guard (`check_write` and friends) | [`polarion/src/client.rs`](../crates/polarion/src/client.rs) |
+| The write guard (`check_write`, the target guards of restricted mode) | [`polarion/src/client.rs`](../crates/polarion/src/client.rs) |
+| The SOAP write filter of restricted mode | [`polarion/src/restricted.rs`](../crates/polarion/src/restricted.rs) |
+| Descriptions as Markdown: diagram attachments, read and write sequences | [`polarion/src/markdown.rs`](../crates/polarion/src/markdown.rs), see [Markdown](markdown.md) |
+| Markdown ↔ Polarion HTML, mermaid hashing and rendering | [`polarion-markdown/src/`](../crates/polarion-markdown/src) (`emit/`, `reverse/`, `mermaid/`) |
 | Commands, one module per area | [`polarion-commands/src/`](../crates/polarion-commands/src) (`items.rs`, `documents.rs`, ...) |
 | Argument types, result types | [`arg.rs`](../crates/polarion-commands/src/arg.rs), [`output.rs`](../crates/polarion-commands/src/output.rs) |
 | JSON arguments to a typed command | `parse_as` in [`command.rs`](../crates/polarion-commands/src/command.rs) |
@@ -89,7 +96,7 @@ sequenceDiagram
     S->>S: files::prepare (exchange-folder arguments)
     S->>C: Entry::parse → parse_as checks and types the JSON
     C-->>S: AnyCommand::ItemsGet(Get)
-    S->>C: AnyCommand::run(Context)
+    S->>C: AnyCommand::run(Context): the command's future, boxed (command::boxed)
     C->>C: ItemArg::resolve → ItemRef MP/MP-42
     C->>L: items().get(ItemRef)
     L->>P: tracker().get_work_item_by_id("MP", "MP-42")
@@ -116,7 +123,8 @@ result is printed instead of returned (see [Front ends](front-ends.md)).
   or command-line arguments) only appears where data leaves or enters the process, and that code is generated.
   Only values whose type is known at run time stay JSON: custom fields, test parameters.
 - **Read-only unless told otherwise.** `Polarion::new` writes nothing. Writes are allowed per project, or globally,
-  and are checked twice: by the library's write guard, and by the SOAP client's read-only mode when no writes are
-  enabled at all (see [Library](library.md#the-write-guard)).
+  or in restricted mode only to listed objects, and are checked twice: by the library's write guard, and by the SOAP
+  client, which is read-only when nothing may be written and checks every write request with the write filter in
+  restricted mode (see [Library](library.md#the-write-guard)).
 - **The whole API, provably.** Coverage tests fail when a SOAP operation has no library method, or a library method
   has no command (see [Testing](testing.md)).

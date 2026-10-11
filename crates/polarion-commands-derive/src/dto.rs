@@ -16,6 +16,8 @@ enum Shape {
     OptionBool,
     Option,
     Vec,
+    /// `TextArg`: the text itself, or on the command line `@FILE`.
+    Text,
     Other,
 }
 
@@ -29,6 +31,7 @@ fn shape(ty: &Type) -> Shape {
     match last.ident.to_string().as_str() {
         "bool" => Shape::Bool,
         "Vec" => Shape::Vec,
+        "TextArg" => Shape::Text,
         "Option" => {
             let inner_bool = matches!(&last.arguments, PathArguments::AngleBracketed(args)
                 if matches!(args.args.first(), Some(GenericArgument::Type(Type::Path(p)))
@@ -87,13 +90,14 @@ fn view(expr: &Expr) -> syn::Result<TokenStream> {
         Some("lines") => quote!(Lines),
         Some("links") => quote!(Links),
         Some("scalar") => quote!(Scalar),
+        Some("text") => quote!(Text),
         Some("bytes") => quote!(Bytes),
         Some("done") => quote!(Done),
         Some("table") if arg.is_some() => return Ok(quote!(crate::View::Table(#arg))),
         _ => {
             return Err(syn::Error::new_spanned(
                 expr,
-                "expected object, lines, links, scalar, bytes, done or table(COLUMNS)",
+                "expected object, lines, links, scalar, text, bytes, done or table(COLUMNS)",
             ));
         }
     };
@@ -103,27 +107,54 @@ fn view(expr: &Expr) -> syn::Result<TokenStream> {
     Ok(quote!(crate::View::#variant))
 }
 
+/// Added to the description of commands that modify data.
+const WRITE_NOTE: &str = "(Modifies data: needs POLARION_WRITE_PROJECTS for the project, or \
+                          POLARION_WRITE_TARGETS naming the object.)";
+
+/// What the command line adds to the help of a `TextArg` option (JSON never reads files, so the
+/// doc comment, which is also the JSON Schema description, does not say it).
+const TEXT_NOTE: &str =
+    "(also @FILE for a file's content, @- for standard input, @@... for text that starts with @)";
+
+/// The lines of the doc comment, trimmed.
+fn doc_lines(attrs: &[Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .filter_map(|attr| match &attr.meta {
+            Meta::NameValue(nv) if nv.path.is_ident("doc") => match &nv.value {
+                Expr::Lit(ExprLit {
+                    lit: Lit::Str(s), ..
+                }) => Some(s.value().trim().to_owned()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 /// The first paragraph of the doc comment, on one line.
 fn summary(attrs: &[Attribute]) -> String {
     let mut lines = Vec::new();
-    for attr in attrs {
-        if let Meta::NameValue(nv) = &attr.meta
-            && nv.path.is_ident("doc")
-            && let Expr::Lit(ExprLit {
-                lit: Lit::Str(s), ..
-            }) = &nv.value
-        {
-            let line = s.value().trim().to_owned();
-            if line.is_empty() {
-                if lines.is_empty() {
-                    continue;
-                }
-                break;
+    for line in doc_lines(attrs) {
+        if line.is_empty() {
+            if lines.is_empty() {
+                continue;
             }
-            lines.push(line);
+            break;
         }
+        lines.push(line);
     }
     lines.join(" ")
+}
+
+/// Whether the doc comment has more paragraphs than the summary (the command line's `--help`
+/// shows all of them).
+fn has_details(attrs: &[Attribute]) -> bool {
+    let lines = doc_lines(attrs);
+    let mut paragraphs = lines
+        .split(|line| line.is_empty())
+        .filter(|paragraph| !paragraph.is_empty());
+    paragraphs.next().is_some() && paragraphs.next().is_some()
 }
 
 /// Add the serde and clap attributes a field needs, consuming `#[positional]` and `#[flatten]`.
@@ -170,6 +201,15 @@ fn field(field: &mut Field) -> syn::Result<()> {
                 Shape::Vec => {
                     quote!(#[cfg_attr(feature = "cli", arg(long, value_delimiter = ','))])
                 }
+                // Markdown often starts with `-` (a list, a rule): it is the value, not an option.
+                Shape::Text => {
+                    let doc = doc_lines(&field.attrs).join(" ");
+                    let help = format!("{doc} {TEXT_NOTE}").trim_start().to_owned();
+                    quote! {
+                        #[cfg_attr(feature = "cli", arg(long, allow_hyphen_values = true,
+                            help = #help))]
+                    }
+                }
                 _ => quote!(#[cfg_attr(feature = "cli", arg(long))]),
             }
         };
@@ -186,7 +226,7 @@ fn field(field: &mut Field) -> syn::Result<()> {
                     quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")]),
                 )?;
             }
-            Shape::Other => {}
+            Shape::Text | Shape::Other => {}
         }
     }
     field.attrs.extend(extra);
@@ -249,12 +289,16 @@ pub fn expand(attr: TokenStream, item: TokenStream, command: bool) -> syn::Resul
             ));
         }
         let description = if options.write {
-            format!(
-                "{summary} (Modifies data: needs POLARION_WRITE_PROJECTS for the target project.)"
-            )
+            format!("{summary} {WRITE_NOTE}")
         } else {
             summary.clone()
         };
+        if options.write && has_details(&item.attrs) {
+            // `--help` shows the whole doc comment instead of the description: the note ends it.
+            let note = format!(" {WRITE_NOTE}");
+            item.attrs
+                .extend(Attribute::parse_outer.parse2(quote!(#[doc = ""] #[doc = #note]))?);
+        }
         let write = options.write;
         let view = options.view.unwrap_or_else(|| quote!(crate::View::Object));
         quote! {

@@ -421,3 +421,204 @@ async fn concurrent_first_calls_log_in_once() {
     a.unwrap();
     b.unwrap();
 }
+
+// ---- writes after session renewal
+
+const ITEM_URI: &str = "subterra:data-service:objects:/default/PROJ${WorkItem}PROJ-1";
+
+fn role() -> polarion_soap::types::EnumOptionId {
+    polarion_soap::types::EnumOptionId {
+        id: Some("ref_ext".into()),
+    }
+}
+
+/// A write (`addHyperlink`) sent with this session, answered with `answer`, expected `times` times.
+async fn add_hyperlink(server: &MockServer, session: &str, answer: ResponseTemplate, times: u64) {
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("addHyperlink>"))
+        .and(session_is(session))
+        .respond_with(answer)
+        .expect(times)
+        .mount(server)
+        .await;
+}
+
+fn hyperlink_added() -> ResponseTemplate {
+    xml(envelope(
+        "",
+        "<addHyperlinkResponse><addHyperlinkReturn>true</addHyperlinkReturn></addHyperlinkResponse>",
+    ))
+}
+
+#[tokio::test]
+async fn writes_are_repeated_after_a_fault() {
+    let (server, client) = setup(false).await;
+    logins(&server, &["s1", "s2"]).await;
+    add_hyperlink(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    add_hyperlink(&server, "s2", hyperlink_added(), 1).await;
+
+    // The server answered and refused the write, so it was not applied: it is sent again.
+    let added = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+        .await
+        .unwrap();
+    assert!(added);
+    assert_eq!(client.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn writes_are_not_repeated_after_an_http_error() {
+    let (server, client) = setup(false).await;
+    logins(&server, &["s1", "s2"]).await;
+    let bad_gateway = ResponseTemplate::new(502).set_body_string("<html>Bad gateway</html>");
+    add_hyperlink(&server, "s1", bad_gateway, 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    add_hyperlink(&server, "s2", hyperlink_added(), 0).await;
+
+    // The write may have been applied: its error is returned, and the session is renewed for
+    // the next call.
+    let err = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Status { status, .. } if status.as_u16() == 502),
+        "{err:?}"
+    );
+    assert_eq!(client.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn repeated_writes_pass_the_write_filter_again() {
+    // A filter that lets one request through, like a create budget of one.
+    let server = MockServer::start().await;
+    let left = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(1));
+    let budget = left.clone();
+    let client = Client::builder(
+        &format!("{}/polarion", server.uri()),
+        Auth::Token("secret-token".into()),
+    )
+    .write_filter(std::sync::Arc::new(move |_: &str, _: &str| {
+        budget
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |n| n.checked_sub(1),
+            )
+            .is_ok()
+    }))
+    .build()
+    .unwrap();
+    logins(&server, &["s1", "s2"]).await;
+    add_hyperlink(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    add_hyperlink(&server, "s2", hyperlink_added(), 0).await;
+
+    // The repeat after the renewal is refused by the filter: the fault is returned, and only
+    // one request was sent.
+    let err = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Fault { message, .. } if message == "Not authorized."),
+        "{err:?}"
+    );
+    assert_eq!(left.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert_eq!(client.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn reads_are_repeated_after_an_http_error() {
+    let (server, client) = setup(true).await;
+    logins(&server, &["s1", "s2"]).await;
+    let bad_gateway = ResponseTemplate::new(502).set_body_string("<html>Bad gateway</html>");
+    get_item(&server, "s1", bad_gateway, 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+    get_item(&server, "s2", xml(work_item_response()), 1).await;
+
+    let item = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap();
+    assert_eq!(item.id.as_deref(), Some("PROJ-1"));
+}
+
+// ---- write filter
+
+#[tokio::test]
+async fn the_write_filter_sees_every_write_before_it_is_sent() {
+    let server = MockServer::start().await;
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+    let log = seen.clone();
+    let client = Client::builder(
+        &format!("{}/polarion", server.uri()),
+        Auth::Token("secret-token".into()),
+    )
+    .write_filter(std::sync::Arc::new(move |operation: &str, body: &str| {
+        log.lock()
+            .unwrap()
+            .push((operation.to_owned(), body.to_owned()));
+        !body.contains("forbidden")
+    }))
+    .build()
+    .unwrap();
+    assert!(client.has_write_filter() && !client.is_read_only());
+    Mock::given(path(SESSION))
+        .respond_with(xml(login_response()))
+        .mount(&server)
+        .await;
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("addHyperlink>"))
+        .respond_with(hyperlink_added())
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("getWorkItemById>"))
+        .respond_with(xml(work_item_response()))
+        .mount(&server)
+        .await;
+
+    let err = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid/forbidden", &role())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::WriteFiltered { operation } if operation == "TrackerWebService.addHyperlink"),
+        "{err:?}"
+    );
+    assert!(
+        server.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+
+    // Reads are not filtered; allowed writes are sent.
+    client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap();
+    assert!(
+        client
+            .tracker()
+            .add_hyperlink(ITEM_URI, "https://example.invalid/ok", &role())
+            .await
+            .unwrap()
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2, "only the writes: {seen:?}");
+    assert_eq!(seen[1].0, "addHyperlink");
+    assert!(
+        seen[1].1.starts_with("<trackeri:addHyperlink>")
+            && seen[1].1.contains(&format!("workitemURI>{ITEM_URI}<")),
+        "the body without the envelope: {}",
+        seen[1].1
+    );
+}

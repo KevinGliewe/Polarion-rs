@@ -126,7 +126,7 @@ pub fn expand(input: TokenStream) -> syn::Result<TokenStream> {
     });
     let runs = entries.iter().map(|e| {
         let variant = &e.variant;
-        quote!(Self::#variant(c) => crate::Run::run(c, cx).await.map(AnyOutput::#variant))
+        quote!(Self::#variant(c) => crate::command::boxed(c, cx, AnyOutput::#variant))
     });
     let catalog = entries.iter().map(|e| {
         let (variant, module, ty) = (&e.variant, &e.area.module, e.ty);
@@ -224,7 +224,10 @@ pub fn expand(input: TokenStream) -> syn::Result<TokenStream> {
 
             /// Run the command.
             pub async fn run(self, cx: &crate::Context<'_>) -> crate::Result<AnyOutput> {
-                match self { #(#runs),* }
+                // Each command's future is built and boxed in a frame of its own and awaited
+                // once here, which keeps this function's frame small in unoptimized builds.
+                let run: crate::command::BoxedRun<'_> = match self { #(#runs),* };
+                run.await
             }
         }
 

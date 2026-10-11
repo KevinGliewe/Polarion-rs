@@ -4,11 +4,15 @@
 //! Configuration comes from the environment, as for the `polarion` command:
 //! `POLARION_URL`, `POLARION_TOKEN` (or `POLARION_USER` and `POLARION_PASSWORD`),
 //! `POLARION_PROJECT`, `POLARION_INSECURE`, and for writes `POLARION_WRITE_PROJECTS` /
-//! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them). Which tools are offered comes from
-//! the optional config file (`--config FILE` or `POLARION_MCP_CONFIG`) and `POLARION_MCP_TOOLS`.
+//! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them) or `POLARION_WRITE_TARGETS` (only
+//! the objects it names; set, even empty, it overrides the other two). Which tools are offered,
+//! and which commands need their area's guide first, comes from the optional config file
+//! (`--config FILE` or `POLARION_MCP_CONFIG`), `POLARION_MCP_TOOLS` and
+//! `POLARION_MCP_REQUIRE_GUIDES`.
 
 mod config;
 mod files;
+mod guides;
 mod http;
 mod server;
 mod stdio;
@@ -29,18 +33,40 @@ MCP server for Siemens Polarion ALM. Speaks stdio by default; with --http ADDR
 
 The config file (TOML, optional) chooses the tools; every key is optional:
   tools = [\"default\", \"documents.*\"]   commands with a tool of their own (default: \"default\",
-                                       the everyday reads; \"all\": every command)
+                                       the everyday reads, and the everyday writes (work items,
+                                       documents, test runs, plans) when writes are enabled;
+                                       \"all\": every command; without writes, those writes get
+                                       no tool at all)
   disable = [\"*.delete\", \"wiki.*\"]     commands switched off everywhere (polarion_call too),
                                        or generic tools (polarion_call, ...) to leave out
   output_schemas = false               no outputSchema / structuredContent (smaller tool list)
+  require_guides = \"write\"             commands refused until polarion_guide was called for their
+                                       area (once per server process): \"write\" (default) the
+                                       writes, when writes are enabled; \"all\" every command;
+                                       \"none\" none. Areas: items -> work-items, documents, tests,
+                                       plans, wiki; the others -> overview
 Selectors are command names (items.get), tool names (get_work_item) or `default`/`all`;
-`*` is a wildcard.
+`*` is a wildcard. The guides are also resources: polarion://guide/<area>.
 
 Environment:
   POLARION_URL, POLARION_TOKEN (or POLARION_USER + POLARION_PASSWORD), POLARION_PROJECT,
   POLARION_INSECURE, POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES
+  POLARION_WRITE_TARGETS=TARGETS  only these objects may be written (set, even empty, it
+                                  overrides the two above): ID, PROJECT/ID, doc:SPACE/NAME,
+                                  doc:PROJECT/SPACE/NAME, run:ID, run:PROJECT/ID or a URI,
+                                  comma-separated (\\, for a comma in a name). Refused even for
+                                  them: creates, deletes of whole objects, workflow actions,
+                                  status and resolution changes, the body of a document that
+                                  holds work items. Allowed: their attachments, work records
+                                  and test records, deleting those included. Every object a
+                                  write names (link targets, test cases, defects, plan items)
+                                  must be a target too. Not prevented: what the server does in
+                                  response (suspect links on work items that link to a target,
+                                  notifications)
   POLARION_MCP_CONFIG=FILE        same as --config FILE
   POLARION_MCP_TOOLS=SELECTORS    the config file's `tools`, comma-separated (e.g. all); wins
+                                  over the file
+  POLARION_MCP_REQUIRE_GUIDES=X   the config file's `require_guides` (write, all, none); wins
                                   over the file
   POLARION_MCP_FILES=DIR          exchange folder: attachments and PDFs saved there (save_as),
                                   uploads read from there (data-file)
@@ -92,10 +118,23 @@ fn main() -> ExitCode {
     }
 
     let config = Config::from_env();
+    // A write allowlist that does not parse is not served at all.
+    if let Err(e) = config.resolve_write_targets() {
+        eprintln!("polarion-mcp: {e}");
+        return ExitCode::FAILURE;
+    }
     let tools = std::env::var("POLARION_MCP_TOOLS")
         .ok()
         .filter(|v| !v.trim().is_empty());
-    let selection = match Selection::load(config_file.as_deref(), tools.as_deref()) {
+    let guides = std::env::var("POLARION_MCP_REQUIRE_GUIDES")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    let selection = match Selection::load(
+        config_file.as_deref(),
+        tools.as_deref(),
+        guides.as_deref(),
+        config.writes_enabled(),
+    ) {
         Ok(selection) => selection,
         Err(message) => {
             eprintln!("polarion-mcp: {message}");

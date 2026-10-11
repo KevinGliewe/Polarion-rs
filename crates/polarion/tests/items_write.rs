@@ -312,7 +312,7 @@ async fn links_comments_people_and_more() {
         TRACKER,
         &[
             "moveWorkItemToDocument>",
-            &format!("documentURI>{URI}Sandbox${{Module}}{{moduleFolder}}Specs/SRS<"),
+            &format!("documentURI>{URI}Sandbox${{Module}}{{moduleFolder}}Specs#SRS<"),
             r#"parentWorkItemURI xsi:nil="true"/>"#,
             "position>-1<",
             "retainDocumentFlow>false<",
@@ -392,4 +392,69 @@ async fn links_comments_people_and_more() {
         .await
         .unwrap();
     items.delete(&item).await.unwrap();
+}
+
+#[tokio::test]
+async fn writes_check_the_project_of_the_uri_they_send() {
+    let server = server().await;
+    let polarion = writer(&server); // Sandbox only
+    let prod = ItemRef::new("Prod", "PR-1");
+    // A reference whose project says `Sandbox` but whose URI is in `Prod`.
+    let disguised = ItemRef {
+        project: Some("Sandbox".into()),
+        ..prod.clone()
+    };
+    refused(
+        polarion
+            .items()
+            .update(&disguised, &WorkItemUpdate::default())
+            .await,
+        Some("Prod"),
+    );
+    refused(
+        polarion
+            .items()
+            .add_link(&disguised, "relates_to", &sandbox("SB-1"))
+            .await,
+        Some("Prod"),
+    );
+    refused(polarion.items().delete(&disguised).await, Some("Prod"));
+    // Comments and work records are addressed by their own URI, which is checked too.
+    let text = Text {
+        content_type: "text/plain".into(),
+        content: "x".into(),
+    };
+    refused(
+        polarion
+            .items()
+            .reply_to_comment(&sandbox("SB-1"), &format!("{}/1", prod.uri), &text)
+            .await,
+        Some("Prod"),
+    );
+    refused(
+        polarion
+            .items()
+            .delete_work_record(&sandbox("SB-1"), &format!("{}/wr", prod.uri))
+            .await,
+        Some("Prod"),
+    );
+    let doc = DocumentRef {
+        project: Some("Sandbox".into()),
+        ..DocumentRef::new("Prod", "Specs", "SRS")
+    };
+    refused(
+        polarion
+            .documents()
+            .update(&doc, &polarion::DocumentUpdate::default())
+            .await,
+        Some("Prod"),
+    );
+    refused(
+        polarion.tests().set_steps(&disguised, &[]).await,
+        Some("Prod"),
+    );
+    assert!(
+        server.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
 }

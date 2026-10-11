@@ -12,7 +12,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+polarion-markdown = { workspace = true, optional = true }
 polarion-soap = { workspace = true, features = ["serde"] }
+# The SOAP write filter of restricted mode parses the requests.
+roxmltree.workspace = true
 schemars = { version = "1", optional = true }
 serde.workspace = true
 serde_json.workspace = true
@@ -21,10 +24,36 @@ thiserror.workspace = true
 [features]
 # `schemars::JsonSchema` for the result types, describing their JSON form.
 schemars = ["dep:schemars", "polarion-soap/schemars"]
+# Work item descriptions read and written as Markdown (`WorkItems::description_markdown`, ...).
+markdown = ["dep:polarion-markdown"]
+# Mermaid diagrams in Markdown rendered to SVG attachments (without it they stay code blocks).
+mermaid = ["markdown", "polarion-markdown/mermaid"]
+# Syntax highlighting of fenced code in Markdown that names its language.
+highlight = ["markdown", "polarion-markdown/highlight"]
 
 [dev-dependencies]
+# Decoding the attachments the Markdown tests upload.
+base64.workspace = true
+# The visual check of the live suite (`polarion-markdown/tests/support/visual.rs`).
+scraper = { version = "0.27", default-features = false, features = ["deterministic"] }
 tokio.workspace = true
 wiremock.workspace = true
+
+[[test]]
+name = "markdown"
+required-features = ["mermaid"]
+
+# The live suite against a real server (ignored; see docs/testing.md).
+[[test]]
+name = "live"
+required-features = ["mermaid"]
+
+# Shared by the live tests and `examples/live_fixtures.rs` (included with `#[path]`); no test of
+# its own.
+[[test]]
+name = "live_support"
+path = "tests/live_support.rs"
+test = false
 
 [lints]
 workspace = true

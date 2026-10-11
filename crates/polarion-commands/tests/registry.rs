@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use polarion_commands::{AREAS, AnyCommand, catalog, find};
+use polarion_commands::{AREAS, AnyCommand, View, catalog, find};
 use serde_json::{Map, Value, json};
 
 /// A value of the schema's type (enough to satisfy it).
@@ -78,7 +78,36 @@ fn every_command_parses_and_round_trips() {
         });
         assert_eq!(again.name(), name);
     }
-    assert_eq!(names.len(), 250);
+    assert_eq!(names.len(), 253);
+}
+
+#[test]
+fn markdown_is_text_in_json() {
+    let read = find("items.description-markdown").unwrap();
+    assert!(!read.write && matches!(read.view, View::Text));
+    assert_eq!(read.output_schema()["type"], "string");
+
+    let set = find("items.set-description-markdown").unwrap();
+    assert!(set.write && matches!(set.view, View::Object));
+    let schema = set.input_schema();
+    assert_eq!(schema["required"], json!(["item", "markdown"]));
+    assert_eq!(schema["properties"]["markdown"]["type"], "string");
+    // `@FILE` is for the command line: in JSON it is the text itself.
+    let command = set
+        .parse(json!({"item": "P-1", "markdown": "@desc.md", "id-prefixes": "MP, *"}))
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&command).unwrap()["args"],
+        json!({"item": "P-1", "markdown": "@desc.md", "id-prefixes": ["MP", "*"]})
+    );
+    let append = find("items.append-description-markdown").unwrap();
+    assert!(append.write);
+    assert!(
+        append.input_schema()["properties"]
+            .get("keep-orphans")
+            .is_none(),
+        "appending deletes nothing"
+    );
 }
 
 #[test]

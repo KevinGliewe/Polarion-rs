@@ -47,12 +47,30 @@ impl std::fmt::Debug for Auth {
 ///
 /// When a call fails with a SOAP fault or an HTTP error, the client asks the
 /// server whether the session is still valid (`hasSubject`). If it has
-/// expired, the client logs in again and repeats the call once. Inside an
-/// explicit transaction (`beginTransaction`) it does not: the transaction is
-/// gone with the session, so the call fails with [`Error::SessionExpired`].
+/// expired, the client logs in again and repeats the call once. A write is
+/// repeated only after a SOAP fault (the server answered and refused it), and
+/// only when the write filter lets it through again: after an HTTP error it may
+/// have been applied, so its error is returned. Inside an
+/// explicit transaction (`beginTransaction`) nothing is repeated: the transaction
+/// is gone with the session, so the call fails with [`Error::SessionExpired`].
 #[derive(Debug, Clone)]
 pub struct Client {
     inner: Arc<Inner>,
+}
+
+/// Decides whether a write may be sent ([`ClientBuilder::write_filter`]): called with the
+/// operation name (`updateWorkItem`) and the request body (the operation element, without the
+/// envelope).
+pub type WriteFilter = Arc<dyn Fn(&str, &str) -> bool + Send + Sync>;
+
+/// A [`WriteFilter`] that can be printed.
+#[derive(Clone)]
+struct Filter(WriteFilter);
+
+impl std::fmt::Debug for Filter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("WriteFilter(..)")
+    }
 }
 
 #[derive(Debug)]
@@ -61,6 +79,7 @@ struct Inner {
     services: Url,
     auth: Auth,
     read_only: bool,
+    write_filter: Option<Filter>,
     session: Mutex<Option<String>>,
     /// Serializes logins, so concurrent calls never open more than one session.
     login_lock: tokio::sync::Mutex<()>,
@@ -87,6 +106,7 @@ impl Client {
             accept_invalid_certs: false,
             root_certificates: Vec::new(),
             read_only: false,
+            write_filter: None,
         }
     }
 
@@ -97,6 +117,11 @@ impl Client {
 
     pub fn is_read_only(&self) -> bool {
         self.inner.read_only
+    }
+
+    /// Whether writes are checked by a [`ClientBuilder::write_filter`].
+    pub fn has_write_filter(&self) -> bool {
+        self.inner.write_filter.is_some()
     }
 
     /// The current session id, if logged in.
@@ -155,8 +180,8 @@ impl Client {
     }
 
     /// A call made in login `generation` (inside an explicit transaction or not) failed with a
-    /// fault or HTTP error: log in again if the session has expired. `Ok(true)` means the call
-    /// should be repeated.
+    /// fault or HTTP error: log in again if the session has expired. `Ok(true)` means the session
+    /// was renewed, so the call may be repeated.
     async fn renew(&self, generation: u64, in_transaction: bool) -> Result<bool> {
         let _login = self.inner.login_lock.lock().await;
         // Another call may have found the session expired and logged in again already.
@@ -191,10 +216,17 @@ impl Client {
         body: String,
         decode: impl FnOnce(Node<'_, '_>) -> Result<T>,
     ) -> Result<T> {
-        if self.inner.read_only && !read {
-            return Err(Error::ReadOnly {
-                operation: format!("{service}.{operation}"),
-            });
+        if !read {
+            if self.inner.read_only {
+                return Err(Error::ReadOnly {
+                    operation: format!("{service}.{operation}"),
+                });
+            }
+            if !self.filter_allows(operation, &body) {
+                return Err(Error::WriteFiltered {
+                    operation: format!("{service}.{operation}"),
+                });
+            }
         }
         let needs_session = !(service == SESSION_SERVICE
             && matches!(
@@ -210,7 +242,13 @@ impl Client {
         let mut decode = Some(decode);
         match self.send(service, operation, &body, &mut decode).await {
             Err(e @ (Error::Fault { .. } | Error::Status { .. })) if needs_session => {
-                if Box::pin(self.renew(generation, in_transaction)).await? {
+                let renewed = Box::pin(self.renew(generation, in_transaction)).await?;
+                // A fault means the server answered and refused the call. After an HTTP status
+                // error a write may have been applied, so it is not sent again. A repeated write
+                // passes the write filter again: a filter that counts requests (a create
+                // budget) counts the repeat, and may refuse it.
+                let repeat = read || matches!(e, Error::Fault { .. });
+                if renewed && repeat && (read || self.filter_allows(operation, &body)) {
                     self.send(service, operation, &body, &mut decode).await
                 } else {
                     Err(e)
@@ -218,6 +256,14 @@ impl Client {
             }
             result => result,
         }
+    }
+
+    /// Whether the write filter (if any) lets this write through.
+    fn filter_allows(&self, operation: &str, body: &str) -> bool {
+        self.inner
+            .write_filter
+            .as_ref()
+            .is_none_or(|Filter(filter)| filter(operation, body))
     }
 
     /// One request: send the envelope, check for faults, decode the response.
@@ -364,6 +410,7 @@ pub struct ClientBuilder {
     accept_invalid_certs: bool,
     root_certificates: Vec<reqwest::Certificate>,
     read_only: bool,
+    write_filter: Option<Filter>,
 }
 
 impl ClientBuilder {
@@ -396,6 +443,17 @@ impl ClientBuilder {
         self
     }
 
+    /// Check every operation that may modify data with `filter` before it is sent (after the
+    /// read-only check, before logging in): `filter(operation, body)` gets the operation name
+    /// (`updateWorkItem`) and the request body (the operation element, without the envelope),
+    /// and `false` refuses the operation with [`Error::WriteFiltered`]. A write repeated after a
+    /// session renewal is checked again, so a filter that counts requests counts the repeat too;
+    /// when it refuses the repeat, the call fails with the original error.
+    pub fn write_filter(mut self, filter: WriteFilter) -> Self {
+        self.write_filter = Some(Filter(filter));
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let services = normalize_base_url(&self.base_url)?;
         let mut http = reqwest::Client::builder()
@@ -412,6 +470,7 @@ impl ClientBuilder {
                 services,
                 auth: self.auth,
                 read_only: self.read_only,
+                write_filter: self.write_filter,
                 session: Mutex::new(None),
                 login_lock: tokio::sync::Mutex::new(()),
                 generation: AtomicU64::new(0),

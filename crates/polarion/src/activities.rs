@@ -94,6 +94,8 @@ impl<'a> Activities<'a> {
     /// Comment on an activity. Activities are not tied to a project here, so this needs
     /// [`crate::PolarionBuilder::allow_global_writes`].
     pub async fn add_comment(&self, global_id: &str, text: &Text) -> Result<()> {
+        self.polarion
+            .check_unbounded_write("addCommentToActivity")?;
         self.polarion.check_global_write("addCommentToActivity")?;
         Ok(self
             .tracker()

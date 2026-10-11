@@ -3,12 +3,15 @@
 use polarion_soap::services::TrackerService;
 use polarion_soap::types as soap;
 
-use crate::client::{Polarion, not_found};
+use crate::client::{
+    CreateKind, DOCUMENT_ITEMS, DOCUMENT_MACROS, DOCUMENT_STRUCTURE, Polarion, not_found,
+};
 use crate::convert::{option_id, soap_custom_fields, soap_text};
 use crate::error::{Error, Result};
 use crate::items::baseline_and_revision;
 use crate::model::{Document, WorkItem, WorkflowAction};
 use crate::query::{Fields, Query, term};
+use crate::restricted;
 use crate::uri::{DocumentRef, ItemRef};
 use crate::write::{DocumentUpdate, NewDocument, ReuseDocument};
 
@@ -44,8 +47,8 @@ fn refs(uris: Vec<String>) -> Vec<DocumentRef> {
 
 /// Documents: [`Polarion::documents`].
 ///
-/// Methods that modify data check the document's project against the write allowlist
-/// before anything is sent.
+/// Methods that modify data check the project of the document's URI against the write
+/// allowlist, or the write targets of a restricted client, before anything is sent.
 #[derive(Debug, Clone, Copy)]
 pub struct Documents<'a> {
     polarion: &'a Polarion,
@@ -60,13 +63,26 @@ impl<'a> Documents<'a> {
         self.polarion.soap().tracker()
     }
 
+    /// A write to the document itself: its URI must be a write target (restricted mode), or
+    /// the project of its URI writable.
     fn writable(
         &self,
         operation: &'static str,
         document: &DocumentRef,
     ) -> Result<TrackerService<'a>> {
-        self.polarion
-            .check_write(operation, document.project.as_deref())?;
+        self.polarion.check_write_target(operation, &document.uri)?;
+        Ok(self.tracker())
+    }
+
+    /// A write that may change other objects or cannot be undone: refused in restricted mode,
+    /// otherwise the project of the document's URI must be writable.
+    fn unbounded(
+        &self,
+        operation: &'static str,
+        document: &DocumentRef,
+    ) -> Result<TrackerService<'a>> {
+        self.polarion.check_unbounded_write(operation)?;
+        self.polarion.check_write_uri(operation, &document.uri)?;
         Ok(self.tracker())
     }
 
@@ -294,10 +310,24 @@ impl<'a> Documents<'a> {
 
     // --------------------------------------------------------------- writes
 
-    /// Create a live document; returns its reference.
+    /// Create a live document; returns its reference. A client restricted to write targets
+    /// never creates one with work item macros in its body.
     pub async fn create(&self, new: &NewDocument) -> Result<DocumentRef> {
+        if self.polarion.writes_restricted()
+            && new
+                .body
+                .as_deref()
+                .is_some_and(restricted::has_work_item_macro)
+        {
+            return Err(Polarion::refused(
+                "createDocument",
+                None,
+                None,
+                Some(DOCUMENT_MACROS),
+            ));
+        }
         self.polarion
-            .check_write("createDocument", Some(&new.project))?;
+            .check_create("createDocument", &new.project, CreateKind::Document)?;
         let types: Vec<soap::EnumOptionId> =
             new.allowed_types.iter().map(|t| option_id(t)).collect();
         let uri = self
@@ -322,6 +352,7 @@ impl<'a> Documents<'a> {
         new: &NewDocument,
         parent_to_child: bool,
     ) -> Result<DocumentRef> {
+        self.polarion.check_unbounded_write("createModule")?;
         self.polarion
             .check_write("createModule", Some(&new.project))?;
         let types: Vec<soap::EnumOptionId> =
@@ -342,8 +373,41 @@ impl<'a> Documents<'a> {
     }
 
     /// Change fields of a document.
+    ///
+    /// A client restricted to write targets never changes the structure link role, never writes
+    /// a body with work item macros, and writes the body and outline numbering only of a document
+    /// that holds no work items (it reads them first): those writes change the document's work
+    /// items, which are not the document.
     pub async fn update(&self, document: &DocumentRef, update: &DocumentUpdate) -> Result<()> {
         let tracker = self.writable("updateModule", document)?;
+        let keys = update
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(update.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys("updateModule", keys)?;
+        if self.polarion.writes_restricted() {
+            let refused = |reason| Polarion::refused("updateModule", None, None, Some(reason));
+            if update.structure_link_role.is_some() {
+                return Err(refused(DOCUMENT_STRUCTURE));
+            }
+            if update
+                .body
+                .as_ref()
+                .is_some_and(|b| restricted::has_work_item_macro(&b.content))
+            {
+                return Err(refused(DOCUMENT_MACROS));
+            }
+            if update.body.is_some() || update.uses_outline_numbering.is_some() {
+                let items = tracker
+                    .get_module_work_item_uris(&document.uri, None, true)
+                    .await?;
+                if !items.is_empty() {
+                    return Err(refused(DOCUMENT_ITEMS));
+                }
+                self.polarion.approve_document_write(&document.uri);
+            }
+        }
         let module = soap::Module {
             uri: Some(document.uri.clone()),
             title: update.title.clone(),
@@ -359,7 +423,7 @@ impl<'a> Documents<'a> {
     }
 
     pub async fn delete(&self, document: &DocumentRef) -> Result<()> {
-        let tracker = self.writable("deleteModule", document)?;
+        let tracker = self.unbounded("deleteModule", document)?;
         Ok(tracker.delete_module(&document.uri).await?)
     }
 
@@ -369,7 +433,7 @@ impl<'a> Documents<'a> {
         document: &DocumentRef,
         title: Option<&str>,
     ) -> Result<Option<String>> {
-        let tracker = self.writable("updateTitleHeadingInDocument", document)?;
+        let tracker = self.unbounded("updateTitleHeadingInDocument", document)?;
         let uri = tracker
             .update_title_heading_in_document(&document.uri, title)
             .await?;
@@ -378,6 +442,7 @@ impl<'a> Documents<'a> {
 
     /// Create a new document from an existing one (reuse); returns the new document.
     pub async fn reuse(&self, source: &DocumentRef, target: &ReuseDocument) -> Result<DocumentRef> {
+        self.polarion.check_unbounded_write("reuseDocument")?;
         self.polarion
             .check_write("reuseDocument", Some(&target.project))?;
         let role = target.link_role.as_deref().map(option_id);
@@ -406,6 +471,7 @@ impl<'a> Documents<'a> {
         fields: &[String],
         except_fields: &[String],
     ) -> Result<DocumentRef> {
+        self.polarion.check_unbounded_write("reuseModule")?;
         self.polarion
             .check_write("reuseModule", Some(&target.project))?;
         let role = target.link_role.as_deref().map(option_id);
@@ -432,7 +498,7 @@ impl<'a> Documents<'a> {
         revision: Option<&str>,
         auto_suspect: bool,
     ) -> Result<()> {
-        let tracker = self.writable("updateDerivedDocument", document)?;
+        let tracker = self.unbounded("updateDerivedDocument", document)?;
         Ok(tracker
             .update_derived_document(&document.uri, revision, auto_suspect)
             .await?)
@@ -444,30 +510,30 @@ impl<'a> Documents<'a> {
         document: &DocumentRef,
         revision: Option<&str>,
     ) -> Result<()> {
-        let tracker = self.writable("updateDerivedModule", document)?;
+        let tracker = self.unbounded("updateDerivedModule", document)?;
         Ok(tracker
             .update_derived_module(&document.uri, revision)
             .await?)
     }
 
     /// Comment on the document, optionally referring to one of its work items; returns the
-    /// comment's URI.
+    /// comment's URI. A client restricted to write targets refuses a comment that refers to a
+    /// work item.
     pub async fn add_comment(
         &self,
         document: &DocumentRef,
         about: Option<&ItemRef>,
         text: &crate::model::Text,
     ) -> Result<String> {
-        let tracker = self.writable("addComment", document)?;
         let text = soap_text(text);
         Ok(match about {
             None => {
-                tracker
+                self.writable("addComment", document)?
                     .add_comment(&document.uri, None, Some(&text))
                     .await?
             }
             Some(item) => {
-                tracker
+                self.unbounded("createDocumentCommentReferringWI", document)?
                     .create_document_comment_referring_wi(&document.uri, &item.uri, &text)
                     .await?
             }
@@ -481,15 +547,17 @@ impl<'a> Documents<'a> {
         comment_uri: &str,
         text: &crate::model::Text,
     ) -> Result<String> {
-        let tracker = self.writable("addComment", document)?;
-        Ok(tracker
+        self.polarion
+            .check_write_owned("addComment", &document.uri, comment_uri)?;
+        Ok(self
+            .tracker()
             .add_comment(comment_uri, None, Some(&soap_text(text)))
             .await?)
     }
 
     /// Perform a workflow action on the document (see [`Documents::actions`]).
     pub async fn perform_action(&self, document: &DocumentRef, action_id: i32) -> Result<()> {
-        let tracker = self.writable("performWorkflowAction", document)?;
+        let tracker = self.unbounded("performWorkflowAction", document)?;
         Ok(tracker
             .perform_workflow_action(&document.uri, action_id)
             .await?)
@@ -497,7 +565,7 @@ impl<'a> Documents<'a> {
 
     /// Move the document to `status` with the available workflow action leading there.
     pub async fn transition(&self, document: &DocumentRef, status: &str) -> Result<WorkflowAction> {
-        self.writable("performWorkflowAction", document)?;
+        self.unbounded("performWorkflowAction", document)?;
         let action = self
             .actions(document)
             .await?

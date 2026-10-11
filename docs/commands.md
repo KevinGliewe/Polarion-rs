@@ -29,8 +29,10 @@ impl Run for AddAssignee {
 
 - **Name and help:** the name (`items.add-assignee`) comes from the area and the kebab-cased type name, the summary
   from the first doc paragraph, and each argument's help from its doc comment.
-- **`#[cmd(...)]` options:** `write` marks commands that modify data; their description says so, and the MCP tool
-  is annotated as not read-only. `view` says how the CLI shows the result.
+- **`#[cmd(...)]` options:** `write` marks commands that modify data; their description says so (as does the end
+  of `--help` when the doc comment has more paragraphs), and the MCP tool is annotated as not read-only. `view`
+  says how the CLI shows the result: `object`, `lines`, `links`, `scalar` (one line), `text` (as it is, for
+  Markdown), `bytes`, `done` or `table(COLUMNS)`.
 - **Fields:** `#[positional]` makes a field positional on the command line, and `#[flatten]` inlines a
   `#[cmd_args]` group (e.g. `QueryArgs`). A field named `project` is not an option: the global `-p` (or
   `POLARION_PROJECT`) sets the default project instead.
@@ -68,7 +70,7 @@ flowchart LR
 
 | Item | What it is | Used by |
 |---|---|---|
-| `AnyCommand` | enum of every command, serde-tagged as `{"command": "items.get", "args": {...}}`; `name()`, `run(cx)` | CLI, MCP, `call` |
+| `AnyCommand` | enum of every command, serde-tagged as `{"command": "items.get", "args": {...}}`; `name()`, `run(cx)` (each command's future built and boxed by `command::boxed`, so the dispatch frame holds a pointer, not every future: unoptimized builds would otherwise overflow the 1 MB main-thread stack on Windows) | CLI, MCP, `call` |
 | `AnyOutput` | enum of every result type, serialized untagged as the result itself | CLI, MCP |
 | `CATALOG: [Entry; N]` | metadata, argument schema, output schema and JSON parser per command | MCP tools, `polarion commands` |
 | `AREAS` | area names with a one-line description | `polarion commands`, `polarion_commands` |
@@ -132,11 +134,14 @@ accept what people and agents write and resolve against the `Context`:
 | `RichText` | a string (plain text) or `{"type": "text/html", "content": "..."}` | `polarion::Text` |
 | `FieldSelection` | `standard`, `all`, or a list of field keys | `polarion::Fields` |
 | `Data` | base64; on the command line also `@FILE` | bytes |
+| `TextArg` | the text itself (JSON never reads files); on the command line also `@FILE`, `@-` (standard input), `@@...` (a literal `@...`); files in UTF-8 or UTF-16 with a byte order mark. The `#[cmd]` macro lets such an option take values that start with `-` and adds the file forms to its help only | `String` (e.g. Markdown) |
 | `QueryArgs` | query, project, sort, limit, all, fields, custom, baseline, revision (flattened into the query commands) | `polarion::Query` |
 | `JsonObject`, `JsonValue` | JSON whose shape is known only at run time | typed against Polarion's field definitions in [`values.rs`](../crates/polarion-commands/src/values.rs) |
 
 Results are library types, or the small types in [`output.rs`](../crates/polarion-commands/src/output.rs):
 `Changed` (what a write changed), `Done` (nothing to return), `Download` (bytes, serialized as `{size, base64}`).
+The Markdown writes return the library's `MarkdownUpdate` (`{updated, diagrams?, deleted?, warnings?}`, see
+[Markdown](markdown.md)).
 
 ## JSON arguments
 
@@ -195,7 +200,7 @@ The output schemas are only as good as the `JsonSchema` impls behind them:
 
 ## Adding a command
 
-1. Add the library method (with its write check, if it writes).
+1. Add the library method (with its write guard, if it writes; see [the write guard](library.md#the-write-guard)).
 2. Add a DTO with `#[cmd]` and an `impl Run` in the area's module.
 3. List the type in `registry!` in `lib.rs`.
 

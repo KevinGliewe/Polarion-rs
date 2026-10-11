@@ -5,8 +5,10 @@ pub const DEFAULT_LIMIT: u32 = 100;
 
 /// Work item fields to fetch. Fields not listed are left empty in the results.
 ///
-/// Keys are the SOAP field names (`title`, `assignee`, `linkedWorkItems`, ...).
-/// Custom fields are added with [`Fields::with_custom`] (`customFields.<key>`).
+/// Keys are Polarion's field ids (`title`, `assignee`, `linkedWorkItems`, `module`, `plannedIn`, ...),
+/// which differ from the SOAP element names in a few places: the server refuses `moduleURI` and
+/// `plannedInURIs`. Custom fields are added with [`Fields::with_custom`] (`customFields.<key>`):
+/// the key `customFields` alone returns none of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fields(Vec<String>);
 
@@ -26,7 +28,7 @@ const STANDARD: &[&str] = &[
     "dueDate",
     "outlineNumber",
     "project",
-    "moduleURI",
+    "module",
 ];
 
 /// Every work item field the SOAP API knows, including all custom fields.
@@ -50,10 +52,10 @@ const ALL: &[&str] = &[
     "linkedWorkItems",
     "linkedWorkItemsDerived",
     "location",
-    "moduleURI",
+    "module",
     "outlineNumber",
     "plannedEnd",
-    "plannedInURIs",
+    "plannedIn",
     "plannedStart",
     "planningConstraints",
     "previousStatus",
@@ -75,12 +77,14 @@ const ALL: &[&str] = &[
 
 impl Fields {
     /// Enough to list and identify work items: id, title, type, status, priority, severity,
-    /// resolution, author, assignee, created, updated, dueDate, outlineNumber, project and moduleURI.
+    /// resolution, author, assignee, created, updated, dueDate, outlineNumber, project and module
+    /// (the document).
     pub fn standard() -> Self {
         Self::new(STANDARD.iter().copied())
     }
 
-    /// Every field, including description, links and all custom fields.
+    /// Every built-in field, including description and links. Custom fields need
+    /// [`Fields::with_custom`] (Polarion returns none for the key `customFields` alone).
     pub fn all() -> Self {
         Self::new(ALL.iter().copied())
     }

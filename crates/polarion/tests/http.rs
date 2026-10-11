@@ -62,7 +62,7 @@ async fn work_item_is_mapped_and_missing_ones_are_not_found() {
 </customFields>
 <id>P-1</id>
 <linkedWorkItems><LinkedWorkItem><role><id>verifies</id></role><workItemURI>{URI}Q${{WorkItem}}Q-9</workItemURI></LinkedWorkItem></linkedWorkItems>
-<moduleURI>{URI}P${{Module}}{{moduleFolder}}Specs/SRS</moduleURI>
+<moduleURI>{URI}P${{Module}}{{moduleFolder}}Specs#SRS</moduleURI>
 <status><id>open</id></status>
 <title>Brakes</title>
 </getWorkItemByIdReturn></getWorkItemByIdResponse>"#
@@ -178,7 +178,7 @@ async fn documents_and_their_work_items() {
         TRACKER,
         &["getModuleByLocation>", "location>Specs/SRS<"],
         &format!(
-            r#"<getModuleByLocationResponse><getModuleByLocationReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs/SRS"><homePageContent><type>text/html</type><content>&lt;h1&gt;SRS&lt;/h1&gt;</content><contentLossy>false</contentLossy></homePageContent>{}</getModuleByLocationReturn></getModuleByLocationResponse>"#,
+            r#"<getModuleByLocationResponse><getModuleByLocationReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs#SRS"><homePageContent><type>text/html</type><content>&lt;h1&gt;SRS&lt;/h1&gt;</content><contentLossy>false</contentLossy></homePageContent>{}</getModuleByLocationReturn></getModuleByLocationResponse>"#,
             module("Specs", "SRS"),
         ),
     )
@@ -192,7 +192,7 @@ async fn documents_and_their_work_items() {
             "fields>moduleName<",
         ],
         &format!(
-            r#"<getModuleByLocationWithFieldsResponse><getModuleByLocationWithFieldsReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs/SRS">{}</getModuleByLocationWithFieldsReturn></getModuleByLocationWithFieldsResponse>"#,
+            r#"<getModuleByLocationWithFieldsResponse><getModuleByLocationWithFieldsReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs#SRS">{}</getModuleByLocationWithFieldsReturn></getModuleByLocationWithFieldsResponse>"#,
             module("Specs", "SRS"),
         ),
     )

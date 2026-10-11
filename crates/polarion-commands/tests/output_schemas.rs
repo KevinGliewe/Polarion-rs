@@ -4,7 +4,10 @@
 use std::collections::BTreeMap;
 
 use polarion::soap::types as soap;
-use polarion::{Comment, DocumentRef, FieldValue, ItemRef, Link, TestRun, Text, WorkItem};
+use polarion::{
+    Comment, DiagramAttachment, DocumentRef, FieldValue, ItemRef, Link, MarkdownUpdate, TestRun,
+    Text, WorkItem,
+};
 use polarion_commands::documents::CreatedDocument;
 use polarion_commands::items::{Created, ItemLinks};
 use polarion_commands::{Changed, Done, Download, catalog, output_schema_of};
@@ -145,6 +148,43 @@ fn command_results_match_their_schemas() {
     });
     valid(&CreatedDocument::from(DocumentRef::new("P", "S", "D")));
     assert_eq!(output_schema_of::<u32>()["type"], json!("integer"));
+
+    // The Markdown writes: nothing to report, and everything.
+    valid(&MarkdownUpdate::default());
+    let diagram = |name: &str, attachment: Option<&str>, uploaded| DiagramAttachment {
+        file_name: name.into(),
+        attachment: attachment.map(Into::into),
+        uploaded,
+    };
+    valid(&MarkdownUpdate {
+        updated: true,
+        diagrams: vec![
+            diagram(
+                "mermaid-0123456789abcdef.svg",
+                Some("1-mermaid-0123456789abcdef.svg"),
+                true,
+            ),
+            diagram(
+                "mermaid-fedcba9876543210.svg",
+                Some("2-mermaid-fedcba9876543210.svg"),
+                false,
+            ),
+            // Written as a code block.
+            diagram("mermaid-00000000ffffffff.svg", None, false),
+        ],
+        deleted: vec!["3-mermaid-1111111111111111.svg".into()],
+        warnings: vec!["mermaid diagram (graph) is written as a code block: ...".into()],
+    });
+    let validator = jsonschema::validator_for(&output_schema_of::<MarkdownUpdate>()).unwrap();
+    assert!(!validator.is_valid(&json!({})), "`updated` is always there");
+    assert!(!validator.is_valid(&json!({"updated": true, "diagrams": [{"attachment": "a"}]})));
+    // Agents read the description: no rustdoc links.
+    let schema = output_schema_of::<MarkdownUpdate>();
+    let description = schema["description"].as_str().unwrap();
+    assert!(
+        !description.contains("[`") && !description.contains('\n'),
+        "{description}"
+    );
 
     // The check has teeth: a wrong shape is refused.
     let validator = jsonschema::validator_for(&output_schema_of::<WorkItem>()).unwrap();

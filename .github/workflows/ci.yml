@@ -25,12 +25,16 @@ jobs:
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace
       - run: cargo doc --workspace --no-deps
+      # The optional parts off: the conversion without mermaid and highlighting, the library without markdown.
+      - run: cargo check -p polarion-markdown --no-default-features
+      - run: cargo test -p polarion-markdown --no-default-features
+      - run: cargo check -p polarion
 
   msrv:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.89
       - uses: Swatinem/rust-cache@v2
       # Libraries only: dev-dependencies (wiremock) need a newer compiler.
       - run: cargo check --workspace

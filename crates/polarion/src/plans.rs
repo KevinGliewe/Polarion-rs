@@ -26,7 +26,8 @@ fn found(plan: soap::Plan, id: impl std::fmt::Display) -> Result<Plan> {
 }
 
 /// Plans: [`Polarion::plans`]. Plans are addressed by URI ([`Plan::uri`]) or by project and id;
-/// writes check the project against the write allowlist.
+/// writes check the project against the write allowlist, or the plan's URI against the write
+/// targets of a restricted client (which never creates or deletes plans).
 #[derive(Debug, Clone, Copy)]
 pub struct Plans<'a> {
     polarion: &'a Polarion,
@@ -41,8 +42,29 @@ impl<'a> Plans<'a> {
         self.polarion.soap().planning()
     }
 
+    /// A write to the plan itself.
     fn writable(&self, operation: &'static str, plan_uri: &str) -> Result<PlanningService<'a>> {
+        self.polarion.check_write_target(operation, plan_uri)?;
+        Ok(self.service())
+    }
+
+    /// A write that may change other objects or cannot be undone: refused in restricted mode.
+    fn unbounded(&self, operation: &'static str, plan_uri: &str) -> Result<PlanningService<'a>> {
+        self.polarion.check_unbounded_write(operation)?;
         self.polarion.check_write_uri(operation, plan_uri)?;
+        Ok(self.service())
+    }
+
+    /// A write to the plan that names work items (restricted mode: all must be write targets).
+    fn writable_items(
+        &self,
+        operation: &'static str,
+        plan_uri: &str,
+        items: &[ItemRef],
+    ) -> Result<PlanningService<'a>> {
+        let named: Vec<&str> = items.iter().map(|i| i.uri.as_str()).collect();
+        self.polarion
+            .check_write_targets(operation, plan_uri, &named)?;
         Ok(self.service())
     }
 
@@ -110,6 +132,7 @@ impl<'a> Plans<'a> {
         parent: Option<&str>,
         template: &str,
     ) -> Result<String> {
+        self.polarion.check_unbounded_write("createPlan")?;
         self.polarion.check_write("createPlan", Some(project))?;
         Ok(self
             .service()
@@ -125,6 +148,7 @@ impl<'a> Plans<'a> {
         name: &str,
         template: Option<&str>,
     ) -> Result<String> {
+        self.polarion.check_unbounded_write("createPlanTemplate")?;
         self.polarion
             .check_write("createPlanTemplate", Some(project))?;
         Ok(self
@@ -135,6 +159,12 @@ impl<'a> Plans<'a> {
 
     pub async fn update(&self, uri: &str, update: &PlanUpdate) -> Result<()> {
         let s = self.writable("updatePlan", uri)?;
+        let keys = update
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(update.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys("updatePlan", keys)?;
         let plan = soap::Plan {
             uri: Some(uri.to_owned()),
             name: update.name.clone(),
@@ -162,19 +192,20 @@ impl<'a> Plans<'a> {
 
     /// Delete plans of a project by id.
     pub async fn delete(&self, project: &str, ids: &[String]) -> Result<()> {
+        self.polarion.check_unbounded_write("deletePlans")?;
         self.polarion.check_write("deletePlans", Some(project))?;
         Ok(self.service().delete_plans(project, ids).await?)
     }
 
     /// Plan work items.
     pub async fn add_items(&self, uri: &str, items: &[ItemRef]) -> Result<()> {
-        let s = self.writable("addPlanItems", uri)?;
+        let s = self.writable_items("addPlanItems", uri, items)?;
         let uris: Vec<String> = items.iter().map(|i| i.uri.clone()).collect();
         Ok(s.add_plan_items(uri, &uris).await?)
     }
 
     pub async fn remove_items(&self, uri: &str, items: &[ItemRef]) -> Result<()> {
-        let s = self.writable("removePlanItems", uri)?;
+        let s = self.writable_items("removePlanItems", uri, items)?;
         let uris: Vec<String> = items.iter().map(|i| i.uri.clone()).collect();
         Ok(s.remove_plan_items(uri, &uris).await?)
     }
@@ -193,12 +224,12 @@ impl<'a> Plans<'a> {
     }
 
     pub async fn add_project_to_span(&self, uri: &str, project: &str) -> Result<()> {
-        let s = self.writable("addProjectToPlanProjectSpan", uri)?;
+        let s = self.unbounded("addProjectToPlanProjectSpan", uri)?;
         Ok(s.add_project_to_plan_project_span(uri, project).await?)
     }
 
     pub async fn remove_project_from_span(&self, uri: &str, project: &str) -> Result<()> {
-        let s = self.writable("removeProjectFromPlanProjectSpan", uri)?;
+        let s = self.unbounded("removeProjectFromPlanProjectSpan", uri)?;
         Ok(s.remove_project_from_plan_project_span(uri, project)
             .await?)
     }

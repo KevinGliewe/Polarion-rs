@@ -186,6 +186,7 @@ impl<'a> Users<'a> {
 
     /// Create a user with a login name. Needs [`crate::PolarionBuilder::allow_global_writes`].
     pub async fn create(&self, login: &str) -> Result<User> {
+        self.polarion.check_unbounded_write("createUser")?;
         self.polarion.check_global_write("createUser")?;
         Ok(self
             .polarion
@@ -199,6 +200,7 @@ impl<'a> Users<'a> {
     /// Change a user's name, email, description or notification setting. Needs
     /// [`crate::PolarionBuilder::allow_global_writes`].
     pub async fn update(&self, id: &str, update: &UserUpdate) -> Result<()> {
+        self.polarion.check_unbounded_write("updateUser")?;
         self.polarion.check_global_write("updateUser")?;
         let service = self.polarion.soap().project();
         let mut user = service.get_user(id).await?;

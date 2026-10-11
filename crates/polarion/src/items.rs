@@ -3,7 +3,7 @@
 use polarion_soap::services::TrackerService;
 use polarion_soap::types as soap;
 
-use crate::client::{Polarion, not_found};
+use crate::client::{CreateKind, Polarion, not_found};
 use crate::convert::{self, any_value, option_id, soap_text};
 use crate::error::{Error, Result};
 use crate::model::{Change, EnumOption, FieldValue, Link, Text, User, WorkItem, WorkflowAction};
@@ -16,8 +16,9 @@ use crate::write::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
 /// Work items are addressed by [`ItemRef`]: `ItemRef::new("PROJ", "PROJ-1")`, or a
 /// reference taken from a result ([`WorkItem::reference`], [`Link::item`]).
 ///
-/// Every method that modifies data first checks the item's project against the
-/// write allowlist ([`crate::PolarionBuilder::allow_writes`]) and fails with
+/// Every method that modifies data first checks the project of the URI it sends against the
+/// write allowlist ([`crate::PolarionBuilder::allow_writes`]), or the write targets of a
+/// restricted client ([`crate::PolarionBuilder::restrict_writes`]), and fails with
 /// [`Error::WriteNotAllowed`] without sending anything.
 #[derive(Debug, Clone, Copy)]
 pub struct WorkItems<'a> {
@@ -51,9 +52,22 @@ impl<'a> WorkItems<'a> {
         self.polarion.soap().tracker()
     }
 
-    fn writable(&self, operation: &'static str, item: &ItemRef) -> Result<TrackerService<'a>> {
-        self.polarion
-            .check_write(operation, item.project.as_deref())?;
+    /// A write to the work item itself: its URI must be a write target (restricted mode), or
+    /// the project of its URI writable.
+    pub(crate) fn writable(
+        &self,
+        operation: &'static str,
+        item: &ItemRef,
+    ) -> Result<TrackerService<'a>> {
+        self.polarion.check_write_target(operation, &item.uri)?;
+        Ok(self.tracker())
+    }
+
+    /// A write that may change other objects or cannot be undone: refused in restricted mode,
+    /// otherwise the project of the item's URI must be writable.
+    fn unbounded(&self, operation: &'static str, item: &ItemRef) -> Result<TrackerService<'a>> {
+        self.polarion.check_unbounded_write(operation)?;
+        self.polarion.check_write_uri(operation, &item.uri)?;
         Ok(self.tracker())
     }
 
@@ -388,8 +402,13 @@ impl<'a> WorkItems<'a> {
 
     /// Create a work item; returns its reference.
     pub async fn create(&self, new: &NewWorkItem) -> Result<ItemRef> {
+        // Before the budget is taken: the SOAP write filter would refuse the request.
+        self.polarion.check_field_keys(
+            "createWorkItem",
+            new.custom_fields.keys().map(String::as_str),
+        )?;
         self.polarion
-            .check_write("createWorkItem", Some(&new.project))?;
+            .check_create("createWorkItem", &new.project, CreateKind::WorkItem)?;
         let content = self.content(new).await?;
         let uri = self.tracker().create_work_item(&content).await?;
         Ok(ItemRef::from_uri(uri))
@@ -403,9 +422,11 @@ impl<'a> WorkItems<'a> {
         parent: Option<&ItemRef>,
     ) -> Result<ItemRef> {
         self.polarion
+            .check_unbounded_write("createWorkItemInModule")?;
+        self.polarion
             .check_write("createWorkItemInModule", Some(&new.project))?;
         self.polarion
-            .check_write("createWorkItemInModule", document.project.as_deref())?;
+            .check_write_uri("createWorkItemInModule", &document.uri)?;
         let content = self.content(new).await?;
         let uri = self
             .tracker()
@@ -432,6 +453,13 @@ impl<'a> WorkItems<'a> {
     /// through `setCustomField`, and cleared fields through one `setFieldsNull`.
     pub async fn update(&self, item: &ItemRef, update: &WorkItemUpdate) -> Result<()> {
         let tracker = self.writable("updateWorkItem", item)?;
+        let keys = update
+            .custom_fields
+            .keys()
+            .chain(&update.clear)
+            .map(String::as_str)
+            .chain(update.resolution.as_ref().map(|_| "resolution"));
+        self.polarion.check_field_keys("updateWorkItem", keys)?;
         // Convert everything before sending anything.
         let custom: Vec<soap::CustomField> = update
             .custom_fields
@@ -475,6 +503,7 @@ impl<'a> WorkItems<'a> {
         value: Option<&FieldValue>,
     ) -> Result<()> {
         let tracker = self.writable("setCustomField", item)?;
+        self.polarion.check_field_keys("setCustomField", [key])?;
         match value {
             Some(value) => {
                 let field = soap::CustomField {
@@ -496,11 +525,13 @@ impl<'a> WorkItems<'a> {
     /// Clear fields (standard or custom) by key.
     pub async fn clear_fields(&self, item: &ItemRef, keys: &[String]) -> Result<()> {
         let tracker = self.writable("setFieldsNull", item)?;
+        self.polarion
+            .check_field_keys("setFieldsNull", keys.iter().map(String::as_str))?;
         Ok(tracker.set_fields_null(&item.uri, keys).await?)
     }
 
     pub async fn delete(&self, item: &ItemRef) -> Result<()> {
-        let tracker = self.writable("deleteWorkItem", item)?;
+        let tracker = self.unbounded("deleteWorkItem", item)?;
         Ok(tracker.delete_work_item(&item.uri).await?)
     }
 
@@ -514,9 +545,9 @@ impl<'a> WorkItems<'a> {
         position: Option<u32>,
         retain_document_flow: bool,
     ) -> Result<()> {
-        let tracker = self.writable("moveWorkItemToDocument", item)?;
+        let tracker = self.unbounded("moveWorkItemToDocument", item)?;
         self.polarion
-            .check_write("moveWorkItemToDocument", document.project.as_deref())?;
+            .check_write_uri("moveWorkItemToDocument", &document.uri)?;
         let position = position.map_or(-1, |p| i32::try_from(p).unwrap_or(i32::MAX));
         Ok(tracker
             .move_work_item_to_document(
@@ -533,7 +564,7 @@ impl<'a> WorkItems<'a> {
 
     /// Perform a workflow action by its id (see [`WorkItems::actions`]).
     pub async fn perform_action(&self, item: &ItemRef, action_id: i32) -> Result<()> {
-        let tracker = self.writable("performWorkflowAction", item)?;
+        let tracker = self.unbounded("performWorkflowAction", item)?;
         Ok(tracker
             .perform_workflow_action(&item.uri, action_id)
             .await?)
@@ -542,7 +573,7 @@ impl<'a> WorkItems<'a> {
     /// Move the work item to `status` with the available workflow action leading there.
     /// Returns the action performed; [`Error::Invalid`] if no available action leads to `status`.
     pub async fn transition(&self, item: &ItemRef, status: &str) -> Result<WorkflowAction> {
-        self.writable("performWorkflowAction", item)?;
+        self.unbounded("performWorkflowAction", item)?;
         let actions = self.actions(item).await?;
         let action = actions
             .into_iter()
@@ -558,7 +589,7 @@ impl<'a> WorkItems<'a> {
 
     /// Reset the workflow: perform the initial action and set the initial status.
     pub async fn reset_workflow(&self, item: &ItemRef) -> Result<()> {
-        let tracker = self.writable("resetWorkflow", item)?;
+        let tracker = self.unbounded("resetWorkflow", item)?;
         Ok(tracker.reset_workflow(&item.uri).await?)
     }
 
@@ -601,8 +632,10 @@ impl<'a> WorkItems<'a> {
         comment_uri: &str,
         text: &Text,
     ) -> Result<String> {
-        let tracker = self.writable("addComment", item)?;
-        Ok(tracker
+        self.polarion
+            .check_write_owned("addComment", &item.uri, comment_uri)?;
+        Ok(self
+            .tracker()
             .add_comment(comment_uri, None, Some(&soap_text(text)))
             .await?)
     }
@@ -614,8 +647,12 @@ impl<'a> WorkItems<'a> {
         comment_uri: &str,
         resolved: bool,
     ) -> Result<()> {
-        let tracker = self.writable("setResolvedComment", item)?;
-        Ok(tracker.set_resolved_comment(comment_uri, resolved).await?)
+        self.polarion
+            .check_write_owned("setResolvedComment", &item.uri, comment_uri)?;
+        Ok(self
+            .tracker()
+            .set_resolved_comment(comment_uri, resolved)
+            .await?)
     }
 
     /// Replace the tags of a comment of `item`.
@@ -625,9 +662,10 @@ impl<'a> WorkItems<'a> {
         comment_uri: &str,
         tags: &[&str],
     ) -> Result<()> {
-        let tracker = self.writable("setCommentTags", item)?;
+        self.polarion
+            .check_write_owned("setCommentTags", &item.uri, comment_uri)?;
         let tags: Vec<soap::EnumOptionId> = tags.iter().map(|t| option_id(t)).collect();
-        Ok(tracker.set_comment_tags(comment_uri, &tags).await?)
+        Ok(self.tracker().set_comment_tags(comment_uri, &tags).await?)
     }
 
     // ---- links
@@ -635,7 +673,9 @@ impl<'a> WorkItems<'a> {
     /// Link to another work item with a role (e.g. `parent`, `relates_to`).
     /// Returns whether a link was added.
     pub async fn add_link(&self, item: &ItemRef, role: &str, target: &ItemRef) -> Result<bool> {
-        let tracker = self.writable("addLinkedItem", item)?;
+        self.polarion
+            .check_write_targets("addLinkedItem", &item.uri, &[&target.uri])?;
+        let tracker = self.tracker();
         Ok(tracker
             .add_linked_item(&item.uri, &target.uri, &option_id(role))
             .await?)
@@ -643,7 +683,9 @@ impl<'a> WorkItems<'a> {
 
     /// Returns whether a link was removed.
     pub async fn remove_link(&self, item: &ItemRef, role: &str, target: &ItemRef) -> Result<bool> {
-        let tracker = self.writable("removeLinkedItem", item)?;
+        self.polarion
+            .check_write_targets("removeLinkedItem", &item.uri, &[&target.uri])?;
+        let tracker = self.tracker();
         Ok(tracker
             .remove_linked_item(&item.uri, &target.uri, &option_id(role))
             .await?)
@@ -664,7 +706,7 @@ impl<'a> WorkItems<'a> {
 
     /// Link to a work item on another server (OSLC) by its URL.
     pub async fn add_external_link(&self, item: &ItemRef, url: &str, role: &str) -> Result<bool> {
-        let tracker = self.writable("addExternallyLinkedItem", item)?;
+        let tracker = self.unbounded("addExternallyLinkedItem", item)?;
         Ok(tracker
             .add_externally_linked_item(&item.uri, url, &option_id(role))
             .await?)
@@ -676,7 +718,7 @@ impl<'a> WorkItems<'a> {
         url: &str,
         role: &str,
     ) -> Result<bool> {
-        let tracker = self.writable("removeExternallyLinkedItem", item)?;
+        let tracker = self.unbounded("removeExternallyLinkedItem", item)?;
         Ok(tracker
             .remove_externally_linked_item(&item.uri, url, &option_id(role))
             .await?)
@@ -689,7 +731,7 @@ impl<'a> WorkItems<'a> {
         repository: Option<&str>,
         revision: &str,
     ) -> Result<bool> {
-        let tracker = self.writable("addLinkedRevision", item)?;
+        let tracker = self.unbounded("addLinkedRevision", item)?;
         Ok(match repository {
             None => tracker.add_linked_revision(&item.uri, revision).await?,
             Some(repo) => {
@@ -706,7 +748,7 @@ impl<'a> WorkItems<'a> {
         repository: Option<&str>,
         revision: &str,
     ) -> Result<bool> {
-        let tracker = self.writable("removeLinkedRevision", item)?;
+        let tracker = self.unbounded("removeLinkedRevision", item)?;
         Ok(match repository {
             None => tracker.remove_linked_revision(&item.uri, revision).await?,
             Some(repo) => {
@@ -727,7 +769,9 @@ impl<'a> WorkItems<'a> {
         revision: Option<&str>,
         suspect: bool,
     ) -> Result<bool> {
-        let tracker = self.writable("addLinkedItemWithRev", item)?;
+        self.polarion
+            .check_write_targets("addLinkedItemWithRev", &item.uri, &[&target.uri])?;
+        let tracker = self.tracker();
         Ok(tracker
             .add_linked_item_with_rev(&item.uri, &target.uri, &option_id(role), revision, suspect)
             .await?)
@@ -741,7 +785,7 @@ impl<'a> WorkItems<'a> {
         role: &str,
         label: &str,
     ) -> Result<bool> {
-        let tracker = self.writable("addLinkedOslcItem", item)?;
+        let tracker = self.unbounded("addLinkedOslcItem", item)?;
         Ok(tracker
             .add_linked_oslc_item(&item.uri, url, &option_id(role), label)
             .await?)
@@ -884,8 +928,12 @@ impl<'a> WorkItems<'a> {
     }
 
     pub async fn delete_work_record(&self, item: &ItemRef, record_uri: &str) -> Result<()> {
-        let tracker = self.writable("deleteWorkRecord", item)?;
-        Ok(tracker.delete_work_record(&item.uri, record_uri).await?)
+        self.polarion
+            .check_write_owned("deleteWorkRecord", &item.uri, record_uri)?;
+        Ok(self
+            .tracker()
+            .delete_work_record(&item.uri, record_uri)
+            .await?)
     }
 
     // ---- other
@@ -919,13 +967,13 @@ impl<'a> WorkItems<'a> {
 
     /// Mark links to this work item as suspect, as configured for the project.
     pub async fn auto_suspect(&self, item: &ItemRef) -> Result<()> {
-        let tracker = self.writable("doAutoSuspect", item)?;
+        let tracker = self.unbounded("doAutoSuspect", item)?;
         Ok(tracker.do_auto_suspect(&item.uri).await?)
     }
 
     /// Assign the work item according to the project's auto-assignment rules.
     pub async fn auto_assign(&self, item: &ItemRef) -> Result<()> {
-        let tracker = self.writable("doAutoassign", item)?;
+        let tracker = self.unbounded("doAutoassign", item)?;
         Ok(tracker.do_autoassign(&item.uri).await?)
     }
 }

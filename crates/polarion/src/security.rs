@@ -134,6 +134,8 @@ impl<'a> Security<'a> {
         user: &str,
         password: &str,
     ) -> Result<()> {
+        self.polarion
+            .check_unbounded_write("updateUserAccountVault")?;
         self.polarion.check_global_write("updateUserAccountVault")?;
         Ok(self
             .service()

@@ -47,7 +47,7 @@ impl From<polarion::Error> for CommandError {
                 SoapError::Fault { .. } => "fault",
                 SoapError::Login(_) => "login",
                 SoapError::SessionExpired => "sessionExpired",
-                SoapError::ReadOnly { .. } => "readOnly",
+                SoapError::ReadOnly { .. } | SoapError::WriteFiltered { .. } => "readOnly",
                 SoapError::Http(_) | SoapError::Status { .. } => "http",
                 SoapError::Url(_) | SoapError::Config(_) => "config",
                 _ => "other",

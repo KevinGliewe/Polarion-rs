@@ -17,7 +17,7 @@ use proc_macro::TokenStream;
 
 /// A command DTO: `#[cmd(write, view = table(ITEM_COLUMNS))]` on a struct with named fields.
 ///
-/// Options: `write` (the command modifies data), `view = object | lines | links | scalar |
+/// Options: `write` (the command modifies data), `view = object | lines | links | scalar | text |
 /// bytes | done | table(COLUMNS)` (how the command line shows the result; default `object`).
 ///
 /// Fields: `#[positional]` takes the field positionally on the command line (in declaration

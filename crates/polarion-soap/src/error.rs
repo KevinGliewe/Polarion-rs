@@ -19,6 +19,11 @@ pub enum Error {
     #[error("refusing {operation}: client is read-only")]
     ReadOnly { operation: String },
 
+    /// The client's write filter ([`crate::ClientBuilder::write_filter`]) refused the operation;
+    /// nothing was sent.
+    #[error("refusing {operation}: not allowed by the client's write filter")]
+    WriteFiltered { operation: String },
+
     /// Logging in did not produce a session.
     #[error("login failed: {0}")]
     Login(String),

@@ -1,14 +1,17 @@
 //! `items.*`: work items.
 
-use polarion::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
+use polarion::polarion_markdown::{RawHtml, WorkItemIds};
+use polarion::{
+    MarkdownReadOptions, MarkdownWriteOptions, NewWorkItem, NewWorkRecord, WorkItemUpdate,
+};
 use polarion_commands_derive::cmd;
 use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::{
-    ACTION_COLUMNS, CHANGE_COLUMNS, Changed, Context, Data, DocumentArg, Done, Download,
-    FieldSelection, ITEM_COLUMNS, ItemArg, JsonObject, JsonValue, OPTION_COLUMNS, QueryArgs,
-    REF_COLUMNS, Result, RichText, Run, USER_COLUMNS,
+    ACTION_COLUMNS, CHANGE_COLUMNS, Changed, CommandError, Context, Data, DocumentArg, Done,
+    Download, FieldSelection, ITEM_COLUMNS, ItemArg, JsonObject, JsonValue, OPTION_COLUMNS,
+    QueryArgs, REF_COLUMNS, Result, RichText, Run, TextArg, USER_COLUMNS,
 };
 
 /// Get a work item with all fields (or only `fields`/`custom`)
@@ -623,6 +626,103 @@ impl Run for LocalizedDescription {
     }
 }
 
+/// A work item's description as Markdown, with its mermaid diagrams as code blocks.
+///
+/// Mermaid diagrams written by `set-description-markdown` come back as mermaid code blocks.
+/// Formatting Markdown cannot express (colors, fonts, alignment, merged cells, ...) stays inline
+/// HTML, so writing the Markdown back keeps it, unless `drop-html` is set.
+#[cmd(view = text)]
+pub struct DescriptionMarkdown {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// Drop formatting Markdown cannot express (colors, fonts, merged cells, ...) instead of keeping it as inline HTML
+    pub drop_html: bool,
+    /// Id prefixes whose work item links are read as plain ids, e.g. `MP` (default: the work item's own; `*`: any; `none`: no link)
+    pub id_prefixes: Vec<String>,
+}
+
+impl DescriptionMarkdown {
+    fn options(&self) -> Result<MarkdownReadOptions> {
+        Ok(MarkdownReadOptions {
+            raw_html: if self.drop_html {
+                RawHtml::Drop
+            } else {
+                RawHtml::Keep
+            },
+            work_items: work_item_ids(&self.id_prefixes)?,
+        })
+    }
+}
+
+impl Run for DescriptionMarkdown {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let options = self.options()?;
+        Ok(cx
+            .polarion
+            .items()
+            .description_markdown(&self.item.resolve(cx)?, &options)
+            .await?)
+    }
+}
+
+/// `id-prefixes` as the library's option: none, the work item's own prefix (`None`); `*`, any
+/// id; `none`, no id. Anything else must be a prefix the conversion recognizes (`MP`, `MY_PROJ`):
+/// an uppercase letter, then uppercase letters, digits or `_`.
+fn work_item_ids(prefixes: &[String]) -> Result<Option<WorkItemIds>> {
+    let prefixes: Vec<&str> = prefixes
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if prefixes.is_empty() {
+        return Ok(None);
+    }
+    if prefixes.contains(&"*") {
+        return Ok(Some(WorkItemIds::Any));
+    }
+    if prefixes.contains(&"none") {
+        if prefixes.len() > 1 {
+            return Err(CommandError::invalid(
+                "id-prefixes: `none` cannot be combined with prefixes",
+            ));
+        }
+        return Ok(Some(WorkItemIds::Off));
+    }
+    for prefix in &prefixes {
+        let mut bytes = prefix.bytes();
+        let valid = bytes.next().is_some_and(|b| b.is_ascii_uppercase())
+            && prefix.len() > 1
+            && bytes.all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+        if !valid {
+            return Err(CommandError::invalid(format!(
+                "id-prefixes: `{prefix}` is not a work item id prefix (an uppercase letter, then \
+                 uppercase letters, digits or `_`, e.g. `MP` for MP-42; `*`: any id; `none`: no \
+                 link)"
+            )));
+        }
+    }
+    Ok(Some(WorkItemIds::Prefixes(
+        prefixes.into_iter().map(str::to_owned).collect(),
+    )))
+}
+
+/// The options of the Markdown writes; fenced code is highlighted.
+fn write_options(
+    id_prefixes: &[String],
+    keep_orphans: bool,
+    allow_unrendered: bool,
+) -> Result<MarkdownWriteOptions> {
+    Ok(MarkdownWriteOptions {
+        work_items: work_item_ids(id_prefixes)?,
+        keep_orphans,
+        allow_unrendered,
+        ..MarkdownWriteOptions::default()
+    })
+}
+
 /// Whether a comment is in a resolved thread.
 #[cmd(view = scalar)]
 pub struct CommentResolved {
@@ -797,6 +897,72 @@ impl Run for Update {
         };
         cx.polarion.items().update(&item, &update).await?;
         Ok(Done)
+    }
+}
+
+/// Replace the description with Markdown (mermaid diagrams become SVG attachments).
+///
+/// Each mermaid code block is rendered to SVG, attached as `mermaid-<hash>.svg` and shown as an
+/// image; a diagram that already has its attachment is not uploaded again. A diagram that cannot
+/// be rendered fails the command before anything is written, unless `allow-unrendered` is set.
+/// Afterwards the diagram attachments only the old description showed are deleted, unless
+/// `keep-orphans` is set. Ids with the work item's own prefix, such as `MP-1`, become links.
+#[cmd(write, view = object)]
+pub struct SetDescriptionMarkdown {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// The new description: the Markdown text itself
+    pub markdown: TextArg,
+    /// Keep the diagram attachments the old description showed and the new one does not
+    pub keep_orphans: bool,
+    /// Write a mermaid diagram that cannot be rendered as a code block, with a warning, instead of failing
+    pub allow_unrendered: bool,
+    /// Id prefixes whose ids become work item links, e.g. `MP` (default: the work item's own; `*`: any; `none`: no link)
+    pub id_prefixes: Vec<String>,
+}
+
+impl Run for SetDescriptionMarkdown {
+    type Output = polarion::MarkdownUpdate;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let options = write_options(&self.id_prefixes, self.keep_orphans, self.allow_unrendered)?;
+        Ok(cx
+            .polarion
+            .items()
+            .set_description_markdown(&self.item.resolve(cx)?, &self.markdown.0, &options)
+            .await?)
+    }
+}
+
+/// Append Markdown to the description as a new paragraph.
+///
+/// As `set-description-markdown`, except that no attachment is deleted. A `text/plain`
+/// description is converted to HTML first. The description is read, extended and written back:
+/// a change someone makes in between is lost.
+#[cmd(write, view = object)]
+pub struct AppendDescriptionMarkdown {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// The Markdown to append: the text itself
+    pub markdown: TextArg,
+    /// Write a mermaid diagram that cannot be rendered as a code block, with a warning, instead of failing
+    pub allow_unrendered: bool,
+    /// Id prefixes whose ids become work item links, e.g. `MP` (default: the work item's own; `*`: any; `none`: no link)
+    pub id_prefixes: Vec<String>,
+}
+
+impl Run for AppendDescriptionMarkdown {
+    type Output = polarion::MarkdownUpdate;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let options = write_options(&self.id_prefixes, false, self.allow_unrendered)?;
+        Ok(cx
+            .polarion
+            .items()
+            .append_description_markdown(&self.item.resolve(cx)?, &self.markdown.0, &options)
+            .await?)
     }
 }
 
@@ -1846,3 +2012,78 @@ impl Run for AutoAssign {
 // ---- reads
 
 // ---- writes
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn strings(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn id_prefixes_choose_the_linked_ids() {
+        let ids = |list: &[&str]| work_item_ids(&strings(list)).map_err(|e| e.message);
+        assert_eq!(ids(&[]), Ok(None));
+        assert_eq!(ids(&[" ", ""]), Ok(None));
+        assert_eq!(
+            ids(&["MP", " OP ", "MY_PROJ2"]),
+            Ok(Some(WorkItemIds::Prefixes(strings(&[
+                "MP", "OP", "MY_PROJ2"
+            ]))))
+        );
+        assert_eq!(ids(&["MP", "*"]), Ok(Some(WorkItemIds::Any)));
+        assert_eq!(ids(&["none"]), Ok(Some(WorkItemIds::Off)));
+        assert!(
+            ids(&["none", "MP"])
+                .unwrap_err()
+                .contains("cannot be combined")
+        );
+        // Prefixes the conversion would never find refuse the command instead of linking nothing.
+        for bad in ["mp", "Mp", "MP-", "M", "1P", "M P", "MP,", "_MP"] {
+            let e = ids(&["OP", bad]).unwrap_err();
+            assert!(
+                e.starts_with(&format!(
+                    "id-prefixes: `{bad}` is not a work item id prefix"
+                )),
+                "{bad}: {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_options_come_from_the_arguments() {
+        let read: DescriptionMarkdown = crate::parse_as(json!({"item": "P-1"})).unwrap();
+        assert_eq!(read.options().unwrap(), MarkdownReadOptions::default());
+        let read: DescriptionMarkdown =
+            crate::parse_as(json!({"item": "P-1", "drop-html": true, "id-prefixes": "MP, OP"}))
+                .unwrap();
+        assert_eq!(
+            read.options().unwrap(),
+            MarkdownReadOptions {
+                raw_html: RawHtml::Drop,
+                work_items: Some(WorkItemIds::Prefixes(strings(&["MP", "OP"]))),
+            }
+        );
+        let read: DescriptionMarkdown =
+            crate::parse_as(json!({"item": "P-1", "id-prefixes": "mp"})).unwrap();
+        assert!(read.options().is_err());
+
+        assert_eq!(
+            write_options(&[], false, false).unwrap(),
+            MarkdownWriteOptions::default()
+        );
+        assert!(write_options(&strings(&["mp"]), false, false).is_err());
+        assert_eq!(
+            write_options(&strings(&["*"]), true, true).unwrap(),
+            MarkdownWriteOptions {
+                work_items: Some(WorkItemIds::Any),
+                highlight: true,
+                keep_orphans: true,
+                allow_unrendered: true,
+            }
+        );
+    }
+}

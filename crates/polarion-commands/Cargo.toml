@@ -14,7 +14,9 @@ authors.workspace = true
 [dependencies]
 base64.workspace = true
 clap = { workspace = true, optional = true }
-polarion = { workspace = true, features = ["schemars"] }
+# `markdown`, `mermaid`, `highlight`: the `*-description-markdown` commands, with diagrams
+# rendered to SVG and fenced code highlighted.
+polarion = { workspace = true, features = ["schemars", "markdown", "mermaid", "highlight"] }
 polarion-commands-derive.workspace = true
 schemars = "1"
 serde.workspace = true

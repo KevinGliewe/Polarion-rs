@@ -1,6 +1,7 @@
-//! Typed arguments: references, rich text, field selections, binary data and the deliberately
-//! dynamic JSON values. Each deserializes from the forms a person or an agent would write, parses
-//! from a command-line string, and describes itself as JSON Schema.
+//! Typed arguments: references, rich text, text that may come from a file, field selections,
+//! binary data and the deliberately dynamic JSON values. Each deserializes from the forms a person
+//! or an agent would write, parses from a command-line string, and describes itself as JSON
+//! Schema.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -377,6 +378,75 @@ inline_schema!(RichText, "RichText", {
     ]
 });
 
+// ---- text
+
+/// Text such as Markdown. In JSON (and so over MCP) the string is the text itself: no file is
+/// ever read. On the command line also `@FILE` (the file's content), `@-` (standard input) or
+/// `@@...` (text that starts with `@`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TextArg(pub String);
+
+impl FromStr for TextArg {
+    type Err = String;
+    /// The text, `@FILE`, `@-` or `@@...` (on the command line). A file or standard input is
+    /// UTF-8, or UTF-16 with a byte order mark (what `>` writes in Windows PowerShell 5.1); a
+    /// byte order mark is dropped.
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        let Some(rest) = s.strip_prefix('@') else {
+            return Ok(TextArg(s.to_owned()));
+        };
+        if rest.starts_with('@') {
+            return Ok(TextArg(rest.to_owned()));
+        }
+        let bytes = match rest {
+            "" => {
+                return Err(
+                    "`@` needs a file name: `@FILE`, `@-` for standard input, `@@...` for text \
+                     that starts with `@`"
+                        .into(),
+                );
+            }
+            "-" => {
+                let mut bytes = Vec::new();
+                std::io::Read::read_to_end(&mut std::io::stdin(), &mut bytes)
+                    .map_err(|e| format!("cannot read standard input: {e}"))?;
+                return decode(bytes)
+                    .map(TextArg)
+                    .map_err(|e| format!("cannot read standard input: it {e}"));
+            }
+            path => std::fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))?,
+        };
+        decode(bytes)
+            .map(TextArg)
+            .map_err(|e| format!("cannot read {rest}: the file {e}"))
+    }
+}
+
+/// Text from a file: UTF-8 (a byte order mark dropped) or UTF-16 with a byte order mark.
+fn decode(bytes: Vec<u8>) -> std::result::Result<String, &'static str> {
+    fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> std::result::Result<String, &'static str> {
+        if !bytes.len().is_multiple_of(2) {
+            return Err("is not valid UTF-16");
+        }
+        let units: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|pair| unit([pair[0], pair[1]]))
+            .collect();
+        String::from_utf16(&units).map_err(|_| "is not valid UTF-16")
+    }
+    match bytes.as_slice() {
+        [0xff, 0xfe, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xfe, 0xff, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        [0xef, 0xbb, 0xbf, rest @ ..] => {
+            String::from_utf8(rest.to_vec()).map_err(|_| "is not valid UTF-8")
+        }
+        _ => String::from_utf8(bytes).map_err(|_| "is not valid UTF-8"),
+    }
+}
+
+inline_schema!(TextArg, "TextArg", {"type": "string"});
+
 // ---- field selections
 
 /// Which fields to fetch: `standard`, `all`, or a list of field keys.
@@ -676,5 +746,77 @@ mod tests {
         );
         let obj: JsonObject = serde_json::from_value(json!(r#"{"asil": "D"}"#)).unwrap();
         assert_eq!(obj.0["asil"], "D");
+    }
+
+    #[test]
+    fn text_is_the_argument_or_a_file_on_the_command_line() {
+        assert_eq!("# Title".parse(), Ok(TextArg("# Title".into())));
+        assert_eq!("".parse(), Ok(TextArg(String::new())));
+        assert_eq!("a @b".parse(), Ok(TextArg("a @b".into())));
+        // `@@` stands for a literal `@`.
+        assert_eq!("@@team".parse(), Ok(TextArg("@team".into())));
+        assert_eq!("@@".parse(), Ok(TextArg("@".into())));
+        let e = "@".parse::<TextArg>().unwrap_err();
+        assert!(e.contains("file name"), "{e}");
+
+        let file =
+            std::env::temp_dir().join(format!("polarion-commands-text-{}.md", std::process::id()));
+        let arg = format!("@{}", file.display());
+        // The byte order mark some editors write is dropped; line endings stay.
+        std::fs::write(&file, "\u{feff}# Title\r\n\r\nBody @x\n").unwrap();
+        let read = arg.parse::<TextArg>();
+        // UTF-16 with a byte order mark, as `>` writes it in Windows PowerShell 5.1.
+        let utf16 = |bom: [u8; 2], unit: fn(u16) -> [u8; 2]| {
+            let mut bytes = bom.to_vec();
+            bytes.extend("- Grüße\r\n".encode_utf16().flat_map(unit));
+            std::fs::write(&file, bytes).unwrap();
+            arg.parse::<TextArg>()
+        };
+        let little_endian = utf16([0xff, 0xfe], u16::to_le_bytes);
+        let big_endian = utf16([0xfe, 0xff], u16::to_be_bytes);
+        std::fs::write(&file, b"\xff\xfe#").unwrap();
+        let odd_utf16 = arg.parse::<TextArg>();
+        std::fs::write(&file, b"#\xff\0").unwrap();
+        let not_utf8 = arg.parse::<TextArg>();
+        std::fs::remove_file(&file).unwrap();
+        let missing = arg.parse::<TextArg>();
+        assert_eq!(read, Ok(TextArg("# Title\r\n\r\nBody @x\n".into())));
+        for decoded in [little_endian, big_endian] {
+            assert_eq!(decoded, Ok(TextArg("- Grüße\r\n".into())));
+        }
+        assert_eq!(
+            odd_utf16.unwrap_err(),
+            format!(
+                "cannot read {}: the file is not valid UTF-16",
+                file.display()
+            )
+        );
+        assert_eq!(
+            not_utf8.unwrap_err(),
+            format!(
+                "cannot read {}: the file is not valid UTF-8",
+                file.display()
+            )
+        );
+        let e = missing.unwrap_err();
+        assert!(
+            e.starts_with(&format!("cannot read {}: ", file.display())),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn text_in_json_is_the_text_itself() {
+        for text in ["@desc.md", "@-", "@@x", "", "line 1\nline 2"] {
+            let arg: TextArg = serde_json::from_value(json!(text)).unwrap();
+            assert_eq!(arg, TextArg(text.into()));
+            assert_eq!(serde_json::to_value(&arg).unwrap(), json!(text));
+        }
+        assert!(serde_json::from_value::<TextArg>(json!({"content": "x"})).is_err());
+        let schema = TextArg::json_schema(&mut SchemaGenerator::default());
+        assert_eq!(
+            serde_json::to_value(schema).unwrap(),
+            json!({"type": "string"})
+        );
     }
 }

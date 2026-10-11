@@ -50,17 +50,17 @@ use polarion_commands_derive::registry;
 use serde_json::Value;
 
 pub use arg::{
-    Data, DocumentArg, FieldSelection, ItemArg, JsonObject, JsonValue, QueryArgs, RichText,
+    Data, DocumentArg, FieldSelection, ItemArg, JsonObject, JsonValue, QueryArgs, RichText, TextArg,
 };
 pub use command::{CommandInfo, Context, Entry, Run, output_schema_of, parse_as, schema_of};
-pub use config::{Config, split_list};
+pub use config::{Config, WriteTarget, split_list, split_targets};
 pub use error::{CommandError, Result};
 pub use output::{Changed, Done, Download};
 pub use values::infer;
 pub use view::*;
 
 registry! {
-    /// Work items: read, query, history, workflow, links, comments, create, update
+    /// Work items: read, query, history, workflow, links, comments, create, update, descriptions as Markdown
     items => [
         Get,
         GetInRevision,
@@ -90,10 +90,13 @@ registry! {
         Attachment,
         LocalizedTitle,
         LocalizedDescription,
+        DescriptionMarkdown,
         CommentResolved,
         LinkedResources,
         Create,
         Update,
+        SetDescriptionMarkdown,
+        AppendDescriptionMarkdown,
         SetCustomField,
         ClearFields,
         Delete,

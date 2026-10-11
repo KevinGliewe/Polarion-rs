@@ -9,17 +9,23 @@ pub enum Error {
     #[error("{kind} `{id}` not found")]
     NotFound { kind: &'static str, id: String },
 
-    /// A write was refused before anything was sent: writes are not enabled for
-    /// the project (see [`crate::PolarionBuilder::allow_writes`]), or the write is
-    /// global (users, global folders, ...) or its project could not be determined,
-    /// and global writes are not enabled ([`crate::PolarionBuilder::allow_global_writes`]).
-    #[error("{operation} refused: {}", match project {
-        Some(p) => format!("writes to project `{p}` are not allowed"),
-        None => "the write is not tied to a known project and global writes are not allowed".to_owned(),
-    })]
+    /// A write was refused before anything was sent:
+    /// - writes are not enabled for the project (see [`crate::PolarionBuilder::allow_writes`]),
+    ///   or the write is global (users, global folders, ...) or its project could not be
+    ///   determined, and global writes are not enabled
+    ///   ([`crate::PolarionBuilder::allow_global_writes`]);
+    /// - or the client is restricted to write targets
+    ///   ([`crate::PolarionBuilder::restrict_writes`], [`crate::PolarionBuilder::allow_creates`])
+    ///   and the write goes to an object that is not a target (`target`), or is never allowed in
+    ///   that mode, or has no create left in the budget (`reason`).
+    #[error("{operation} refused: {}", refusal(project.as_deref(), target.as_deref(), *reason))]
     WriteNotAllowed {
         operation: &'static str,
         project: Option<String>,
+        /// The object that is not a write target (restricted mode).
+        target: Option<String>,
+        /// Why a write-restricted client refuses the write, when it is not (only) a missing target.
+        reason: Option<&'static str>,
     },
 
     /// Invalid input, e.g. a value that does not fit a field's type, or no workflow action
@@ -29,3 +35,17 @@ pub enum Error {
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+fn refusal(project: Option<&str>, target: Option<&str>, reason: Option<&str>) -> String {
+    match (reason, target, project) {
+        (Some(reason), _, Some(project)) => format!("{reason} (project `{project}`)"),
+        (Some(reason), _, None) => reason.to_owned(),
+        (None, Some(target), _) => {
+            format!("`{target}` is not a write target of this client")
+        }
+        (None, None, Some(project)) => format!("writes to project `{project}` are not allowed"),
+        (None, None, None) => {
+            "the write is not tied to a known project and global writes are not allowed".to_owned()
+        }
+    }
+}

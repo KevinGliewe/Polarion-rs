@@ -5,7 +5,7 @@ members = ["crates/*", "xtask"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/KevinGliewe/Polarion-rs"
 authors = ["Kevin Gliewe"]
@@ -14,6 +14,7 @@ authors = ["Kevin Gliewe"]
 polarion = { path = "crates/polarion", version = "0.1.0" }
 polarion-commands = { path = "crates/polarion-commands", version = "0.1.0" }
 polarion-commands-derive = { path = "crates/polarion-commands-derive", version = "0.1.0" }
+polarion-markdown = { path = "crates/polarion-markdown", version = "0.1.0", default-features = false }
 polarion-rest = { path = "crates/polarion-rest", version = "0.1.0" }
 polarion-soap = { path = "crates/polarion-soap", version = "0.1.0" }
 
@@ -41,3 +42,28 @@ missing_debug_implementations = "warn"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# mermaid-rs-renderer's layout debug assertions fire on valid diagrams, and fancy-regex (syntect)
+# is unusably slow without optimization. Library users building in debug do not get these.
+[profile.dev.package.mermaid-rs-renderer]
+opt-level = 2
+debug-assertions = false
+overflow-checks = false
+
+[profile.dev.package.fancy-regex]
+opt-level = 2
+
+[profile.dev.package.regex-automata]
+opt-level = 2
+
+[profile.dev.package.regex-syntax]
+opt-level = 2
+
+[profile.dev.package.syntect]
+opt-level = 2
+
+[profile.dev.package.bincode]
+opt-level = 2
+
+[profile.dev.package.miniz_oxide]
+opt-level = 2

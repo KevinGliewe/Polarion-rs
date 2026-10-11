@@ -37,6 +37,7 @@ impl<'a> Baselines<'a> {
         description: Option<&str>,
         revision: Option<&str>,
     ) -> Result<Baseline> {
+        self.polarion.check_unbounded_write("createBaseline")?;
         self.polarion.check_write("createBaseline", Some(project))?;
         let b = self
             .polarion
@@ -54,7 +55,7 @@ impl<'a> Baselines<'a> {
         name: Option<&str>,
         description: Option<&str>,
     ) -> Result<()> {
-        self.polarion.check_write_uri("updateBaseline", uri)?;
+        self.polarion.check_write_target("updateBaseline", uri)?;
         let baseline = soap::Baseline {
             uri: Some(uri.to_owned()),
             name: name.map(str::to_owned),
@@ -70,6 +71,7 @@ impl<'a> Baselines<'a> {
     }
 
     pub async fn delete(&self, uri: &str) -> Result<()> {
+        self.polarion.check_unbounded_write("deleteBaseline")?;
         self.polarion.check_write_uri("deleteBaseline", uri)?;
         Ok(self.polarion.soap().tracker().delete_baseline(uri).await?)
     }

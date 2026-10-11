@@ -70,6 +70,22 @@
 //! Writes not tied to a project (users, global folders, activity comments, the account
 //! vault) also need [`PolarionBuilder::allow_global_writes`]. The raw SOAP client is
 //! available through [`Polarion::soap`] (not checked against the allowlist).
+//!
+//! [`PolarionBuilder::restrict_writes`] restricts a client to a list of objects instead (and
+//! [`PolarionBuilder::allow_creates`] to a budget of creates): writes that change anything
+//! else, or that may change objects the client cannot see (workflow actions, deletes, ...),
+//! are refused, and a SOAP write filter checks every request, those made through
+//! [`Polarion::soap`] included.
+//!
+//! # Markdown
+//!
+//! The feature `markdown` reads and writes work item descriptions as Markdown
+//! (`description_markdown`, `set_description_markdown` and `append_description_markdown` on
+//! [`WorkItems`]), converted by the `polarion-markdown` crate, which is re-exported as
+//! `polarion_markdown`. With `mermaid`, ```` ```mermaid ```` blocks are rendered to SVG and
+//! attached to the work item as `mermaid-<hash>.svg` (an unchanged diagram is neither rendered
+//! nor uploaded again), and the description shows them as images; reading the description back
+//! restores the blocks. `highlight` highlights fenced code that names its language.
 
 mod activities;
 mod baselines;
@@ -80,26 +96,31 @@ mod documents;
 mod error;
 mod folders;
 mod items;
+#[cfg(feature = "markdown")]
+mod markdown;
 mod model;
 mod plans;
 mod projects;
 mod query;
+mod restricted;
 mod revisions;
 mod schema;
 mod security;
 mod tests_mgmt;
-mod uri;
+pub mod uri;
 mod wiki;
 mod write;
 
 pub use activities::{Activities, ActivityScope};
 pub use baselines::Baselines;
 pub use builds::Builds;
-pub use client::{Polarion, PolarionBuilder};
+pub use client::{CreateBudget, Polarion, PolarionBuilder};
 pub use documents::Documents;
 pub use error::{Error, Result};
 pub use folders::Folders;
 pub use items::WorkItems;
+#[cfg(feature = "markdown")]
+pub use markdown::{DiagramAttachment, MarkdownReadOptions, MarkdownUpdate, MarkdownWriteOptions};
 pub use model::{
     Approval, Attachment, Baseline, Category, Change, Comment, Document, EnumOption, FieldChange,
     FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Plan, Project, ProjectGroup,
@@ -107,6 +128,8 @@ pub use model::{
     WorkItem, WorkRecord, WorkflowAction,
 };
 pub use plans::Plans;
+#[cfg(feature = "markdown")]
+pub use polarion_markdown;
 pub use polarion_soap as soap;
 pub use polarion_soap::Auth;
 pub use projects::{Projects, Users};

@@ -77,7 +77,19 @@ fn print(globals: &Globals, entry: &Entry, args: &Value, value: &Value) -> ExitC
     } else {
         render::text(value, entry.view)
     };
-    if text.is_empty() {
+    if let (View::Text, Some(path), false) = (entry.view, &globals.out, globals.json) {
+        // Text such as Markdown, saved as it would be printed.
+        if let Err(e) = std::fs::write(path, &text) {
+            return fail(
+                globals,
+                &CommandError::invalid(format!("cannot write {path}: {e}")),
+            );
+        }
+        eprintln!("wrote {} bytes to {path}", text.len());
+        return ExitCode::SUCCESS;
+    }
+    // Empty text (an empty description) is a result, not a missing one.
+    if text.is_empty() && !matches!(entry.view, View::Text) {
         eprintln!("no results");
     }
     // A closed pipe (`polarion ... | head`) is not an error worth reporting.

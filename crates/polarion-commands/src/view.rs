@@ -13,8 +13,10 @@ pub enum View {
     Lines,
     /// `{"outgoing": [...], "incoming": [...]}` link lists.
     Links,
-    /// A number, string or boolean.
+    /// A number, string or boolean, on one line.
     Scalar,
+    /// A string shown as it is, line breaks included (Markdown, ...).
+    Text,
     /// `{"size": .., "base64": ..}`: binary content.
     Bytes,
     /// Nothing (`null`) or a flag whether something changed.

@@ -1,4 +1,4 @@
-//! Output: JSON, or text for people (column tables and an indented key/value tree).
+//! Output: JSON, or text for people (column tables, an indented key/value tree, text as it is).
 
 use std::fmt::Write as _;
 
@@ -65,6 +65,13 @@ pub fn text(value: &Value, view: View) -> String {
         View::Scalar => match value {
             Value::Null => String::new(),
             other => format!("{}\n", inline(other)),
+        },
+        // As it is (`> file` keeps it), ending with a line break.
+        View::Text => match value {
+            Value::Null => String::new(),
+            Value::String(s) if s.is_empty() || s.ends_with('\n') => s.clone(),
+            Value::String(s) => format!("{s}\n"),
+            other => format!("{other}\n"),
         },
         View::Bytes => format!(
             "{} bytes (use --out FILE to save them)\n",
@@ -160,9 +167,13 @@ fn tree(out: &mut String, indent: usize, value: &Value) {
     }
 }
 
+/// Whether a value fits on its key's line. A list whose texts contain commas does not: joined
+/// with `, ` its items could not be told apart (sentences such as warnings).
 fn is_inline(value: &Value) -> bool {
     match value {
-        Value::Array(list) => list.iter().all(|v| !v.is_array() && is_inline(v)),
+        Value::Array(list) => list
+            .iter()
+            .all(|v| !v.is_array() && is_inline(v) && !v.as_str().is_some_and(|s| s.contains(','))),
         Value::Object(_) => reference(value).is_some(),
         _ => true,
     }
@@ -318,6 +329,38 @@ mod tests {
                 + "out        parent    P/P-0  suspect\n"
                 + "in         verifies  x\n"
         );
+    }
+
+    #[test]
+    fn lists_of_sentences_get_a_line_each() {
+        let update = json!({
+            "updated": true,
+            "deleted": ["2-mermaid-0123456789abcdef.svg", "3-mermaid-fedcba9876543210.svg"],
+            "warnings": [
+                "mermaid diagram (a, b) could not be rendered: bad, really",
+                "the diagram attachment 4-x.svg is no longer shown but could not be deleted: locked"
+            ],
+        });
+        assert_eq!(
+            text(&update, View::Object),
+            "updated: true\n\
+             deleted: 2-mermaid-0123456789abcdef.svg, 3-mermaid-fedcba9876543210.svg\n\
+             warnings:\n  \
+             - mermaid diagram (a, b) could not be rendered: bad, really\n  \
+             - the diagram attachment 4-x.svg is no longer shown but could not be deleted: locked\n"
+        );
+    }
+
+    #[test]
+    fn text_is_printed_as_it_is() {
+        let markdown = "# Brakes\n\n- stop\n-  stop  again\n\n```mermaid\ngraph TD\n```";
+        assert_eq!(text(&json!(markdown), View::Text), format!("{markdown}\n"));
+        // One line break at the end, not two.
+        assert_eq!(text(&json!("a\n\nb\n"), View::Text), "a\n\nb\n");
+        assert_eq!(text(&json!(""), View::Text), "");
+        assert_eq!(text(&Value::Null, View::Text), "");
+        // A scalar is one line.
+        assert_eq!(text(&json!("a\n\nb"), View::Scalar), "a b\n");
     }
 
     #[test]

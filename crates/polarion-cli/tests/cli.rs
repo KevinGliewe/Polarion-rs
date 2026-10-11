@@ -1,5 +1,9 @@
 //! The `polarion` binary end to end against a mock SOAP server.
 
+use std::io::Write as _;
+use std::path::PathBuf;
+use std::process::Stdio;
+
 use serde_json::{Value, json};
 use wiremock::matchers::{body_string_contains, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -18,6 +22,9 @@ const VARS: &[&str] = &[
     "POLARION_PASSWORD",
     "POLARION_WRITE_PROJECTS",
     "POLARION_ALLOW_GLOBAL_WRITES",
+    "POLARION_WRITE_TARGETS",
+    "POLARION_MCP_CONFIG",
+    "POLARION_MCP_TOOLS",
 ];
 
 fn envelope(header: &str, body: &str) -> String {
@@ -76,6 +83,16 @@ impl Run {
 
 /// Run the binary with `POLARION_URL` pointing at `server` (if any), a token, and extra env vars.
 async fn polarion(server: Option<&MockServer>, env: &[(&str, &str)], args: &[&str]) -> Run {
+    polarion_with_input(server, env, args, None).await
+}
+
+/// [`polarion`], with `input` on standard input (none: standard input is closed).
+async fn polarion_with_input(
+    server: Option<&MockServer>,
+    env: &[(&str, &str)],
+    args: &[&str],
+    input: Option<&str>,
+) -> Run {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
     for var in VARS {
         cmd.env_remove(var);
@@ -85,10 +102,23 @@ async fn polarion(server: Option<&MockServer>, env: &[(&str, &str)], args: &[&st
         cmd.env("POLARION_TOKEN", "t");
     }
     cmd.envs(env.iter().copied()).args(args);
-    let out = tokio::task::spawn_blocking(move || cmd.output())
-        .await
-        .unwrap()
-        .expect("binary runs");
+    let input = input.map(str::to_owned);
+    let out = tokio::task::spawn_blocking(move || match input {
+        None => cmd.output(),
+        Some(input) => {
+            let mut child = cmd
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+            // Dropped at the end of the statement: the binary sees the end of its input.
+            child.stdin.take().unwrap().write_all(input.as_bytes())?;
+            child.wait_with_output()
+        }
+    })
+    .await
+    .unwrap()
+    .expect("binary runs");
     Run {
         code: out.status.code().expect("exit code"),
         stdout: String::from_utf8(out.stdout).unwrap(),
@@ -214,7 +244,7 @@ async fn doc_show_skips_the_body_unless_asked() {
         &server,
         &["getModuleByLocationWithFields>", "projectId>P<", "location>Specs/SRS<"],
         &format!(
-            r#"<getModuleByLocationWithFieldsResponse><getModuleByLocationWithFieldsReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs/SRS"><moduleFolder>Specs</moduleFolder><moduleName>SRS</moduleName><title>System requirements</title></getModuleByLocationWithFieldsReturn></getModuleByLocationWithFieldsResponse>"#
+            r#"<getModuleByLocationWithFieldsResponse><getModuleByLocationWithFieldsReturn uri="{URI}P${{Module}}{{moduleFolder}}Specs#SRS"><moduleFolder>Specs</moduleFolder><moduleName>SRS</moduleName><title>System requirements</title></getModuleByLocationWithFieldsReturn></getModuleByLocationWithFieldsResponse>"#
         ),
     )
     .await;
@@ -229,7 +259,7 @@ async fn doc_show_skips_the_body_unless_asked() {
     assert_eq!(
         run.stdout,
         format!(
-            "project: P\nspace: Specs\nname: SRS\ntitle: System requirements\nuri: {URI}P${{Module}}{{moduleFolder}}Specs/SRS\n"
+            "project: P\nspace: Specs\nname: SRS\ntitle: System requirements\nuri: {URI}P${{Module}}{{moduleFolder}}Specs#SRS\n"
         )
     );
 }
@@ -341,4 +371,586 @@ async fn writes_go_through_with_write_projects() {
     .await;
     assert_eq!(run.code, 0, "{}", run.stderr);
     assert_eq!(run.stdout, "changed\n");
+}
+
+// ---- write targets
+
+const ADDED: &str =
+    "<addAssigneeResponse><addAssigneeReturn>true</addAssigneeReturn></addAssigneeResponse>";
+
+#[tokio::test(flavor = "multi_thread")]
+async fn writes_go_only_to_write_targets() {
+    // The target, resolved in POLARION_PROJECT; write projects have no effect.
+    let server = server().await;
+    mock(
+        &server,
+        &[
+            "addAssignee>",
+            &format!("{URI}Sandbox${{WorkItem}}SB-1<"),
+            "assigneeId>jdoe<",
+        ],
+        ADDED,
+    )
+    .await;
+    let run = polarion(
+        Some(&server),
+        &[
+            ("POLARION_PROJECT", "Sandbox"),
+            ("POLARION_WRITE_TARGETS", "SB-1, doc:Specs/SRS"),
+            ("POLARION_WRITE_PROJECTS", "Other"),
+        ],
+        &["items", "add-assignee", "SB-1", "--user", "jdoe"],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "changed\n");
+
+    // --write-targets is resolved in the project of -p.
+    let other = self::server().await;
+    mock(
+        &other,
+        &[
+            "addAssignee>",
+            &format!("{URI}Other${{WorkItem}}OT-1<"),
+            "assigneeId>jdoe<",
+        ],
+        ADDED,
+    )
+    .await;
+    let run = polarion(
+        Some(&other),
+        &[("POLARION_PROJECT", "Sandbox")],
+        &[
+            "-p",
+            "Other",
+            "--write-targets",
+            "OT-1",
+            "items",
+            "add-assignee",
+            "OT-1",
+            "--user",
+            "jdoe",
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "changed\n");
+
+    // Everything else is refused before anything is sent, not even a login.
+    let untouched = MockServer::start().await;
+    let assign = |item: &'static str| ["items", "add-assignee", item, "--user", "jdoe"];
+    for (env, args) in [
+        // Another item of the same project, one the write projects would allow.
+        (
+            &[
+                ("POLARION_WRITE_TARGETS", "Sandbox/SB-1"),
+                ("POLARION_WRITE_PROJECTS", "Sandbox"),
+            ][..],
+            assign("Sandbox/SB-2").to_vec(),
+        ),
+        // The target, but a write with no bounds, and a create.
+        (
+            &[("POLARION_WRITE_TARGETS", "Sandbox/SB-1")][..],
+            vec!["items", "delete", "Sandbox/SB-1"],
+        ),
+        (
+            &[("POLARION_WRITE_TARGETS", "Sandbox/SB-1")][..],
+            vec![
+                "items",
+                "create",
+                "--project",
+                "Sandbox",
+                "--type",
+                "task",
+                "--title",
+                "New",
+            ],
+        ),
+        // Set but empty: no writes at all, whatever else allows them.
+        (
+            &[
+                ("POLARION_WRITE_TARGETS", ""),
+                ("POLARION_WRITE_PROJECTS", "Sandbox"),
+                ("POLARION_ALLOW_GLOBAL_WRITES", "1"),
+            ][..],
+            assign("Sandbox/SB-1").to_vec(),
+        ),
+        // The option wins over the environment, also when it is empty.
+        (
+            &[("POLARION_WRITE_TARGETS", "Sandbox/SB-1")][..],
+            [
+                &["--write-targets", "Sandbox/SB-2"][..],
+                &assign("Sandbox/SB-1")[..],
+            ]
+            .concat(),
+        ),
+        (
+            &[("POLARION_WRITE_PROJECTS", "Sandbox")][..],
+            [&["--write-targets="][..], &assign("Sandbox/SB-1")[..]].concat(),
+        ),
+        // Only commas and blanks: no targets, no writes.
+        (
+            &[
+                ("POLARION_WRITE_TARGETS", "  ,  , "),
+                ("POLARION_WRITE_PROJECTS", "Sandbox"),
+            ][..],
+            assign("Sandbox/SB-1").to_vec(),
+        ),
+        (
+            &[("POLARION_WRITE_PROJECTS", "Sandbox")][..],
+            [&["--write-targets", " , "][..], &assign("Sandbox/SB-1")[..]].concat(),
+        ),
+        // -p does not move the environment's targets: SB-1 there is Sandbox/SB-1, so the
+        // command's SB-1 (Other/SB-1) is no target.
+        (
+            &[
+                ("POLARION_PROJECT", "Sandbox"),
+                ("POLARION_WRITE_TARGETS", "SB-1"),
+            ][..],
+            [&["-p", "Other"][..], &assign("SB-1")[..]].concat(),
+        ),
+        // A comma inside a document name, escaped: the document is the only target.
+        (
+            &[
+                ("POLARION_PROJECT", "Sandbox"),
+                ("POLARION_WRITE_TARGETS", r"doc:Specs/Brakes\, SB-1"),
+            ][..],
+            assign("SB-1").to_vec(),
+        ),
+    ] {
+        let run = polarion(
+            Some(&untouched),
+            env,
+            &[&["--json"][..], &args[..]].concat(),
+        )
+        .await;
+        assert_eq!(run.code, 1, "{args:?}: {}", run.stderr);
+        let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
+        assert_eq!(error["error"]["code"], "readOnly", "{args:?}: {error}");
+    }
+    assert!(
+        untouched.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn write_targets_that_do_not_resolve_are_configuration_errors() {
+    let untouched = MockServer::start().await;
+    for (env, args, message) in [
+        (
+            &[("POLARION_WRITE_TARGETS", "Sandbox/SB-1, Specs/SRS/x")][..],
+            &[][..],
+            "invalid write target `Specs/SRS/x`",
+        ),
+        // No default project to resolve the id in: none, an empty one, or only -p (which
+        // applies to --write-targets, not to the environment's).
+        (
+            &[("POLARION_WRITE_TARGETS", "SB-1")][..],
+            &[][..],
+            "has no project",
+        ),
+        (
+            &[("POLARION_WRITE_TARGETS", "SB-1"), ("POLARION_PROJECT", "")][..],
+            &[][..],
+            "has no project",
+        ),
+        (
+            &[
+                ("POLARION_WRITE_TARGETS", "SB-1"),
+                ("POLARION_PROJECT", " "),
+            ][..],
+            &["-p", ""][..],
+            "has no project",
+        ),
+        (
+            &[("POLARION_WRITE_TARGETS", "SB-1")][..],
+            &["-p", "Sandbox"][..],
+            "has no project",
+        ),
+        (
+            &[("POLARION_PROJECT", "")][..],
+            &["--write-targets", "SB-1"][..],
+            "has no project",
+        ),
+        // The rest of a document name cut at an unescaped comma.
+        (
+            &[
+                ("POLARION_PROJECT", "Sandbox"),
+                ("POLARION_WRITE_TARGETS", "doc:Specs/Brakes, v2"),
+            ][..],
+            &[][..],
+            "invalid write target `v2`",
+        ),
+    ] {
+        // Reads included: the client is never built.
+        let run = polarion(
+            Some(&untouched),
+            env,
+            &[&["--json"][..], args, &["items", "get", "Sandbox/SB-1"][..]].concat(),
+        )
+        .await;
+        assert_eq!(run.code, 1, "{}", run.stderr);
+        let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
+        assert_eq!(error["error"]["code"], "config", "{error}");
+        let text = error["error"]["message"].as_str().unwrap();
+        assert!(text.contains(message), "{text}");
+    }
+    assert!(untouched.received_requests().await.unwrap().is_empty());
+}
+
+/// `SB-` followed by text that is not Unicode.
+fn not_unicode() -> std::ffi::OsString {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt as _;
+        std::ffi::OsString::from_vec(b"SB-\xff1".to_vec())
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt as _;
+        std::ffi::OsString::from_wide(&[0x53, 0x42, 0x2d, 0xd800, 0x31])
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn write_targets_that_are_not_unicode_are_configuration_errors() {
+    // As in the MCP server: a `config` error, not a usage error, and nothing is sent.
+    let untouched = MockServer::start().await;
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    for var in VARS {
+        cmd.env_remove(var);
+    }
+    cmd.env("POLARION_URL", format!("{}/polarion", untouched.uri()))
+        .env("POLARION_TOKEN", "t")
+        .env("POLARION_PROJECT", "Sandbox")
+        .env("POLARION_WRITE_TARGETS", not_unicode())
+        .args(["--json", "items", "add-assignee", "SB-1", "--user", "jdoe"]);
+    let out = tokio::task::spawn_blocking(move || cmd.output())
+        .await
+        .unwrap()
+        .expect("binary runs");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    let error: Value = serde_json::from_str(stderr.trim()).unwrap();
+    assert_eq!(error["error"]["code"], "config", "{error}");
+    assert!(untouched.received_requests().await.unwrap().is_empty());
+}
+
+// ---- descriptions as Markdown
+
+/// Markdown and the description HTML it converts to (and back from).
+const MARKDOWN: &str = "### Brakes\n\nMust stop the car.\n";
+const HTML: &str = r#"<span style="font-weight: bold; font-size: 14pt; line-height: 1.2;">Brakes</span><br/><br/>Must stop the car."#;
+
+/// The file name of the diagram `graph TD\n    A-->B` (pinned by the conversion's tests).
+const DIAGRAM: &str = "mermaid-f093190607556ad0.svg";
+
+/// A fresh directory, removed on drop.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("polarion-cli-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+/// `Sandbox/SB-1` as `getWorkItemByIdsWithFields` returns it, with a description (`(type,
+/// content)`) and attachments (`(id, file name)`).
+fn work_item(description: Option<(&str, &str)>, attachments: &[(&str, &str)]) -> String {
+    let mut fields = "<id>SB-1</id>".to_owned();
+    if let Some((kind, content)) = description {
+        fields += &format!(
+            "<description><type>{kind}</type><content>{}</content></description>",
+            escape(content)
+        );
+    }
+    if !attachments.is_empty() {
+        fields += "<attachments>";
+        for (id, file_name) in attachments {
+            fields +=
+                &format!("<Attachment><fileName>{file_name}</fileName><id>{id}</id></Attachment>");
+        }
+        fields += "</attachments>";
+    }
+    format!(
+        r#"<getWorkItemByIdsWithFieldsResponse><getWorkItemByIdsWithFieldsReturn uri="{URI}Sandbox${{WorkItem}}SB-1">{fields}</getWorkItemByIdsWithFieldsReturn></getWorkItemByIdsWithFieldsResponse>"#
+    )
+}
+
+/// Answer the `n`-th read of the work item (counting from 1) with `body`.
+async fn read(server: &MockServer, n: u8, body: &str) {
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("getWorkItemByIdsWithFields>"))
+        .respond_with(xml(body))
+        .up_to_n_times(1)
+        .with_priority(n)
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+/// The bodies of the `operation` requests the server received, XML entities decoded.
+async fn bodies(server: &MockServer, operation: &str) -> Vec<String> {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .filter(|body| body.contains(&format!("{operation}>")))
+        .map(|body| unescape(&body))
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_description_is_printed_as_markdown() {
+    for json in [false, true] {
+        let server = server().await;
+        mock(
+            &server,
+            &["getWorkItemByIdsWithFields>", "workitemId>SB-1<"],
+            &work_item(Some(("text/html", HTML)), &[]),
+        )
+        .await;
+        let mut args = vec!["items", "description-markdown", "Sandbox/SB-1"];
+        if json {
+            args.push("--json");
+        }
+
+        let run = polarion(Some(&server), &[], &args).await;
+        assert_eq!(run.code, 0, "{}", run.stderr);
+        if json {
+            // A JSON string.
+            let markdown = run.json();
+            assert_eq!(
+                markdown.as_str().map(|m| m.trim_end_matches('\n')),
+                Some(MARKDOWN.trim_end_matches('\n')),
+                "{markdown}"
+            );
+        } else {
+            // As it is, line breaks included, with one at the end.
+            assert_eq!(run.stdout, MARKDOWN);
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn markdown_from_a_file_is_written_only_with_write_projects() {
+    let dir = TempDir::new("markdown");
+    let file = dir.0.join("desc.md");
+    std::fs::write(
+        &file,
+        "# Brakes\n\nStops the car, see SB-2 (not UTF-8).\n\n```mermaid\ngraph TD\n    A-->B\n```\n",
+    )
+    .unwrap();
+    let from_file = format!("@{}", file.display());
+    let args = [
+        "items",
+        "set-description-markdown",
+        "Sandbox/SB-1",
+        "--markdown",
+        &from_file,
+    ];
+
+    // Read-only: refused before anything is sent.
+    let untouched = MockServer::start().await;
+    let run = polarion(
+        Some(&untouched),
+        &[],
+        &[&["--json"][..], &args[..]].concat(),
+    )
+    .await;
+    assert_eq!(run.code, 1, "{}", run.stderr);
+    let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
+    assert_eq!(error["error"]["code"], "readOnly");
+    assert!(
+        untouched.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+
+    // The diagram is rendered, uploaded and shown; reading the attachments again gives its id.
+    let server = server().await;
+    let attachment = format!("1-{DIAGRAM}");
+    read(&server, 1, &work_item(None, &[])).await;
+    read(&server, 2, &work_item(None, &[(&attachment, DIAGRAM)])).await;
+    mock(
+        &server,
+        &["createAttachment>", &format!("fileName>{DIAGRAM}<")],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+    mock(
+        &server,
+        &["updateWorkItem>", &format!("workitemimg:{attachment}")],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+    // The renderer keeps copies of the system fonts in $XDG_CACHE_HOME.
+    let cache = dir.0.join("cache");
+    let run = polarion(
+        Some(&server),
+        &[
+            ("POLARION_WRITE_PROJECTS", "Sandbox"),
+            ("XDG_CACHE_HOME", cache.to_str().unwrap()),
+        ],
+        &args,
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        format!(
+            "updated: true\ndiagrams:\n  -\n    fileName: {DIAGRAM}\n    attachment: {attachment}\n    uploaded: true\n"
+        )
+    );
+    // Ids with the work item's own prefix are links, others are text.
+    let update = &bodies(&server, "updateWorkItem").await[0];
+    assert!(
+        update.contains(r#"data-item-id="SB-2""#) && !update.contains(r#"data-item-id="UTF-8""#),
+        "{update}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn markdown_is_appended_from_standard_input() {
+    let server = server().await;
+    mock(
+        &server,
+        &["getWorkItemByIdsWithFields>"],
+        &work_item(Some(("text/html", "<b>old</b>")), &[]),
+    )
+    .await;
+    mock(&server, &["updateWorkItem>"], "<updateWorkItemResponse/>").await;
+
+    let run = polarion_with_input(
+        Some(&server),
+        &[("POLARION_WRITE_PROJECTS", "Sandbox")],
+        &[
+            "items",
+            "append-description-markdown",
+            "Sandbox/SB-1",
+            "--markdown",
+            "@-",
+        ],
+        Some("**new**\n"),
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "updated: true\n");
+    let update = &bodies(&server, "updateWorkItem").await[0];
+    assert!(
+        update.contains(r#"<b>old</b><br/><br/><span style="font-weight: bold;">new</span>"#),
+        "{update}"
+    );
+}
+
+/// Markdown often starts with `-`: a list, a rule.
+#[tokio::test(flavor = "multi_thread")]
+async fn markdown_that_starts_with_a_hyphen_is_the_value() {
+    for markdown in ["- first item\n- second item", "---", "-1 degree", "-- x"] {
+        let server = server().await;
+        mock(
+            &server,
+            &["getWorkItemByIdsWithFields>"],
+            &work_item(Some(("text/html", "<b>old</b>")), &[]),
+        )
+        .await;
+        mock(&server, &["updateWorkItem>"], "<updateWorkItemResponse/>").await;
+
+        let run = polarion(
+            Some(&server),
+            &[("POLARION_WRITE_PROJECTS", "Sandbox")],
+            &[
+                "items",
+                "append-description-markdown",
+                "Sandbox/SB-1",
+                "--markdown",
+                markdown,
+            ],
+        )
+        .await;
+        assert_eq!(run.code, 0, "{markdown:?}: {}", run.stderr);
+        let updates = bodies(&server, "updateWorkItem").await;
+        assert_eq!(updates.len(), 1, "{markdown:?}");
+        if markdown.starts_with("- ") {
+            assert!(
+                updates[0].contains("<li") && updates[0].contains("second item"),
+                "{}",
+                updates[0]
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn markdown_is_saved_with_out_and_an_empty_description_is_no_error() {
+    let dir = TempDir::new("markdown-out");
+    let file = dir.0.join("desc.md");
+    let described = server().await;
+    mock(
+        &described,
+        &["getWorkItemByIdsWithFields>"],
+        &work_item(Some(("text/html", HTML)), &[]),
+    )
+    .await;
+    let out = file.to_str().unwrap();
+    let run = polarion(
+        Some(&described),
+        &[],
+        &[
+            "items",
+            "description-markdown",
+            "Sandbox/SB-1",
+            "--out",
+            out,
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "");
+    assert!(run.stderr.contains("wrote "), "{}", run.stderr);
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), MARKDOWN);
+
+    // No description: empty Markdown, not "no results".
+    let empty = server().await;
+    mock(
+        &empty,
+        &["getWorkItemByIdsWithFields>"],
+        &work_item(None, &[]),
+    )
+    .await;
+    let run = polarion(
+        Some(&empty),
+        &[],
+        &["items", "description-markdown", "Sandbox/SB-1"],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(run.stdout, "");
+    assert!(!run.stderr.contains("no results"), "{}", run.stderr);
 }

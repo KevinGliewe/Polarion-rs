@@ -4,9 +4,11 @@ use rmcp::ServiceExt;
 
 use crate::server::PolarionMcp;
 
-/// Serve until stdin closes, then end the Polarion session.
+/// Serve until stdin closes, then end the Polarion session. rmcp handles each request in a task
+/// of its own; on a multi-threaded runtime a command that keeps its thread busy (rendering
+/// diagrams) does not hold up the others.
 pub fn run(server: PolarionMcp) -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("tokio runtime");

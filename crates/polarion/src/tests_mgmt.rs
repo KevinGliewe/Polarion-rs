@@ -3,12 +3,12 @@
 use polarion_soap::services::TestManagementService;
 use polarion_soap::types as soap;
 
-use crate::client::{Polarion, not_found};
+use crate::client::{CreateKind, Polarion, not_found};
 use crate::convert::{option_id, soap_custom_fields, soap_test_record, soap_text};
 use crate::error::Result;
 use crate::model::{Attachment, EnumOption, FieldDefinition, TestRecord, TestRun, TestSteps, Text};
 use crate::query::{Fields, Query};
-use crate::uri::ItemRef;
+use crate::uri::{self, ItemRef};
 use crate::write::TestRunUpdate;
 
 fn runs(list: Vec<soap::TestRun>) -> Vec<TestRun> {
@@ -30,7 +30,8 @@ fn index(i: u32) -> i32 {
 }
 
 /// Test management: [`Polarion::tests`]. Test runs are addressed by URI ([`TestRun::uri`]);
-/// writes check the project in that URI against the write allowlist.
+/// writes check the project in that URI against the write allowlist, or the URI against the
+/// write targets of a restricted client.
 #[derive(Debug, Clone, Copy)]
 pub struct TestRuns<'a> {
     polarion: &'a Polarion,
@@ -45,12 +46,46 @@ impl<'a> TestRuns<'a> {
         self.polarion.soap().test_management()
     }
 
+    /// A write to the test run itself (its records and attachments included).
     fn writable_run(
         &self,
         operation: &'static str,
         run_uri: &str,
     ) -> Result<TestManagementService<'a>> {
+        self.polarion.check_write_target(operation, run_uri)?;
+        Ok(self.service())
+    }
+
+    /// A write that may change other objects or cannot be undone: refused in restricted mode.
+    fn unbounded_run(
+        &self,
+        operation: &'static str,
+        run_uri: &str,
+    ) -> Result<TestManagementService<'a>> {
+        self.polarion.check_unbounded_write(operation)?;
         self.polarion.check_write_uri(operation, run_uri)?;
+        Ok(self.service())
+    }
+
+    /// A write of a test record to the test run: the test case, the defect and the user who
+    /// executed it are named too (restricted mode: all of them must be write targets).
+    fn writable_record(
+        &self,
+        operation: &'static str,
+        run_uri: &str,
+        record: &TestRecord,
+    ) -> Result<TestManagementService<'a>> {
+        let user = record.executed_by.as_deref().map(uri::user_uri);
+        let named: Vec<&str> = [
+            record.test_case.as_ref().map(|t| t.uri.as_str()),
+            record.defect.as_ref().map(|d| d.uri.as_str()),
+            user.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        self.polarion
+            .check_write_targets(operation, run_uri, &named)?;
         Ok(self.service())
     }
 
@@ -256,7 +291,8 @@ impl<'a> TestRuns<'a> {
 
     /// Create a test run from a template; returns its URI.
     pub async fn create(&self, project: &str, id: &str, template: &str) -> Result<String> {
-        self.polarion.check_write("createTestRun", Some(project))?;
+        self.polarion
+            .check_create("createTestRun", project, CreateKind::TestRun)?;
         Ok(self
             .service()
             .create_test_run(project, id, template)
@@ -272,7 +308,7 @@ impl<'a> TestRuns<'a> {
         template: &str,
     ) -> Result<String> {
         self.polarion
-            .check_write("createTestRunWithTitle", Some(project))?;
+            .check_create("createTestRunWithTitle", project, CreateKind::TestRun)?;
         Ok(self
             .service()
             .create_test_run_with_title(project, id, title, template)
@@ -280,7 +316,16 @@ impl<'a> TestRuns<'a> {
     }
 
     pub async fn update(&self, run_uri: &str, update: &TestRunUpdate) -> Result<()> {
-        let s = self.writable_run("updateTestRun", run_uri)?;
+        let defect = update.summary_defect.as_ref().map(|d| d.uri.as_str());
+        self.polarion
+            .check_write_targets("updateTestRun", run_uri, defect.as_slice())?;
+        let keys = update
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(update.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys("updateTestRun", keys)?;
+        let s = self.service();
         let run = soap::TestRun {
             uri: Some(run_uri.to_owned()),
             title: update.title.clone(),
@@ -309,7 +354,7 @@ impl<'a> TestRuns<'a> {
 
     /// Add a test record (a test case result) to a test run.
     pub async fn add_record(&self, run_uri: &str, record: &TestRecord) -> Result<()> {
-        let s = self.writable_run("addTestRecordToTestRun", run_uri)?;
+        let s = self.writable_record("addTestRecordToTestRun", run_uri, record)?;
         let record = soap_test_record(record)?;
         Ok(s.add_test_record_to_test_run(run_uri, &record).await?)
     }
@@ -321,7 +366,7 @@ impl<'a> TestRuns<'a> {
         index_: u32,
         record: &TestRecord,
     ) -> Result<()> {
-        let s = self.writable_run("updateTestRecordAtIndex", run_uri)?;
+        let s = self.writable_record("updateTestRecordAtIndex", run_uri, record)?;
         let record = soap_test_record(record)?;
         Ok(
             s.update_test_record_at_index(run_uri, index(index_), Some(&record))
@@ -338,7 +383,7 @@ impl<'a> TestRuns<'a> {
 
     /// Execute test cases: records results like a manual execution (status, defects, ...).
     pub async fn execute(&self, run_uri: &str, records: &[TestRecord]) -> Result<()> {
-        let s = self.writable_run("executeTest", run_uri)?;
+        let s = self.unbounded_run("executeTest", run_uri)?;
         let records: Vec<soap::TestRecord> = records
             .iter()
             .map(soap_test_record)
@@ -350,7 +395,7 @@ impl<'a> TestRuns<'a> {
     /// cell per column of [`TestRuns::steps_configuration`].
     pub async fn set_steps(&self, test_case: &ItemRef, steps: &[Vec<Text>]) -> Result<()> {
         self.polarion
-            .check_write("setTestSteps", test_case.project.as_deref())?;
+            .check_write_target("setTestSteps", &test_case.uri)?;
         let steps: Vec<soap::TestStep> = steps
             .iter()
             .map(|cells| soap::TestStep {
@@ -469,7 +514,7 @@ impl<'a> TestRuns<'a> {
         run_uri: &str,
         defect_template_uri: &str,
     ) -> Result<ItemRef> {
-        let s = self.writable_run("createSummaryDefect", run_uri)?;
+        let s = self.unbounded_run("createSummaryDefect", run_uri)?;
         let uri = s
             .create_summary_defect(run_uri, defect_template_uri)
             .await?;
@@ -486,7 +531,7 @@ impl<'a> TestRuns<'a> {
         tests: u32,
         defect_template_uri: &str,
     ) -> Result<ItemRef> {
-        let s = self.writable_run("updateSummaryDefect", run_uri)?;
+        let s = self.unbounded_run("updateSummaryDefect", run_uri)?;
         let uri = s
             .update_summary_defect(
                 run_uri,
@@ -501,12 +546,12 @@ impl<'a> TestRuns<'a> {
     }
 
     pub async fn add_project_to_span(&self, run_uri: &str, project: &str) -> Result<()> {
-        let s = self.writable_run("addProjectToProjectSpan", run_uri)?;
+        let s = self.unbounded_run("addProjectToProjectSpan", run_uri)?;
         Ok(s.add_project_to_project_span(run_uri, project).await?)
     }
 
     pub async fn remove_project_from_span(&self, run_uri: &str, project: &str) -> Result<()> {
-        let s = self.writable_run("removeProjectFromProjectSpan", run_uri)?;
+        let s = self.unbounded_run("removeProjectFromProjectSpan", run_uri)?;
         Ok(s.remove_project_from_project_span(run_uri, project).await?)
     }
 }

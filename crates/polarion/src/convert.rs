@@ -996,7 +996,7 @@ mod tests {
                 ..Default::default()
             }]),
             module_uri: Some(
-                "subterra:data-service:objects:/default/P${Module}{moduleFolder}Specs/SRS".into(),
+                "subterra:data-service:objects:/default/P${Module}{moduleFolder}Specs#SRS".into(),
             ),
             linked_work_items: Some(vec![
                 soap::LinkedWorkItem {
@@ -1091,7 +1091,7 @@ mod tests {
 
         let doc = Document::from(soap::Module {
             uri: Some(
-                "subterra:data-service:objects:/default/P${Module}{moduleFolder}_default/Spec"
+                "subterra:data-service:objects:/default/P${Module}{moduleFolder}_default#Spec"
                     .into(),
             ),
             ..Default::default()

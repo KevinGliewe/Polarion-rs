@@ -69,6 +69,7 @@ impl<'a> Folders<'a> {
         name: &str,
         title: &str,
     ) -> Result<Folder> {
+        self.polarion.check_unbounded_write("createFolder")?;
         self.polarion.check_write_scope("createFolder", project)?;
         Ok(self
             .polarion

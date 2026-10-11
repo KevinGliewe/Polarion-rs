@@ -15,7 +15,7 @@ const DEFAULT_FIELDS: &[&str] = &[
     "author",
     "created",
     "id",
-    "linkedPageURIs",
+    "linkedPages",
     "location",
     "pageLocation",
     "pageName",

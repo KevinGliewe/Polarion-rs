@@ -33,6 +33,6 @@ mod error;
 mod generated;
 pub mod xml;
 
-pub use client::{Auth, Client, ClientBuilder};
+pub use client::{Auth, Client, ClientBuilder, WriteFilter};
 pub use error::{Error, Result};
 pub use generated::{NAMESPACES, services, types};
