@@ -495,20 +495,14 @@ async fn writes_are_not_repeated_after_an_http_error() {
 async fn repeated_writes_pass_the_write_filter_again() {
     // A filter that lets one request through, like a create budget of one.
     let server = MockServer::start().await;
-    let left = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(1));
+    let left = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let budget = left.clone();
     let client = Client::builder(
         &format!("{}/polarion", server.uri()),
         Auth::Token("secret-token".into()),
     )
     .write_filter(std::sync::Arc::new(move |_: &str, _: &str| {
-        budget
-            .fetch_update(
-                std::sync::atomic::Ordering::SeqCst,
-                std::sync::atomic::Ordering::SeqCst,
-                |n| n.checked_sub(1),
-            )
-            .is_ok()
+        budget.swap(false, std::sync::atomic::Ordering::SeqCst)
     }))
     .build()
     .unwrap();
@@ -528,7 +522,7 @@ async fn repeated_writes_pass_the_write_filter_again() {
         matches!(&err, Error::Fault { message, .. } if message == "Not authorized."),
         "{err:?}"
     );
-    assert_eq!(left.load(std::sync::atomic::Ordering::SeqCst), 0);
+    assert!(!left.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(client.session_id().as_deref(), Some("s2"));
 }
 

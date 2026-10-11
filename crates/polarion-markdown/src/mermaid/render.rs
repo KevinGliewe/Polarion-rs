@@ -186,7 +186,7 @@ mod enabled {
     fn node_refs(line: &str) -> u64 {
         let mut arrows = 0u64;
         let mut run = None;
-        for b in line.bytes().chain([b' ']) {
+        for b in line.bytes().chain(*b" ") {
             match (b, run) {
                 (b'-' | b'=', _) => run = Some(true),
                 (b'.', None) => run = Some(false),

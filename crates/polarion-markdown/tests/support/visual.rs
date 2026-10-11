@@ -1192,18 +1192,15 @@ fn border(value: &str) -> Option<(i64, String)> {
 fn font_size(value: &str, inherited: Option<i64>) -> Option<i64> {
     let base = inherited.unwrap_or(1000) as f64;
     let value = value.trim();
-    let points = if let Some(n) = value.strip_suffix("pt") {
-        n.trim().parse::<f64>().ok()? * 100.0
-    } else if let Some(n) = value.strip_suffix("px") {
-        n.trim().parse::<f64>().ok()? * 75.0
-    } else if let Some(n) = value.strip_suffix("em") {
-        n.trim().parse::<f64>().ok()? * base
-    } else if let Some(n) = value.strip_suffix('%') {
-        n.trim().parse::<f64>().ok()? * base / 100.0
-    } else {
-        return None;
-    };
-    Some(points.round() as i64)
+    let (n, scale) = [
+        ("pt", 100.0),
+        ("px", 75.0),
+        ("em", base),
+        ("%", base / 100.0),
+    ]
+    .into_iter()
+    .find_map(|(unit, scale)| value.strip_suffix(unit).map(|n| (n, scale)))?;
+    Some((n.trim().parse::<f64>().ok()? * scale).round() as i64)
 }
 
 /// Monospace for any family list naming a monospace font, else the normalized list.

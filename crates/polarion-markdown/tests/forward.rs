@@ -741,7 +741,7 @@ mod mapping {
     fn footnotes() {
         assert_eq!(
             html("Text[^1].\n\n[^1]: The note."),
-            format!("Text<sup>[1]</sup>.<br/><br/><hr/><br/><sup>[1]</sup> The note.")
+            "Text<sup>[1]</sup>.<br/><br/><hr/><br/><sup>[1]</sup> The note.".to_string()
         );
         // Numbered by first reference; repeated references share the number; unused ones vanish.
         assert_eq!(

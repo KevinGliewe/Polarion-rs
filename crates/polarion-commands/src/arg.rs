@@ -430,8 +430,10 @@ fn decode(bytes: Vec<u8>) -> std::result::Result<String, &'static str> {
             return Err("is not valid UTF-16");
         }
         let units: Vec<u16> = bytes
-            .chunks_exact(2)
-            .map(|pair| unit([pair[0], pair[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&pair| unit(pair))
             .collect();
         String::from_utf16(&units).map_err(|_| "is not valid UTF-16")
     }

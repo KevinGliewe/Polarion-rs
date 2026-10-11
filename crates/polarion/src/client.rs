@@ -113,9 +113,16 @@ impl Creates {
             CreateKind::TestRun => &self.test_runs,
             CreateKind::Document => &self.documents,
         };
-        counter
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
-            .is_ok()
+        let mut n = counter.load(Ordering::SeqCst);
+        loop {
+            let Some(next) = n.checked_sub(1) else {
+                return false;
+            };
+            match counter.compare_exchange_weak(n, next, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => return true,
+                Err(actual) => n = actual,
+            }
+        }
     }
 
     /// Whether the budget allowed any create at all.
