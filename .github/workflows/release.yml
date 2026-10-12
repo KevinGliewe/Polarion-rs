@@ -1,0 +1,187 @@
+name: Release
+
+# A semver tag (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`) creates the GitHub release, or keeps an existing one as it is and
+# only adds to it; builds `polarion` and `polarion-mcp` for every platform below and attaches them; then publishes
+# the crates to crates.io (crate versions already there are skipped, so a re-run finishes a half-done release).
+# Started by hand (Actions > Release > Run workflow), it only builds and keeps the archives as workflow artifacts.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "[0-9]+.[0-9]+.[0-9]+*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Version from the tag, checked against the crates
+        id: version
+        run: |
+          crates=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            tag="$GITHUB_REF_NAME"
+            semver='^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+            if ! [[ "$tag" =~ $semver ]]; then
+              echo "::error::Tag $tag is not a semantic version (1.2.3, v1.2.3, v1.2.3-rc.1)"
+              exit 1
+            fi
+            version="${tag#v}"
+          else
+            tag=""
+            version=$(echo "$crates" | head -1 | cut -d' ' -f2)
+          fi
+          wrong=$(echo "$crates" | awk -v v="$version" '$2 != v')
+          if [ -n "$wrong" ]; then
+            echo "::error::Crate versions differ from $version (set version in the workspace Cargo.toml):"
+            echo "$wrong"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Create the release unless it exists
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists: only adding to it."
+            exit 0
+          fi
+          prerelease=()
+          [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes "${prerelease[@]}"
+
+  build:
+    needs: prepare
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04, musl: true }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04-arm, musl: true }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
+    runs-on: ${{ matrix.os }}
+    env:
+      TARGET: ${{ matrix.target }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: musl tools
+        if: matrix.musl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          target_env=$(echo "$TARGET" | tr - _)
+          echo "CC_${target_env}=musl-gcc" >> "$GITHUB_ENV"
+      - name: Build
+        run: cargo build --locked --profile dist --target "$TARGET" -p polarion-cli -p polarion-mcp
+      - name: Smoke test
+        run: |
+          dir="target/$TARGET/dist"
+          "$dir/polarion" --version
+          "$dir/polarion-mcp" --version
+      - name: Archive
+        id: archive
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          name="polarion-rs-$VERSION-$TARGET"
+          dir="target/$TARGET/dist"
+          mkdir "$name"
+          exe=""
+          [[ "$TARGET" == *windows* ]] && exe=".exe"
+          cp "$dir/polarion$exe" "$dir/polarion-mcp$exe" README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          if [ -n "$exe" ]; then
+            archive="$name.zip"
+            7z a -tzip "$archive" "$name" > /dev/null
+          else
+            archive="$name.tar.gz"
+            tar -czf "$archive" "$name"
+          fi
+          if command -v sha256sum > /dev/null; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+          echo "files=$archive $archive.sha256" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - name: Attach to the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        # --clobber: a re-run replaces this platform's archive instead of failing; nothing else is touched.
+        run: gh release upload "$TAG" ${{ steps.archive.outputs.files }} --clobber
+      - name: Keep as workflow artifact
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.archive }}
+          path: polarion-rs-*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::error::The secret CARGO_REGISTRY_TOKEN is not set (environment crates-io or repository)."
+            exit 1
+          fi
+          # Dependencies first. cargo publish waits until each crate is in the index.
+          for crate in polarion-commands-derive polarion-markdown polarion-rest polarion-soap polarion \
+                       polarion-commands polarion-cli polarion-mcp; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' \
+              -A "polarion-rs release (https://github.com/${GITHUB_REPOSITORY})" \
+              "https://crates.io/api/v1/crates/$crate/$VERSION")
+            if [ "$status" = 200 ]; then
+              echo "$crate $VERSION is already on crates.io"
+              continue
+            fi
+            cargo publish --locked -p "$crate"
+          done

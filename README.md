@@ -21,8 +21,13 @@ with diagrams, in [docs/](docs/README.md).
 ## polarion (command line)
 
 ```sh
-cargo install --path crates/polarion-cli    # installs the `polarion` binary
+cargo install polarion-cli                  # installs the `polarion` binary from crates.io
+cargo install --path crates/polarion-cli    # or from a checkout
 ```
+
+Ready-built binaries of `polarion` and `polarion-mcp` for Linux (x86-64 and ARM64, glibc and static musl), macOS
+(Intel and Apple silicon) and Windows (x86-64 and ARM64) are attached to each
+[GitHub release](https://github.com/KevinGliewe/Polarion-rs/releases), with a SHA-256 checksum per archive.
 
 Configuration comes from the environment (credentials only from there, never from flags):
 
@@ -106,8 +111,11 @@ polarion items attachment MP-42 --attachment 1-spec.pdf --out spec.pdf
 ## polarion-mcp (MCP server)
 
 ```sh
-cargo install --path crates/polarion-mcp    # installs the `polarion-mcp` binary
+cargo install polarion-mcp                  # installs the `polarion-mcp` binary from crates.io
+cargo install --path crates/polarion-mcp    # or from a checkout
 ```
+
+The release archives (see [above](#polarion-command-line)) contain it too.
 
 An [MCP](https://modelcontextprotocol.io) server over stdio (default) or Streamable HTTP (`--http`, see below),
 built on the official Rust SDK ([`rmcp`](https://github.com/modelcontextprotocol/rust-sdk)), which negotiates the

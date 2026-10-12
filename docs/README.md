@@ -24,6 +24,7 @@ flowchart LR
 | [Front ends](front-ends.md) | The `polarion` CLI and the `polarion-mcp` server: dispatch, tool selection, attachments, HTTP |
 | [Code generation](code-generation.md) | `xtask`: the REST client from the OpenAPI spec, the SOAP client from the WSDLs |
 | [Testing](testing.md) | Test layers, the coverage chain, live tests against testdrive, the live suite and its safety gate |
+| [Releasing](releasing.md) | The release workflow: semver tags, binaries for each platform, publishing to crates.io |
 
 Read [Architecture](architecture.md) first; the other pages go one layer deeper each and can be read on their own.
 The diagrams name real functions, types and files. When you change one of them, update the page that shows it.

@@ -36,6 +36,12 @@ tokio-util = "0.7"
 url = "2"
 wiremock = "0.6"
 
+# The release binaries (`.github/workflows/release.yml`).
+[profile.dist]
+inherits = "release"
+lto = "thin"
+strip = true
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"

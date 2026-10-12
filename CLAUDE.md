@@ -80,6 +80,9 @@ The repository is English only: code, comments, docs and commit messages.
 - New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
 - Architecture docs are in `docs/` (Markdown with Mermaid diagrams; README.md covers usage). The diagrams name real
   functions, types and files: when you change a mechanism a page shows, update the page in the same change.
+- Releases: a semver tag runs `.github/workflows/release.yml` (`docs/releasing.md`): the GitHub release (an existing
+  one is only added to), `polarion` and `polarion-mcp` for every target, then `cargo publish` per crate. A new
+  published crate must be added to the publish loop there (dependencies first); its version is the workspace's.
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo test -p polarion-markdown --no-default-features && cargo check -p polarion` (CI also runs the last two: the conversion without mermaid and highlighting, the library without markdown).
 - Live tests: `crates/polarion-rest/tests/live.rs` only ever targets testdrive.polarion.com (`POLARION_TESTDRIVE_TOKEN`,
   `POLARION_TESTDRIVE_PROJECT`). Any other server, production included, is written to only by the live suite
