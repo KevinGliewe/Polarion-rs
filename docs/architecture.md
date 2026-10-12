@@ -13,9 +13,8 @@ flowchart TB
     lib["polarion<br/>area handles, domain types, write guard"]
     md["polarion-markdown<br/>Markdown and Polarion HTML, mermaid to SVG; no I/O"]
     soap["polarion-soap<br/>SOAP client, generated from the WSDLs"]
-    rest["polarion-rest<br/>REST client, generated from the OpenAPI spec"]
     xtask["xtask<br/>code generators"]
-    server[("Polarion server<br/>/ws/services and /rest/v1")]
+    server[("Polarion server<br/>/ws/services")]
 
     cli --> commands
     mcp --> commands
@@ -24,19 +23,16 @@ flowchart TB
     lib --> soap
     lib -- "feature markdown" --> md
     soap --> server
-    rest --> server
     xtask -. "generates" .-> soap
-    xtask -. "generates" .-> rest
 ```
 
 Every arrow is a Cargo dependency (the front ends also use `polarion` types directly). Dependencies only point
-down. `polarion-rest` stands alone: nothing builds on it. `polarion-markdown` is pure conversion; `polarion` uses it
+down. `polarion-markdown` is pure conversion; `polarion` uses it
 behind its `markdown` feature (which `polarion-commands` turns on) for descriptions as Markdown.
 
 | Crate | Hand-written | Generated |
 |---|---|---|
 | [`polarion-soap`](../crates/polarion-soap) | `client.rs` (envelope, session, faults, read-only mode, write filter), `xml.rs`, `error.rs` | `src/generated/` (types, services), `tests/spec_examples.rs` |
-| [`polarion-rest`](../crates/polarion-rest) | `client.rs` (HTTP, pagination), `jsonapi.rs`, `query.rs`, `error.rs` | `src/generated/` (models, operations), `tests/spec_examples.rs` |
 | [`polarion`](../crates/polarion) | everything | nothing |
 | [`polarion-markdown`](../crates/polarion-markdown) | everything | nothing |
 | [`polarion-commands`](../crates/polarion-commands) | the DTOs and their `impl Run` | serde, schemas, clap and the catalog, by the macros |
@@ -51,7 +47,6 @@ listing, SQL queries, baselines, wiki pages.
 
 So the library, and everything above it, is built on `polarion-soap`. Every one of the 302 SOAP operations is
 reachable through a library method, and every library method through a command (see [Testing](testing.md#the-coverage-chain)).
-`polarion-rest` is a complete client for those who have the REST permissions, but nothing else depends on it.
 
 ## Where things live
 

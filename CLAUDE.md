@@ -1,15 +1,14 @@
 # Polarion-rs
 
-Rust workspace: `crates/polarion-rest` (generated REST client), `crates/polarion-soap` (generated SOAP client),
+Rust workspace: `crates/polarion-soap` (generated SOAP client),
 `crates/polarion` (hand-written library on top of `polarion-soap`), `crates/polarion-markdown` (pure Markdown ↔
 Polarion rich text conversion, mermaid diagrams as SVG), `crates/polarion-commands` (every library method
 as a typed command DTO; macros in `crates/polarion-commands-derive`), `crates/polarion-cli` (`polarion` binary) and `crates/polarion-mcp` (`polarion-mcp` MCP server),
 both built from the command catalog, `xtask` (code generators).
 The repository is English only: code, comments, docs and commit messages.
 
-- Never edit `crates/*/src/generated/*` or `crates/*/tests/spec_examples.rs` by hand. Change the generator
-  (`xtask/src/` for REST, `xtask/src/soap/` for SOAP) and run `cargo xtask codegen`.
-- Hand-written REST runtime: `client.rs` (HTTP plumbing, pagination), `jsonapi.rs` (envelope types), `query.rs`, `error.rs`.
+- Never edit `crates/polarion-soap/src/generated/*` or `crates/polarion-soap/tests/spec_examples.rs` by hand. Change
+  the generator (`xtask/src/soap/`) and run `cargo xtask codegen`.
 - Hand-written SOAP runtime: `client.rs` (envelope, session incl. renewal after expiry, faults, read-only allowlist,
   write filter; after a renewal a write is repeated only after a SOAP fault and through the filter again), `xml.rs` (XML helpers), `error.rs`.
   WSDL quirks are handled in `xtask/src/soap/emit.rs`: params documented as accepting null become `Option`
@@ -77,15 +76,13 @@ The repository is English only: code, comments, docs and commit messages.
   Hand-built comrak trees must pass `validate()`: never an empty `Code` (the writer panics), missing escapes go in as
   `Raw` (a hand-built `Escaped` writes nothing). A change to the default theme or the SVG embedding needs a new
   `mermaid::PROFILE` (it is part of every diagram's hash and attachment name).
-- New resource types in the spec need a Rust name in `xtask/src/names.rs` (codegen fails otherwise).
 - Architecture docs are in `docs/` (Markdown with Mermaid diagrams; README.md covers usage). The diagrams name real
   functions, types and files: when you change a mechanism a page shows, update the page in the same change.
 - Releases: a semver tag runs `.github/workflows/release.yml` (`docs/releasing.md`): the GitHub release (an existing
   one is only added to), `polarion` and `polarion-mcp` for every target, then `cargo publish` per crate. A new
   published crate must be added to the publish loop there (dependencies first); its version is the workspace's.
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo test -p polarion-markdown --no-default-features && cargo check -p polarion` (CI also runs the last two: the conversion without mermaid and highlighting, the library without markdown).
-- Live tests: `crates/polarion-rest/tests/live.rs` only ever targets testdrive.polarion.com (`POLARION_TESTDRIVE_TOKEN`,
-  `POLARION_TESTDRIVE_PROJECT`). Any other server, production included, is written to only by the live suite
+- Live tests: a real server, production included, is written to only by the live suite
   (`crates/polarion/tests/live.rs`, the CLI's and the MCP server's `tests/live.rs`, the bootstrap
   `crates/polarion/examples/live_fixtures.rs`, sharing `crates/polarion/tests/live_support.rs`), only to its fixtures,
   through a client in restricted mode (`restrict_writes` with the fixtures' URIs), after its gate (`docs/testing.md`);

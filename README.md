@@ -4,7 +4,6 @@ Rust tooling for [Siemens Polarion ALM](https://polarion.plm.automation.siemens.
 
 | Crate | Status | Purpose |
 |---|---|---|
-| [`polarion-rest`](crates/polarion-rest) | usable | Low-level async client covering the whole Polarion REST API (v1), generated from the OpenAPI spec |
 | [`polarion-soap`](crates/polarion-soap) | usable | Async client for the Polarion SOAP web services, generated from the WSDLs |
 | [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
 | [`polarion-markdown`](crates/polarion-markdown) | usable (Polarion's handling of the HTML not yet verified) | Markdown ↔ Polarion rich text (HTML) in both directions, mermaid diagrams rendered to SVG; no I/O |
@@ -482,55 +481,12 @@ mermaid.js. `append_html`, `text_to_html`, `diagram_refs` and `attachment_file_n
 description methods use (`attachment_refs` lists every attachment an HTML shows). The mapping, the lossy cases and
 the security measures are described in [docs/markdown.md](docs/markdown.md).
 
-## polarion-rest
-
-```rust
-use polarion_rest::models::{WorkItem, WorkItemAttributes};
-use polarion_rest::{Client, Query, Resource, ResourceKind};
-
-let client = Client::new("https://polarion.example.com/polarion", "<personal access token>")?;
-
-// Every operation is a method named after its operationId: getWorkItems → get_work_items.
-let page = client
-    .get_work_items("MyProject", &Query::new().query("type:requirement").all_fields(WorkItemAttributes::TYPE))
-    .await?;
-for item in &page.data {
-    let attrs = item.attributes.as_ref().unwrap();
-    println!("{:?} {:?} custom: {:?}", item.id, attrs.title, attrs.extra);
-}
-
-// Create: attribute structs double as create/patch payloads (all fields optional).
-let new: WorkItem = Resource::from_attributes(WorkItemAttributes {
-    type_: Some("task".into()),
-    title: Some("Check brakes".into()),
-    ..Default::default()
-});
-let created = client.post_work_items("MyProject", &[new]).await?;
-```
-
-- **Coverage:** all 221 operations of the Polarion 2410 spec, including multipart uploads (`FilePart`) and binary downloads (`Vec<u8>`).
-- **Types:** one attributes struct per resource type (`WorkItemAttributes`, `DocumentAttributes`, ...) shared by
-  read, create and update. Custom fields land in `extra`.
-- **Query parameters:** `Query` builder for paging, sparse fieldsets (`fields[workitems]=@all`), `include`, Lucene `query`,
-  `sort`, `revision`, and any other parameter via `Query::param`.
-- **Pagination:** `Client::paginate` fetches all pages of any list operation.
-- **Escape hatch:** `Client::request_json` for raw calls.
-- **Read-only mode:** `Client::builder(..).read_only(true)` refuses every non-`GET` request before it is sent,
-  for exploring production servers safely.
-- **TLS:** the OS trust store is used, so corporate CAs work; extra PEM CAs or (for test servers) disabled
-  validation via `Client::builder`.
-
-Try it against a real server (read-only, at most five small `GET` requests; each step reports OK or FAIL independently):
-
-```sh
-POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_PROJECT=MyProject POLARION_SAVE_SPEC=spec.json \
-  cargo run -p polarion-rest --example rest_smoke
-```
-
 ## polarion-soap
 
-Polarion's older SOAP web services are not subject to the REST API permissions (see below) and cover things the
-2410 REST API lacks, such as listing documents, SQL queries, baselines and wiki pages.
+Everything here is built on Polarion's SOAP web services rather than its REST API: SOAP follows the normal project
+permissions, while the REST API needs extra role permissions that by default only `admin` and `project_admin` have
+(every other user gets `403 Forbidden`), and SOAP covers things the 2410 REST API lacks, such as listing documents,
+SQL queries, baselines and wiki pages.
 
 ```rust
 use polarion_soap::types::AnyValue;
@@ -579,25 +535,15 @@ POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=... POLARION_P
 
 ## Code generation
 
-The REST client is generated from `spec/polarion-openapi.json`, the SOAP client from `spec/soap/*.wsdl` (both
-from Polarion 2410), by the generators in [`xtask/`](xtask). The generated code is committed; CI fails if it is
-stale. How the generators work and how to target another Polarion version: [docs/code-generation.md](docs/code-generation.md).
+The SOAP client is generated from `spec/soap/*.wsdl` (Polarion 2410) by the generator in [`xtask/`](xtask). The generated code is committed; CI fails if it is
+stale. How the generator works and how to target another Polarion version: [docs/code-generation.md](docs/code-generation.md).
 
 ```sh
 cargo xtask codegen          # regenerate
 cargo xtask codegen --check  # verify it is up to date
 ```
 
-Tests, including the opt-in live tests against testdrive.polarion.com and the live suite, which writes only to its
-own fixtures: [docs/testing.md](docs/testing.md).
-
-## REST permissions
-
-Polarion guards the REST API with its own per-role permissions (REST API endpoint `GET`, `PATCH`, `POST`, `DELETE`,
-configured in the Global context). By default only `admin` and `project_admin` have them, so other users get
-`403 Forbidden` on every endpoint even with a valid token, including for projects they can open in the UI. An
-administrator has to grant at least `GET`, e.g. to `project_user`. See
-[Siemens: REST API authorization](https://developer.siemens.com/polarion/authorization.html).
+Tests, including the opt-in live suite, which writes only to its own fixtures: [docs/testing.md](docs/testing.md).
 
 ## License
 

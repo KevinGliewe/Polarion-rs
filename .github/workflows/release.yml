@@ -176,7 +176,7 @@ jobs:
             exit 1
           fi
           # Dependencies first. cargo publish waits until each crate is in the index.
-          for crate in polarion-commands-derive polarion-markdown polarion-rest polarion-soap polarion \
+          for crate in polarion-commands-derive polarion-markdown polarion-soap polarion \
                        polarion-commands polarion-cli polarion-mcp; do
             status=$(curl -s -o /dev/null -w '%{http_code}' \
               -A "polarion-rs release (https://github.com/${GITHUB_REPOSITORY})" \

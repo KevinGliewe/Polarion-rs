@@ -11,7 +11,6 @@ flowchart LR
     lib --> soap["polarion-soap"]
     lib -- "feature markdown" --> md["polarion-markdown"]
     soap --> server[("Polarion")]
-    rest["polarion-rest"] --> server
 ```
 
 | Page | What it covers |
@@ -22,8 +21,8 @@ flowchart LR
 | [Markdown](markdown.md) | `polarion-markdown` and descriptions as Markdown: both conversions, mermaid diagrams as SVG attachments, the request sequences |
 | [Commands](commands.md) | `polarion-commands` and its macros: command DTOs, the generated catalog, JSON arguments, output schemas |
 | [Front ends](front-ends.md) | The `polarion` CLI and the `polarion-mcp` server: dispatch, tool selection, attachments, HTTP |
-| [Code generation](code-generation.md) | `xtask`: the REST client from the OpenAPI spec, the SOAP client from the WSDLs |
-| [Testing](testing.md) | Test layers, the coverage chain, live tests against testdrive, the live suite and its safety gate |
+| [Code generation](code-generation.md) | `xtask`: the SOAP client from the WSDLs |
+| [Testing](testing.md) | Test layers, the coverage chain, the live suite and its safety gate |
 | [Releasing](releasing.md) | The release workflow: semver tags, binaries for each platform, publishing to crates.io |
 
 Read [Architecture](architecture.md) first; the other pages go one layer deeper each and can be read on their own.

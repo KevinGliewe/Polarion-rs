@@ -1,22 +1,15 @@
-//! Repository automation. Run `cargo xtask codegen` to regenerate the REST
-//! client from `spec/polarion-openapi.json`, `--check` to verify it is current.
+//! Repository automation. Run `cargo xtask codegen` to regenerate the SOAP
+//! client from `spec/soap/*.wsdl`, `--check` to verify it is current.
 
 mod docs;
-mod emit;
 mod names;
-mod ops;
 mod soap;
-mod spec;
-mod types;
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 use anyhow::{Context, Result, bail};
-
-use crate::spec::{Spec, Verb, envelope};
-use crate::types::{Registry, Ty};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -45,90 +38,7 @@ fn workspace_root() -> PathBuf {
 
 fn codegen(check: bool) -> Result<()> {
     let root = workspace_root();
-    let spec = Spec::load(&root.join("spec/polarion-openapi.json"))?;
-    let mut reg = Registry::new(&spec);
-
-    // Resource attribute structs, merged across all envelope variants, plus
-    // a round-trip test case per envelope schema.
-    let schema_names: Vec<String> = spec
-        .root
-        .pointer("/components/schemas")
-        .and_then(|s| s.as_object())
-        .context("spec has no components.schemas")?
-        .keys()
-        .cloned()
-        .collect();
-    let mut tests = Vec::new();
-    for name in &schema_names {
-        let Some(env) = envelope(&spec, name) else {
-            continue;
-        };
-        let schema = spec.schema(name).expect("listed above");
-        match (&env.resource_type, env.data_item(&spec, schema)) {
-            (Some(rt), Some(item)) => {
-                let attrs = reg.register_resource(rt, item)?;
-                let ty = match (env.request, env.list, env.verb) {
-                    (_, _, Verb::Delete) => "Envelope<Vec<ResourceRef>>".to_owned(),
-                    (false, true, _) => format!("ListEnvelope<{attrs}>"),
-                    (false, false, _) => format!("SingleEnvelope<{attrs}>"),
-                    (true, true, _) => format!("Envelope<Vec<Resource<{attrs}>>>"),
-                    (true, false, _) => format!("Envelope<Resource<{attrs}>>"),
-                };
-                tests.push((name.clone(), ty));
-            }
-            _ if env.verb == Verb::Delete => {
-                tests.push((name.clone(), "Envelope<Vec<ResourceRef>>".to_owned()))
-            }
-            _ => bail!("envelope schema `{name}` has no single resource type"),
-        }
-    }
-
-    let ops = ops::collect(&spec, &mut reg)?;
-
-    for (name, ty) in reg.plain_schemas() {
-        if let Ty::Named(t) = ty {
-            tests.push((name.clone(), t.clone()));
-        }
-    }
-    for (name, ty) in [
-        (
-            "RelationshipDataSingleRequest",
-            "Envelope<RelationshipData>",
-        ),
-        ("RelationshipDataListRequest", "Envelope<RelationshipData>"),
-        (
-            "RelationshipDataSingleResponse",
-            "Envelope<Option<RelationshipData>>",
-        ),
-        (
-            "RelationshipDataListResponse",
-            "Envelope<Option<RelationshipData>>",
-        ),
-    ] {
-        if spec.schema(name).is_some() {
-            tests.push((name.to_owned(), ty.to_owned()));
-        }
-    }
-    tests.sort();
-
-    for warning in &reg.warnings {
-        eprintln!("warning: {warning}");
-    }
-
-    let out_dir = root.join("crates/polarion-rest");
-    let mut files = vec![
-        (out_dir.join("src/generated/models.rs"), emit::models(&reg)?),
-        (
-            out_dir.join("src/generated/operations.rs"),
-            emit::operations(&ops),
-        ),
-        (
-            out_dir.join("tests/spec_examples.rs"),
-            emit::spec_tests(&tests),
-        ),
-    ];
-    let (soap_files, soap_summary) = soap::generate(&root)?;
-    files.extend(soap_files);
+    let (files, summary) = soap::generate(&root)?;
 
     let mut stale = Vec::new();
     for (path, source) in &files {
@@ -160,13 +70,7 @@ fn codegen(check: bool) -> Result<()> {
             stale.join(", ")
         );
     }
-    println!(
-        "REST: {} operations, {} types, {} spec round-trip tests",
-        ops.len(),
-        reg.structs.len(),
-        tests.len(),
-    );
-    println!("{soap_summary}");
+    println!("{summary}");
     if check {
         println!("generated code is up to date");
     }

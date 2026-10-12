@@ -5,17 +5,16 @@ cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspa
 ```
 
 `cargo test --workspace` never talks to a real Polarion server: everything runs against
-[wiremock](https://docs.rs/wiremock) or in memory. The live tests are opt-in (`#[ignore]`): the REST client's only
-target Siemens' public test drive, and the live suite of the library and the front ends writes only to its own
-fixtures (below).
+[wiremock](https://docs.rs/wiremock) or in memory. The live suite of the library and the front ends is opt-in
+(`#[ignore]`) and writes only to its own fixtures (below).
 
 ## Test layers
 
 | Layer | Where | What it proves |
 |---|---|---|
 | Unit tests | `#[cfg(test)]` modules | parsing, wildcards, media types, XML helpers, ... |
-| Spec round trips | `polarion-rest/tests/spec_examples.rs`, `polarion-soap/tests/spec_examples.rs` (generated) | every schema in the OpenAPI spec and the WSDLs survives a trip through the generated types |
-| Protocol clients | `polarion-rest/tests/http.rs`, `polarion-soap/tests/http.rs` | requests on the wire, faults, read-only refusals, the write filter seeing every write before it is sent, session renewal: reads repeated after a fault or an HTTP error, writes only after a fault and only through the write filter again |
+| Spec round trips | `polarion-soap/tests/spec_examples.rs` (generated) | every type in the WSDLs survives a trip through the generated types |
+| SOAP client | `polarion-soap/tests/http.rs` | requests on the wire, faults, read-only refusals, the write filter seeing every write before it is sent, session renewal: reads repeated after a fault or an HTTP error, writes only after a fault and only through the write filter again |
 | Library | `polarion/tests/items_read.rs`, `items_write.rs`, `areas.rs`, `http.rs` | SOAP requests per method, conversions, the write guard (refused writes send nothing) |
 | Restricted mode | `polarion/tests/write_targets.rs`, the unit tests of `polarion/src/restricted.rs`, `client.rs`, `uri.rs` | bounded writes to the targets are sent; everything else, unbounded and legacy-guarded writes, status keys, foreign comment keys, creates beyond the budget (also when repeated after a session renewal) are refused before any request; raw `soap()` writes are filtered (hidden or added objects, objects in the wrong place, document bodies); every write operation of the generated services is classified (`ALLOWED`/`NEVER`, `every_write_operation_is_classified`) and its parameters match the filter's (`the_filter_knows_the_parameters_of_its_operations`) |
 | Write targets in the front ends | `polarion-commands/src/config.rs` (unit tests), `polarion-cli/tests/cli.rs`, `polarion-mcp/tests/mcp.rs`, `polarion-mcp/tests/http.rs` | parsing and fail-closed configuration (empty lists, escaped commas, ids, an empty project), `-p` not moving the environment's targets, writes to a target sent and others refused with `readOnly` and nothing sent, the instructions and the HTTP startup line |
@@ -25,7 +24,6 @@ fixtures (below).
 | Command catalog | `polarion-commands/tests/registry.rs` | every command parses from its schema and survives a serialization round trip; unknown keys are refused; lenient scalars |
 | Output schemas | `polarion-commands/tests/output_schemas.rs` | real results validate against their output schemas, and wrong ones don't |
 | Binaries end to end | `polarion-cli/tests/cli.rs`, `polarion-mcp/tests/mcp.rs`, `polarion-mcp/tests/http.rs` | the built binaries, spawned against wiremock: output formats, exit codes, MCP protocol, tool selection, files, HTTP access rules, requests answered while a diagram renders, the guides (`polarion_guide` with the project section read from the mock, a failing read as a note, the resources) and the guide gate (`write`, `all`, `none`, by curated tool and `polarion_call`, nothing sent when refused, shared by HTTP clients) |
-| Live (opt-in) | `polarion-rest/tests/live.rs` | the REST client against testdrive.polarion.com |
 | Live suite (opt-in) | `polarion/tests/live.rs` (tiers `read`, `write`, `permanent`), `polarion-cli/tests/live.rs`, `polarion-mcp/tests/live.rs`, shared `polarion/tests/live_support.rs`, the bootstrap `polarion/examples/live_fixtures.rs` | the library, the CLI and the MCP server against `POLARION_URL`, writing only to the fixtures (below); the offline checks in `live.rs` (what a baseline may contain, state files outside `target/`, planning constraint dates, record indexes, the permanent key) run with every `cargo test` |
 
 ## The coverage chain
@@ -64,36 +62,19 @@ diagrams point it at a temporary directory of their own for the binaries they sp
 ## Safety rules
 
 - **`cargo test` never contacts a server.** Everything that does is opt-in: the live tests are `#[ignore]`, and the
-  bootstrap, the only code that creates objects on a server other than testdrive, is an example, so
+  bootstrap, the only code that creates objects on a server, is an example, so
   `cargo test -- --ignored` cannot run it.
-- **Writes to a server other than testdrive only through the live suite**, only to its four fixtures, and only
+- **Writes to a real server only through the live suite**, only to its four fixtures, and only
   through a client restricted to their URIs (`PolarionBuilder::restrict_writes`, which adds the SOAP write filter;
   see [the write guard](library.md#the-write-guard)). Nothing else that writes, such as the CLI or the MCP server
   with `POLARION_WRITE_PROJECTS`, is ever pointed at such a server.
 - **Every writing tier passes [the gate](#the-gate-before-any-write) before its first write**, never does what is
   on [the never list](#never-in-any-tier), and ends with [the audit](#the-audit), which checks, read-only, that
   nothing but the fixtures was changed.
-- **The testdrive tests cannot reach another server:** `polarion-rest/tests/live.rs` hard-codes testdrive's URL.
 - **Writes are verified against wiremock first.** What still needs a run against a real server is listed under
   "Not yet verified" in the [README](../README.md#writes); keep that list current.
-- **Smoke examples are read-only.** `cargo run -p polarion --example smoke`, `-p polarion-soap --example
-  soap_smoke` and `-p polarion-rest --example rest_smoke` send a handful of read requests to the server you point
-  them at and report each result.
-
-## Live tests (testdrive only)
-
-[`polarion-rest/tests/live.rs`](../crates/polarion-rest/tests/live.rs) runs against Siemens' public test drive
-server:
-- `read_tour` is read-only.
-- `work_item_lifecycle` creates three work items in your Sandbox project. It exercises update, bulk update, query
-  and pagination, links, comments, and attachment upload and download, then deletes the items again (also when a
-  step fails).
-
-```sh
-export POLARION_TESTDRIVE_TOKEN=<personal access token created on testdrive.polarion.com>
-export POLARION_TESTDRIVE_PROJECT=<your project in the testdrive Sandbox>
-cargo test -p polarion-rest --test live -- --ignored --nocapture --test-threads=1
-```
+- **Smoke examples are read-only.** `cargo run -p polarion --example smoke` and `-p polarion-soap --example
+  soap_smoke` send a handful of read requests to the server you point them at and report each result.
 
 ## The live suite (fixtures on a real server)
 

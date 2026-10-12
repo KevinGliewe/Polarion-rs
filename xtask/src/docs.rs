@@ -1,27 +1,4 @@
-//! Turn spec descriptions (plain text with some HTML) into rustdoc-safe lines.
-
-/// Convert a description into doc-comment lines: HTML tags become line breaks or
-/// disappear, markdown-significant brackets are escaped and bare URLs are
-/// wrapped in `<...>` so rustdoc does not warn about them.
-pub fn doc_lines(text: &str) -> Vec<String> {
-    let text = strip_html(text);
-    let mut lines = Vec::new();
-    for raw in text.lines() {
-        let line = raw
-            .split_whitespace()
-            .map(escape_word)
-            .collect::<Vec<_>>()
-            .join(" ");
-        if line.is_empty() && lines.last().is_none_or(|l: &String| l.is_empty()) {
-            continue;
-        }
-        lines.push(line);
-    }
-    while lines.last().is_some_and(String::is_empty) {
-        lines.pop();
-    }
-    lines
-}
+//! Turn WSDL documentation (plain text with some HTML) into rustdoc-safe text.
 
 pub fn strip_html(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -85,19 +62,6 @@ pub fn escape_word(word: &str) -> String {
     out
 }
 
-/// A short inline-code rendering of a JSON example, if it fits on one line.
-pub fn example(value: &serde_json::Value) -> Option<String> {
-    let s = match value {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Number(_) | serde_json::Value::Bool(_) => value.to_string(),
-        _ => return None,
-    };
-    if s.is_empty() || s.len() > 100 || s.contains('`') || s.contains('\n') {
-        return None;
-    }
-    Some(format!("`{s}`"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,8 +69,10 @@ mod tests {
     #[test]
     fn sanitizes() {
         assert_eq!(
-            doc_lines("<h5>About</h5>See <a href=\"x\">guide</a> at https://x.y/z. a[0] < b"),
-            vec!["About", "See guide at <https://x.y/z>. a\\[0\\] \\< b"]
+            strip_html("<h5>About</h5>See <a href=\"x\">guide</a>, a < b &amp; c"),
+            "\nAbout\nSee guide, a < b & c"
         );
+        assert_eq!(escape_word("https://x.y/z."), "<https://x.y/z>.");
+        assert_eq!(escape_word("a[0]<b"), r"a\[0\]\<b");
     }
 }
