@@ -1,0 +1,12 @@
+# polarion-mcp: read-only.
+#
+# Without POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES and POLARION_WRITE_TARGETS the
+# server is read-only anyway; this file is not needed for that. It shows the options a read-only
+# setup may still want: the curated reads plus the reads of baselines and revisions as tools of
+# their own (selectors are checked at startup; `polarion commands baselines` lists an area).
+
+tools = ["default", "baselines.query", "revisions.*"]
+
+# Reads need no guide by default. "all" makes the agent read each area's guide first, which
+# helps with queries (field names, statuses, link roles of the project).
+require_guides = "none"

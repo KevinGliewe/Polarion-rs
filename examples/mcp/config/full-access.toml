@@ -1,0 +1,19 @@
+# polarion-mcp: full access, compact tool list.
+#
+# Use with POLARION_WRITE_PROJECTS (every project that may be written) and
+# POLARION_ALLOW_GLOBAL_WRITES=1 (users, global folders, activity comments). This file only
+# chooses the tools; what may be written comes from those two variables.
+#
+# The curated reads and writes get tools of their own (48 tools with writes enabled, about
+# 94 KB of tool definitions). Every other command (about 250 in all) is still reachable through
+# polarion_commands / polarion_describe / polarion_call, so nothing is out of reach.
+
+tools = "default"
+
+# Writes of an area are refused until polarion_guide was read for it (once per server process).
+# The guides tell the agent the project's types, statuses, link roles and custom fields, which
+# avoids most failed writes. "none" turns the gate off; "all" requires the guide for reads too.
+require_guides = "write"
+
+# outputSchema on tools and structuredContent on results.
+output_schemas = true

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "polarion": {
+      "type": "stdio",
+      "command": "polarion-mcp",
+      "args": ["--config", "C:/Polarion-rs/examples/mcp/config/full-access.toml"],
+      "env": {
+        "POLARION_URL": "${POLARION_URL}",
+        "POLARION_TOKEN": "${POLARION_TOKEN}",
+        "POLARION_PROJECT": "${POLARION_PROJECT:-}",
+        "POLARION_WRITE_PROJECTS": "${POLARION_WRITE_PROJECTS:-}",
+        "POLARION_ALLOW_GLOBAL_WRITES": "${POLARION_ALLOW_GLOBAL_WRITES:-0}",
+        "POLARION_MCP_FILES": "${POLARION_MCP_FILES:-}"
+      }
+    }
+  }
+}

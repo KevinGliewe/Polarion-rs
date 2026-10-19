@@ -1,0 +1,15 @@
+# polarion-mcp: full access, every command as a tool of its own.
+#
+# Use with POLARION_WRITE_PROJECTS and POLARION_ALLOW_GLOBAL_WRITES=1, as full-access.toml.
+#
+# About 257 tools with writes enabled. With output schemas that is about 309 KB of tool
+# definitions; without them about 139 KB. Clients that load tools on demand (Claude Code's tool
+# search) cope with that; others spend a large part of the context on the tool list. Prefer
+# full-access.toml unless the agent should see every command directly.
+
+tools = "all"
+
+# Output schemas are the larger half of every tool definition; leave them out here.
+output_schemas = false
+
+require_guides = "write"

@@ -1,0 +1,12 @@
+# OpenAI Codex CLI: add to %USERPROFILE%\.codex\config.toml
+
+[mcp_servers.polarion]
+command = "pwsh"
+args = [
+    "-NoProfile",
+    "-NonInteractive",
+    "-File",
+    "C:/Polarion-rs/examples/mcp/scripts/Start-PolarionMcp.ps1",
+    "-Config",
+    "full-access",
+]

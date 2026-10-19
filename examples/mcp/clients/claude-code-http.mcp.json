@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "polarion": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer ${POLARION_MCP_AUTH_TOKEN}"
+      }
+    }
+  }
+}

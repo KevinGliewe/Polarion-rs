@@ -1,0 +1,31 @@
+{
+  "servers": {
+    "polarion": {
+      "type": "stdio",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-NonInteractive",
+        "-File",
+        "C:/Polarion-rs/examples/mcp/scripts/Start-PolarionMcp.ps1",
+        "-Config",
+        "full-access"
+      ]
+    },
+    "polarion-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": {
+        "Authorization": "Bearer ${input:polarion-mcp-token}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "polarion-mcp-token",
+      "description": "Bearer token of the polarion-mcp HTTP server (POLARION_MCP_AUTH_TOKEN)",
+      "password": true
+    }
+  ]
+}

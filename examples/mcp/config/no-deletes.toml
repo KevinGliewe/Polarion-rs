@@ -1,0 +1,21 @@
+# polarion-mcp: writes enabled, but nothing can be deleted and accounts stay untouched.
+#
+# Use with POLARION_WRITE_PROJECTS (and POLARION_ALLOW_GLOBAL_WRITES=1 if folders or activity
+# comments should be written). Disabled commands get no tool, are not listed by
+# polarion_commands and are refused by polarion_describe and polarion_call: this is a deny list,
+# not only a shorter tool list.
+
+tools = "default"
+
+disable = [
+    # Every delete: items.delete, documents.delete, plans.delete, tests.delete, ...
+    "*.delete",
+    # Deletes of parts: attachments, links, comments, test records, ...
+    "*.delete-*",
+    # User accounts and the account vault.
+    "users.create",
+    "users.update",
+    "security.update-user-account-vault",
+]
+
+require_guides = "write"
