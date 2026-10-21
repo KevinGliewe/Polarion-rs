@@ -25,6 +25,7 @@ serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true, features = ["net", "signal"] }
 tokio-util.workspace = true
+tower-layer.workspace = true
 toml.workspace = true
 
 [dev-dependencies]

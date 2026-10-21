@@ -20,8 +20,24 @@ use crate::command::Context;
 use crate::error::Result;
 
 /// `Deserialize` for types written as a string (parsed with `FromStr`) or as an object (read into
-/// `Repr`, then converted).
+/// `Repr`, then converted); `Serialize` as the string (`Display`).
 macro_rules! string_or_object {
+    ($ty:ty, $repr:ty, $expecting:literal) => {
+        deserialize_string_or_object!($ty, $repr, $expecting);
+
+        impl Serialize for $ty {
+            fn serialize<S: Serializer>(
+                &self,
+                serializer: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                serializer.collect_str(self)
+            }
+        }
+    };
+}
+
+/// The `Deserialize` of [`string_or_object!`] alone, for types whose string form is lossy.
+macro_rules! deserialize_string_or_object {
     ($ty:ty, $repr:ty, $expecting:literal) => {
         impl<'de> Deserialize<'de> for $ty {
             fn deserialize<D: Deserializer<'de>>(
@@ -46,15 +62,6 @@ macro_rules! string_or_object {
                     }
                 }
                 deserializer.deserialize_any(V)
-            }
-        }
-
-        impl Serialize for $ty {
-            fn serialize<S: Serializer>(
-                &self,
-                serializer: S,
-            ) -> std::result::Result<S::Ok, S::Error> {
-                serializer.collect_str(self)
             }
         }
     };
@@ -155,6 +162,417 @@ string_or_object!(
     "ID, PROJECT/ID, a URI, {project, id} or {uri}"
 );
 inline_schema!(ItemArg, "ItemArg", {"type": "string", "format": "work-item"});
+
+// ---- follow-ups of new work items
+
+/// `LEFT=RIGHT`, split at the first `=`, both sides non-empty.
+fn split_assignment<'s>(s: &'s str, form: &str) -> std::result::Result<(&'s str, &'s str), String> {
+    match s.trim().split_once('=') {
+        Some((left, right)) if !left.trim().is_empty() && !right.trim().is_empty() => {
+            Ok((left.trim(), right.trim()))
+        }
+        _ => Err(format!("expected {form}, got `{s}`")),
+    }
+}
+
+/// A role: no `:` or `/`, which catches a URL given without its role.
+fn role(role: &str, form: &str) -> std::result::Result<String, String> {
+    if role.contains([':', '/']) {
+        return Err(format!("expected {form}: `{role}` is not a role id"));
+    }
+    Ok(role.to_owned())
+}
+
+/// A link to another work item: `ROLE=ITEM` or `ROLE=ITEM@REVISION`, or
+/// `{role, item, revision?, suspect?}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkArg {
+    pub role: String,
+    pub item: ItemArg,
+    pub revision: Option<String>,
+    pub suspect: bool,
+}
+
+impl LinkArg {
+    pub fn resolve(&self, cx: &Context<'_>) -> Result<polarion::NewLink> {
+        Ok(polarion::NewLink {
+            role: self.role.clone(),
+            target: self.item.resolve(cx)?,
+            revision: self.revision.clone(),
+            suspect: self.suspect,
+        })
+    }
+}
+
+impl FromStr for LinkArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        const FORM: &str = "ROLE=ITEM or ROLE=ITEM@REVISION";
+        let (role_id, rest) = split_assignment(s, FORM)?;
+        let (item, revision) = match rest.rsplit_once('@') {
+            Some((item, revision)) if !revision.is_empty() => (item, Some(revision.to_owned())),
+            _ => (rest, None),
+        };
+        Ok(Self {
+            role: role(role_id, FORM)?,
+            item: item.parse()?,
+            revision,
+            suspect: false,
+        })
+    }
+}
+
+impl fmt::Display for LinkArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.role, self.item)?;
+        match &self.revision {
+            Some(revision) => write!(f, "@{revision}"),
+            None => Ok(()),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LinkRepr {
+    role: String,
+    item: ItemArg,
+    #[serde(default)]
+    revision: Option<String>,
+    #[serde(default)]
+    suspect: bool,
+}
+
+impl TryFrom<LinkRepr> for LinkArg {
+    type Error = String;
+    fn try_from(r: LinkRepr) -> std::result::Result<Self, String> {
+        Ok(Self {
+            role: role(&r.role, "a link role")?,
+            item: r.item,
+            revision: r.revision,
+            suspect: r.suspect,
+        })
+    }
+}
+
+deserialize_string_or_object!(
+    LinkArg,
+    LinkRepr,
+    "ROLE=ITEM, ROLE=ITEM@REVISION or {role, item, revision?, suspect?}"
+);
+
+impl Serialize for LinkArg {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        if !self.suspect {
+            return serializer.collect_str(self);
+        }
+        // `suspect` has no string form.
+        let mut map = Map::new();
+        map.insert("role".into(), self.role.clone().into());
+        map.insert("item".into(), self.item.to_string().into());
+        if let Some(revision) = &self.revision {
+            map.insert("revision".into(), revision.clone().into());
+        }
+        map.insert("suspect".into(), true.into());
+        Value::Object(map).serialize(serializer)
+    }
+}
+
+inline_schema!(LinkArg, "LinkArg", {"anyOf": [
+    {"type": "string", "description": "ROLE=ITEM or ROLE=ITEM@REVISION (ITEM: ID, PROJECT/ID or URI)"},
+    {"type": "object", "properties": {
+        "role": {"type": "string"},
+        "item": {"type": "string", "format": "work-item"},
+        "revision": {"type": "string"},
+        "suspect": {"type": "boolean"}
+    }, "required": ["role", "item"], "additionalProperties": false}
+]});
+
+/// A hyperlink, or a link to a work item on another server: `ROLE=URL` or `{role, url}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HyperlinkArg {
+    pub role: String,
+    pub url: String,
+}
+
+impl FromStr for HyperlinkArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        const FORM: &str = "ROLE=URL";
+        let (role_id, url) = split_assignment(s, FORM)?;
+        Ok(Self {
+            role: role(role_id, FORM)?,
+            url: url.to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for HyperlinkArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.role, self.url)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HyperlinkRepr {
+    role: String,
+    url: String,
+}
+
+impl TryFrom<HyperlinkRepr> for HyperlinkArg {
+    type Error = String;
+    fn try_from(r: HyperlinkRepr) -> std::result::Result<Self, String> {
+        Ok(Self {
+            role: role(&r.role, "a role")?,
+            url: r.url,
+        })
+    }
+}
+
+string_or_object!(HyperlinkArg, HyperlinkRepr, "ROLE=URL or {role, url}");
+inline_schema!(HyperlinkArg, "HyperlinkArg", {"anyOf": [
+    {"type": "string", "description": "ROLE=URL"},
+    {"type": "object", "properties": {"role": {"type": "string"}, "url": {"type": "string"}},
+     "required": ["role", "url"], "additionalProperties": false}
+]});
+
+/// A link to an OSLC resource: `ROLE=LABEL=URL` or `{role, label, url}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OslcLinkArg {
+    pub role: String,
+    pub label: String,
+    pub url: String,
+}
+
+impl FromStr for OslcLinkArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        const FORM: &str = "ROLE=LABEL=URL";
+        let (role_id, rest) = split_assignment(s, FORM)?;
+        let (label, url) = split_assignment(rest, FORM)?;
+        Ok(Self {
+            role: role(role_id, FORM)?,
+            label: label.to_owned(),
+            url: url.to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for OslcLinkArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}={}", self.role, self.label, self.url)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OslcLinkRepr {
+    role: String,
+    label: String,
+    url: String,
+}
+
+impl TryFrom<OslcLinkRepr> for OslcLinkArg {
+    type Error = String;
+    fn try_from(r: OslcLinkRepr) -> std::result::Result<Self, String> {
+        if r.label.contains('=') {
+            return Err(format!("an OSLC link label has no `=`: `{}`", r.label));
+        }
+        Ok(Self {
+            role: role(&r.role, "a role")?,
+            label: r.label,
+            url: r.url,
+        })
+    }
+}
+
+string_or_object!(
+    OslcLinkArg,
+    OslcLinkRepr,
+    "ROLE=LABEL=URL or {role, label, url}"
+);
+inline_schema!(OslcLinkArg, "OslcLinkArg", {"anyOf": [
+    {"type": "string", "description": "ROLE=LABEL=URL"},
+    {"type": "object", "properties": {
+        "role": {"type": "string"}, "label": {"type": "string"}, "url": {"type": "string"}
+    }, "required": ["role", "label", "url"], "additionalProperties": false}
+]});
+
+/// A planning constraint: `CONSTRAINT=DATE` or `{constraint, date}` (date `YYYY-MM-DD`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConstraintArg {
+    pub constraint: String,
+    pub date: String,
+}
+
+impl FromStr for ConstraintArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        let (constraint, date) = split_assignment(s, "CONSTRAINT=DATE")?;
+        Ok(Self {
+            constraint: constraint.to_owned(),
+            date: date.to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for ConstraintArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.constraint, self.date)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConstraintRepr {
+    constraint: String,
+    date: String,
+}
+
+impl TryFrom<ConstraintRepr> for ConstraintArg {
+    type Error = String;
+    fn try_from(r: ConstraintRepr) -> std::result::Result<Self, String> {
+        Ok(Self {
+            constraint: r.constraint,
+            date: r.date,
+        })
+    }
+}
+
+string_or_object!(
+    ConstraintArg,
+    ConstraintRepr,
+    "CONSTRAINT=DATE or {constraint, date}"
+);
+inline_schema!(ConstraintArg, "ConstraintArg", {"anyOf": [
+    {"type": "string", "description": "CONSTRAINT=DATE, e.g. startNoEarlierThan=2024-01-31"},
+    {"type": "object", "properties": {"constraint": {"type": "string"}, "date": {"type": "string"}},
+     "required": ["constraint", "date"], "additionalProperties": false}
+]});
+
+/// A source repository revision: `REVISION` (default repository), `REPOSITORY=REVISION`, or
+/// `{repository?, revision}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisionArg {
+    pub repository: Option<String>,
+    pub revision: String,
+}
+
+impl FromStr for RevisionArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        let s = s.trim();
+        if !s.contains('=') {
+            if s.is_empty() {
+                return Err("expected REVISION or REPOSITORY=REVISION".into());
+            }
+            return Ok(Self {
+                repository: None,
+                revision: s.to_owned(),
+            });
+        }
+        let (repository, revision) = split_assignment(s, "REVISION or REPOSITORY=REVISION")?;
+        Ok(Self {
+            repository: Some(repository.to_owned()),
+            revision: revision.to_owned(),
+        })
+    }
+}
+
+impl fmt::Display for RevisionArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.repository {
+            Some(repository) => write!(f, "{repository}={}", self.revision),
+            None => f.write_str(&self.revision),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RevisionRepr {
+    #[serde(default)]
+    repository: Option<String>,
+    revision: String,
+}
+
+impl TryFrom<RevisionRepr> for RevisionArg {
+    type Error = String;
+    fn try_from(r: RevisionRepr) -> std::result::Result<Self, String> {
+        Ok(Self {
+            repository: r.repository,
+            revision: r.revision,
+        })
+    }
+}
+
+string_or_object!(
+    RevisionArg,
+    RevisionRepr,
+    "REVISION, REPOSITORY=REVISION or {repository?, revision}"
+);
+inline_schema!(RevisionArg, "RevisionArg", {"anyOf": [
+    {"type": "string", "description": "REVISION (default repository) or REPOSITORY=REVISION"},
+    {"type": "object", "properties": {"repository": {"type": "string"}, "revision": {"type": "string"}},
+     "required": ["revision"], "additionalProperties": false}
+]});
+
+/// A plan: its URI, `ID` (in the default project) or `PROJECT/ID`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanArg(pub String);
+
+impl PlanArg {
+    /// The plan's URI; an id is looked up.
+    pub async fn resolve(&self, cx: &Context<'_>) -> Result<String> {
+        let s = self.0.trim();
+        if s.starts_with("subterra:") {
+            return Ok(s.to_owned());
+        }
+        let (project, id) = match s.split_once('/') {
+            Some((project, id)) => (project.to_owned(), id),
+            None => (cx.project(None)?, s),
+        };
+        let plan = cx.polarion.plans().get(&project, id).await?;
+        plan.uri.ok_or_else(|| {
+            crate::CommandError::from(polarion::Error::Invalid(format!(
+                "the plan `{project}/{id}` has no URI"
+            )))
+        })
+    }
+}
+
+impl FromStr for PlanArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        if s.trim().is_empty() || s.split('/').count() > 2 && !s.trim().starts_with("subterra:") {
+            return Err(format!("expected a plan URI, ID or PROJECT/ID, got `{s}`"));
+        }
+        Ok(Self(s.trim().to_owned()))
+    }
+}
+
+impl fmt::Display for PlanArg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for PlanArg {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for PlanArg {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+inline_schema!(PlanArg, "PlanArg", {"type": "string", "description": "a plan URI, ID or PROJECT/ID"});
 
 // ---- documents
 
@@ -820,5 +1238,101 @@ mod tests {
             serde_json::to_value(schema).unwrap(),
             json!({"type": "string"})
         );
+    }
+
+    #[test]
+    fn follow_ups_parse_from_strings_and_objects() {
+        // Links: the role up to the first `=`, a revision after the last `@`.
+        let link: LinkArg = "parent=Sandbox/SB-1".parse().unwrap();
+        assert_eq!(
+            link,
+            LinkArg {
+                role: "parent".into(),
+                item: ItemArg::Qualified {
+                    project: "Sandbox".into(),
+                    id: "SB-1".into()
+                },
+                revision: None,
+                suspect: false,
+            }
+        );
+        let uri = "subterra:data-service:objects:/default/P${WorkItem}P-1";
+        let pinned: LinkArg = format!("relates_to={uri}@42").parse().unwrap();
+        assert_eq!(pinned.item, ItemArg::Uri(uri.into()));
+        assert_eq!(pinned.revision.as_deref(), Some("42"));
+        let suspect: LinkArg =
+            serde_json::from_value(json!({"role": "parent", "item": "P-1", "suspect": true}))
+                .unwrap();
+        assert!(suspect.suspect);
+        // `suspect` has no string form: it serializes as an object, which reads back the same.
+        let value = serde_json::to_value(&suspect).unwrap();
+        assert_eq!(
+            value,
+            json!({"role": "parent", "item": "P-1", "suspect": true})
+        );
+        assert_eq!(serde_json::from_value::<LinkArg>(value).unwrap(), suspect);
+        assert_eq!(
+            serde_json::to_value(&pinned).unwrap(),
+            json!(format!("relates_to={uri}@42"))
+        );
+        for bad in ["P-1", "=P-1", "parent=", "https://x/y=P-1"] {
+            assert!(bad.parse::<LinkArg>().is_err(), "{bad}");
+        }
+        assert!(
+            serde_json::from_value::<LinkArg>(json!({"role": "r", "item": "P-1", "x": 1})).is_err()
+        );
+
+        // Hyperlinks: the URL may contain `=`; a bare URL is not a role.
+        let link: HyperlinkArg = "ref_ext=https://x.example/?a=b".parse().unwrap();
+        assert_eq!(
+            (link.role.as_str(), link.url.as_str()),
+            ("ref_ext", "https://x.example/?a=b")
+        );
+        assert_eq!(link.to_string(), "ref_ext=https://x.example/?a=b");
+        assert!("https://x.example/?a=b".parse::<HyperlinkArg>().is_err());
+        let object: HyperlinkArg =
+            serde_json::from_value(json!({"role": "ref_ext", "url": "https://x"})).unwrap();
+        assert_eq!(object.url, "https://x");
+
+        // OSLC links: the label before the URL.
+        let oslc: OslcLinkArg = "relates_to=R1=https://o.example/r?id=1".parse().unwrap();
+        assert_eq!(
+            (oslc.role.as_str(), oslc.label.as_str(), oslc.url.as_str()),
+            ("relates_to", "R1", "https://o.example/r?id=1")
+        );
+        assert_eq!(oslc.to_string().parse::<OslcLinkArg>().unwrap(), oslc);
+        assert!("relates_to=https://o".parse::<OslcLinkArg>().is_err());
+        assert!(
+            serde_json::from_value::<OslcLinkArg>(json!({"role": "r", "label": "a=b", "url": "u"}))
+                .is_err()
+        );
+
+        // Planning constraints and revisions.
+        let c: ConstraintArg = "startNoEarlierThan=2024-01-31".parse().unwrap();
+        assert_eq!(
+            (c.constraint.as_str(), c.date.as_str()),
+            ("startNoEarlierThan", "2024-01-31")
+        );
+        assert!("2024-01-31".parse::<ConstraintArg>().is_err());
+        let plain: RevisionArg = "1234".parse().unwrap();
+        assert_eq!((plain.repository, plain.revision.as_str()), (None, "1234"));
+        let other: RevisionArg = "ext=abc".parse().unwrap();
+        assert_eq!(
+            (other.repository.as_deref(), other.revision.as_str()),
+            (Some("ext"), "abc")
+        );
+        assert_eq!(other.to_string(), "ext=abc");
+        assert!("".parse::<RevisionArg>().is_err());
+
+        // Plans: a URI, an id or PROJECT/ID.
+        for good in [
+            "rel1",
+            "P/rel1",
+            "subterra:data-service:objects:/default/P${Plan}rel1",
+        ] {
+            assert_eq!(good.parse::<PlanArg>().unwrap().to_string(), good);
+        }
+        assert!("a/b/c".parse::<PlanArg>().is_err());
+        assert!("".parse::<PlanArg>().is_err());
     }
 }

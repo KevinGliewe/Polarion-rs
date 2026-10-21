@@ -8,10 +8,12 @@ use polarion_commands_derive::cmd;
 use schemars::JsonSchema;
 use serde::Serialize;
 
+use crate::tests_mgmt::StepRows;
 use crate::{
-    ACTION_COLUMNS, CHANGE_COLUMNS, Changed, CommandError, Context, Data, DocumentArg, Done,
-    Download, FieldSelection, ITEM_COLUMNS, ItemArg, JsonObject, JsonValue, OPTION_COLUMNS,
-    QueryArgs, REF_COLUMNS, Result, RichText, Run, TextArg, USER_COLUMNS,
+    ACTION_COLUMNS, CHANGE_COLUMNS, Changed, CommandError, ConstraintArg, Context, Data,
+    DocumentArg, Done, Download, FieldSelection, HyperlinkArg, ITEM_COLUMNS, ItemArg, JsonObject,
+    JsonValue, LinkArg, OPTION_COLUMNS, OslcLinkArg, PlanArg, QueryArgs, REF_COLUMNS, Result,
+    RevisionArg, RichText, Run, TextArg, USER_COLUMNS,
 };
 
 /// Get a work item with all fields (or only `fields`/`custom`)
@@ -763,7 +765,8 @@ impl Run for LinkedResources {
     }
 }
 
-/// Create a work item (optionally inside a document, under a parent)
+/// Create a work item (optionally inside a document, under a parent); fields a workflow requires
+/// at creation (categories, assignees, links, ...) are written in the same transaction
 #[cmd(write, view = object)]
 pub struct Create {
     /// Project id (default: POLARION_PROJECT or -p)
@@ -790,6 +793,29 @@ pub struct Create {
     pub document: Option<DocumentArg>,
     /// Parent work item inside the document
     pub parent: Option<ItemArg>,
+    /// Category ids. This and the following fields are written right after the create, in the
+    /// same transaction: give here what the project's workflow requires at creation
+    pub categories: Vec<String>,
+    /// Assignee user ids
+    pub assignees: Vec<String>,
+    /// User ids to request approvals from
+    pub approvees: Vec<String>,
+    /// Hyperlinks: ROLE=URL or {role, url}
+    pub hyperlinks: Vec<HyperlinkArg>,
+    /// Links to other work items: ROLE=ITEM, ROLE=ITEM@REVISION or {role, item, revision, suspect}
+    pub links: Vec<LinkArg>,
+    /// Planning constraints: CONSTRAINT=DATE or {constraint, date}
+    pub planning_constraints: Vec<ConstraintArg>,
+    /// Plans to add the work item to: URI, ID or PROJECT/ID
+    pub planned_in: Vec<PlanArg>,
+    /// Test steps: [[cell, ...], ...]; cells are text or {type, content}
+    pub test_steps: Option<StepRows>,
+    /// Links to work items on other servers: ROLE=URL or {role, url}
+    pub external_links: Vec<HyperlinkArg>,
+    /// Links to OSLC resources: ROLE=LABEL=URL or {role, label, url}
+    pub oslc_links: Vec<OslcLinkArg>,
+    /// Source repository revisions: REVISION, REPOSITORY=REVISION or {repository, revision}
+    pub linked_revisions: Vec<RevisionArg>,
 }
 
 /// A new work item: its reference and URI.
@@ -821,6 +847,64 @@ impl Run for Create {
         new.custom_fields = crate::values::custom_values(&custom, &definitions)?
             .into_iter()
             .filter_map(|(k, v)| Some((k, v?)))
+            .collect();
+        new.categories = self.categories;
+        new.assignees = self.assignees;
+        new.approvees = self.approvees;
+        new.hyperlinks = self
+            .hyperlinks
+            .into_iter()
+            .map(|h| polarion::NewHyperlink {
+                role: h.role,
+                url: h.url,
+            })
+            .collect();
+        new.links = self
+            .links
+            .iter()
+            .map(|l| l.resolve(cx))
+            .collect::<Result<_>>()?;
+        new.planning_constraints = self
+            .planning_constraints
+            .into_iter()
+            .map(|c| polarion::NewPlanningConstraint {
+                constraint: c.constraint,
+                date: c.date,
+            })
+            .collect();
+        for plan in &self.planned_in {
+            new.planned_in.push(plan.resolve(cx).await?);
+        }
+        new.test_steps = self.test_steps.map_or_else(Vec::new, |rows| {
+            rows.0
+                .into_iter()
+                .map(|row| row.into_iter().map(polarion::Text::from).collect())
+                .collect()
+        });
+        new.external_links = self
+            .external_links
+            .into_iter()
+            .map(|h| polarion::NewExternalLink {
+                role: h.role,
+                url: h.url,
+            })
+            .collect();
+        new.oslc_links = self
+            .oslc_links
+            .into_iter()
+            .map(|o| polarion::NewOslcLink {
+                role: o.role,
+                url: o.url,
+                label: o.label,
+            })
+            .collect();
+        new.linked_revisions = self
+            .linked_revisions
+            .into_iter()
+            .map(|r| polarion::NewLinkedRevision {
+                repository: r.repository,
+                revision: r.revision,
+            })
             .collect();
         let created = match &self.document {
             Some(document) => {

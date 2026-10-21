@@ -11,8 +11,9 @@ use polarion::soap::types::{AnyValue, CustomField, EnumOptionId, WorkItem as Soa
 use polarion::uri::test_run_uri;
 use polarion::{
     Auth, CreateBudget, DocumentRef, DocumentUpdate, Error, FieldValue, ItemRef, NewDocument,
-    NewWorkItem, NewWorkRecord, PlanUpdate, Polarion, ReuseDocument, TestRecord, TestRunUpdate,
-    Text, UserUpdate, WorkItemUpdate,
+    NewExternalLink, NewLink, NewLinkedRevision, NewOslcLink, NewPlan, NewTestRun, NewWorkItem,
+    NewWorkRecord, PlanUpdate, Polarion, ReuseDocument, TestRecord, TestRunUpdate, Text,
+    UserUpdate, WorkItemUpdate,
 };
 use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
@@ -120,6 +121,8 @@ fn restricted(server: &MockServer) -> Polarion {
             run(),
             plan(),
             baseline(),
+            // The user work records are booked for.
+            polarion::uri::user_uri("me"),
         ])
         .build()
         .unwrap()
@@ -434,13 +437,15 @@ async fn bounded_writes_to_the_targets_are_sent() {
         .filter(|(_, class)| ["Target", "Owned", "Transaction"].contains(&class.as_str()))
         .map(|(op, _)| op)
         .collect();
+    // The update of several fields ran in a session of its own, which was ended (`endSession`).
     let writes: BTreeSet<String> = sent
         .iter()
-        .filter(|op| !op.starts_with("get"))
+        .filter(|op| !op.starts_with("get") && *op != "endSession")
         .cloned()
         .collect();
     assert_eq!(writes, expected);
     assert!(sent.contains("getModuleWorkItemUris"), "{sent:?}");
+    assert!(sent.contains("endSession"), "{sent:?}");
 }
 
 #[tokio::test]
@@ -512,6 +517,14 @@ async fn writes_to_anything_else_are_refused_before_any_request() {
         ..NewWorkRecord::default()
     };
     not_a_target(refused!(items.add_work_record(&b(), &record)), &b_uri);
+    let for_amy = NewWorkRecord {
+        user: "amy".into(),
+        ..record
+    };
+    not_a_target(
+        refused!(items.add_work_record(&a(), &for_amy)),
+        &polarion::uri::user_uri("amy"),
+    );
     not_a_target(
         refused!(items.set_localized_title(&b(), None, Some("t"))),
         &b_uri,
@@ -813,7 +826,7 @@ async fn writes_to_anything_else_are_refused_before_any_request() {
     )));
     with_reason(refused!(tests.add_project_to_span(&run(), "Other")));
     with_reason(refused!(tests.remove_project_from_span(&run(), "Other")));
-    with_reason(refused!(plans.create(P, "p", "P", None, "tpl")));
+    with_reason(refused!(plans.create(&NewPlan::new(P, "p", "P", "tpl"))));
     with_reason(refused!(plans.create_template(P, "p", "P", None)));
     with_reason(refused!(plans.delete(P, &["rel1".into()])));
     with_reason(refused!(plans.add_project_to_span(&plan(), "Other")));
@@ -834,8 +847,8 @@ async fn writes_to_anything_else_are_refused_before_any_request() {
     // Creates without a budget.
     with_reason(refused!(items.create(&new_item)));
     with_reason(refused!(docs.create(&new_doc)));
-    with_reason(refused!(tests.create(P, "R9", "tpl")));
-    with_reason(refused!(tests.create_with_title(P, "R9", None, "tpl")));
+    with_reason(refused!(tests.create(&NewTestRun::new(P, "R9", "tpl"))));
+    with_reason(refused!(tests.create(&NewTestRun::new(P, "R9", "tpl"))));
 
     assert!(
         server.received_requests().await.unwrap().is_empty(),
@@ -902,7 +915,9 @@ async fn creates_stay_within_the_budget_of_each_kind() {
     // Other projects never, also with a budget left.
     let (project, _, reason) = refused!(items.create(&NewWorkItem::new("Prod", "task", "x")));
     assert_eq!((project.as_deref(), reason.is_some()), (Some("Prod"), true));
-    with_reason(refused!(tests.create("Prod", "R1", "tpl")));
+    with_reason(refused!(
+        tests.create(&NewTestRun::new("Prod", "R1", "tpl"))
+    ));
     with_reason(refused!(docs.create(&NewDocument {
         project: "Prod".into(),
         ..new_doc.clone()
@@ -919,7 +934,10 @@ async fn creates_stay_within_the_budget_of_each_kind() {
         .create(&NewWorkItem::new(P, "task", "x"))
         .await
         .unwrap();
-    tests.create(P, "R1", "tpl").await.unwrap();
+    tests
+        .create(&NewTestRun::new(P, "R1", "tpl"))
+        .await
+        .unwrap();
     docs.create(&new_doc).await.unwrap();
     assert_eq!(
         sent(&server).await,
@@ -933,7 +951,10 @@ async fn creates_stay_within_the_budget_of_each_kind() {
 
     // The second of each kind.
     with_reason(refused!(items.create(&NewWorkItem::new(P, "task", "y"))));
-    with_reason(refused!(tests.create_with_title(P, "R2", Some("t"), "tpl")));
+    with_reason(refused!(tests.create(&NewTestRun {
+        title: Some("t".into()),
+        ..NewTestRun::new(P, "R2", "tpl")
+    })));
     with_reason(refused!(docs.create(&new_doc)));
     // Without targets, existing objects stay untouched.
     not_a_target(
@@ -1005,6 +1026,7 @@ async fn write_allowed_answers_for_the_targets_only() {
         run(),
         plan(),
         baseline(),
+        polarion::uri::user_uri("me"),
     ] {
         assert!(polarion.write_allowed(&uri), "{uri}");
     }
@@ -1019,7 +1041,7 @@ async fn write_allowed_answers_for_the_targets_only() {
         assert!(!polarion.write_allowed(&uri), "{uri}");
     }
     let targets: Vec<&str> = polarion.write_targets().collect();
-    assert_eq!(targets.len(), 6);
+    assert_eq!(targets.len(), 7);
     assert!(targets.contains(&a_link().uri.as_str()), "{targets:?}");
     assert_eq!(polarion.writable_projects().count(), 0);
     assert!(!polarion.global_writes_allowed());
@@ -1384,6 +1406,213 @@ async fn a_create_is_not_repeated_beyond_the_budget() {
         1,
         "the session was renewed: {sent:?}"
     );
+}
+
+/// Answers `createWorkItem` with `uri`, before `answer_everything`.
+async fn creates_as(server: &MockServer, uri: &str) {
+    Mock::given(wiremock::matchers::body_string_contains("createWorkItem>"))
+        .respond_with(xml(&format!(
+            "<createWorkItemResponse><createWorkItemReturn>{uri}</createWorkItemReturn></createWorkItemResponse>"
+        )))
+        .mount(server)
+        .await;
+}
+
+/// A client restricted to `A` that may create one work item.
+fn one_create(server: &MockServer) -> Polarion {
+    builder(server)
+        .restrict_writes([a().uri])
+        .allow_creates(
+            P,
+            CreateBudget {
+                work_items: 1,
+                ..CreateBudget::default()
+            },
+        )
+        .build()
+        .unwrap()
+}
+
+/// A new work item with a category: a create with a follow-up.
+fn categorized() -> NewWorkItem {
+    NewWorkItem {
+        categories: vec!["software".into()],
+        ..NewWorkItem::new(P, "task", "x")
+    }
+}
+
+#[tokio::test]
+async fn creates_write_their_follow_ups_in_their_own_session_only() {
+    let server = session_server().await;
+    answer_everything(&server).await;
+    let new_item = item("SB-9");
+    creates_as(&server, &new_item.uri).await;
+    let polarion = one_create(&server);
+
+    let new = NewWorkItem {
+        links: vec![NewLink::new("relates_to", a())],
+        ..categorized()
+    };
+    assert_eq!(polarion.items().create(&new).await.unwrap(), new_item);
+    let expected: Vec<(String, String)> = [
+        ("", "logInWithToken"),
+        ("-1", "getProject"),
+        ("", "logInWithToken"),
+        ("-2", "beginTransaction"),
+        ("-2", "createWorkItem"),
+        ("-2", "addCategory"),
+        ("-2", "addLinkedItem"),
+        ("-2", "endTransaction"),
+        ("-2", "endSession"),
+    ]
+    .iter()
+    .map(|(s, o)| ((*s).to_owned(), (*o).to_owned()))
+    .collect();
+    assert_eq!(log(&server).await, expected);
+
+    // The new work item was writable in that session only: neither the guard nor the SOAP write
+    // filter of the client lets a write to it through.
+    assert!(!polarion.write_allowed(&new_item.uri));
+    not_a_target(
+        refused!(polarion.items().add_category(&new_item, "hardware")),
+        &new_item.uri,
+    );
+    filtered(
+        polarion
+            .soap()
+            .tracker()
+            .add_category(&new_item.uri, "hardware")
+            .await,
+        "category of the new work item",
+    );
+    assert_eq!(log(&server).await, expected);
+}
+
+#[tokio::test]
+async fn refused_follow_ups_send_nothing_and_take_no_budget() {
+    let server = session_server().await;
+    answer_everything(&server).await;
+    creates_as(&server, &item("SB-9").uri).await;
+    let polarion = one_create(&server);
+    let items = polarion.items();
+    let new = NewWorkItem::new(P, "task", "x");
+
+    // Links and plans name write targets only.
+    let link = NewWorkItem {
+        links: vec![NewLink::new("relates_to", b())],
+        ..new.clone()
+    };
+    not_a_target(refused!(items.create(&link)), &b().uri);
+    let pinned = NewWorkItem {
+        links: vec![NewLink {
+            revision: Some("42".into()),
+            ..NewLink::new("relates_to", b())
+        }],
+        ..new.clone()
+    };
+    not_a_target(refused!(items.create(&pinned)), &b().uri);
+    let planned = NewWorkItem {
+        planned_in: vec![plan()],
+        ..new.clone()
+    };
+    not_a_target(refused!(items.create(&planned)), &plan());
+    // Unbounded follow-ups.
+    let external = NewWorkItem {
+        external_links: vec![NewExternalLink {
+            role: "relates_to".into(),
+            url: "https://x".into(),
+        }],
+        ..new.clone()
+    };
+    with_reason(refused!(items.create(&external)));
+    let oslc = NewWorkItem {
+        oslc_links: vec![NewOslcLink {
+            role: "relates_to".into(),
+            url: "https://x".into(),
+            label: "x".into(),
+        }],
+        ..new.clone()
+    };
+    with_reason(refused!(items.create(&oslc)));
+    let revision = NewWorkItem {
+        linked_revisions: vec![NewLinkedRevision {
+            repository: None,
+            revision: "1".into(),
+        }],
+        ..new.clone()
+    };
+    with_reason(refused!(items.create(&revision)));
+    // The status, also with follow-ups.
+    let mut with_status = categorized();
+    with_status
+        .custom_fields
+        .insert("status".into(), FieldValue::Enum("done".into()));
+    with_reason(refused!(items.create(&with_status)));
+    // Creates in documents stay unbounded.
+    with_reason(refused!(items.create_in_document(
+        &categorized(),
+        &doc(),
+        None
+    )));
+    assert!(sent(&server).await.is_empty());
+
+    // Inside an explicit transaction, follow-ups cannot have a session of their own.
+    polarion.begin_transaction().await.unwrap();
+    let (_, _, reason) = refused!(items.create(&categorized()));
+    assert!(
+        reason.is_some_and(|r| r.contains("session of its own")),
+        "{reason:?}"
+    );
+    polarion.rollback().await.unwrap();
+    assert_eq!(sent(&server).await, ["beginTransaction", "endTransaction"]);
+
+    // The budget is untouched.
+    items.create(&categorized()).await.unwrap();
+    with_reason(refused!(items.create(&categorized())));
+}
+
+#[tokio::test]
+async fn new_objects_the_create_budget_does_not_cover_roll_back() {
+    let foreign = [
+        // Another project.
+        format!("{URI}Prod${{WorkItem}}PR-1"),
+        // Another kind.
+        format!("{URI}{P}${{TestRun}}SB-9"),
+        // With a revision.
+        format!("{}%12", item("SB-9").uri),
+    ];
+    for uri in foreign {
+        let server = session_server().await;
+        answer_everything(&server).await;
+        creates_as(&server, &uri).await;
+        let polarion = one_create(&server);
+
+        let err = polarion.items().create(&categorized()).await.unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid(m) if m.contains(&uri)),
+            "{err:?}"
+        );
+        let ops: Vec<String> = log(&server)
+            .await
+            .into_iter()
+            .filter(|(s, _)| s == "-2")
+            .map(|(_, o)| o)
+            .collect();
+        assert_eq!(
+            ops,
+            [
+                "beginTransaction",
+                "createWorkItem",
+                "endTransaction",
+                "endSession"
+            ],
+            "{uri}"
+        );
+        let ends = bodies(&server, "endTransaction").await;
+        assert!(ends[0].contains("rollback>true<"), "{}", ends[0]);
+        // The attempt took the budget.
+        with_reason(refused!(polarion.items().create(&categorized())));
+    }
 }
 
 #[tokio::test]

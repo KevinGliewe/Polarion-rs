@@ -50,7 +50,8 @@ use polarion_commands_derive::registry;
 use serde_json::Value;
 
 pub use arg::{
-    Data, DocumentArg, FieldSelection, ItemArg, JsonObject, JsonValue, QueryArgs, RichText, TextArg,
+    ConstraintArg, Data, DocumentArg, FieldSelection, HyperlinkArg, ItemArg, JsonObject, JsonValue,
+    LinkArg, OslcLinkArg, PlanArg, QueryArgs, RevisionArg, RichText, TextArg,
 };
 pub use command::{CommandInfo, Context, Entry, Run, output_schema_of, parse_as, schema_of};
 pub use config::{Config, WriteTarget, split_list, split_targets};

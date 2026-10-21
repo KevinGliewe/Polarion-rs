@@ -1,0 +1,124 @@
+name: Docker
+
+# The images polarion-cli and polarion-mcp (Dockerfile targets `cli` and `mcp`) on Docker Hub.
+#
+# - Semver tags (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`): `1.2.3`, and for a release without a pre-release part also
+#   `1.2`, `1` and `latest`.
+# - main: `edge` and `sha-<short sha>`.
+# - Pull requests and runs started by hand (Actions > Docker > Run workflow): built and checked
+#   (docker/check-images.sh), not pushed.
+#
+# The Dockerfile's `test` stage runs the workspace's tests, so an image is only pushed when they pass.
+#
+# Settings > Secrets and variables > Actions:
+#   secret DOCKERHUB_USERNAME    the Docker Hub account that pushes
+#   secret DOCKERHUB_TOKEN       its access token (Read & Write)
+#   variable DOCKERHUB_NAMESPACE the user or organization the repositories belong to (default: DOCKERHUB_USERNAME)
+#   variable BASE_REGISTRY       optional mirror of the official base images (Dockerfile), e.g. mirror.gcr.io/library
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+      - "[0-9]+.[0-9]+.[0-9]+*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PUSH: ${{ github.event_name == 'push' }}
+      LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+      NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME || 'local' }}
+      BASE_REGISTRY: ${{ vars.BASE_REGISTRY || 'docker.io/library' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Docker Hub credentials are set
+        if: env.PUSH == 'true' && env.LOGIN != 'true'
+        run: |
+          echo "::error::set the secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN to push the images"
+          exit 1
+      # Logged in, the base images also count against the account's pull limit, not the runner's.
+      - uses: docker/login-action@v3
+        if: env.LOGIN == 'true'
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+
+      # Both targets share the build and test stages; the cache keeps them for the push below.
+      - name: Build polarion-cli
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: cli
+          build-args: BASE_REGISTRY=${{ env.BASE_REGISTRY }}
+          load: true
+          tags: polarion-cli:check
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build polarion-mcp
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: mcp
+          build-args: BASE_REGISTRY=${{ env.BASE_REGISTRY }}
+          load: true
+          tags: polarion-mcp:check
+          cache-from: type=gha
+      - name: Check the images
+        run: sh docker/check-images.sh polarion-cli:check polarion-mcp:check
+
+      - id: cli
+        if: env.PUSH == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ env.NAMESPACE }}/polarion-cli
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=edge,branch=main
+            type=sha,enable=${{ github.ref == 'refs/heads/main' }}
+      - id: mcp
+        if: env.PUSH == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ env.NAMESPACE }}/polarion-mcp
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=edge,branch=main
+            type=sha,enable=${{ github.ref == 'refs/heads/main' }}
+      - name: Push polarion-cli
+        if: env.PUSH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: cli
+          build-args: BASE_REGISTRY=${{ env.BASE_REGISTRY }}
+          push: true
+          tags: ${{ steps.cli.outputs.tags }}
+          labels: ${{ steps.cli.outputs.labels }}
+          cache-from: type=gha
+      - name: Push polarion-mcp
+        if: env.PUSH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: mcp
+          build-args: BASE_REGISTRY=${{ env.BASE_REGISTRY }}
+          push: true
+          tags: ${{ steps.mcp.outputs.tags }}
+          labels: ${{ steps.mcp.outputs.labels }}
+          cache-from: type=gha

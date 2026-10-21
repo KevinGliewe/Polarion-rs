@@ -968,6 +968,10 @@ async fn write_steps(report: &mut Report, g: &Gate) {
     step!("R: attachments", r_attachments(report, g, &token));
     step!("D: body", d_body(report, g, &token, &wrote_d));
     step!("transactions", transactions(report, g, &token));
+    step!(
+        "A: writes of several requests",
+        a_several_writes(report, g, &token)
+    );
     if index_probe(report, g).await {
         report.ok("the index shows the run's last change");
     }
@@ -1558,6 +1562,14 @@ async fn a_work_record(report: &mut Report, g: &Gate) -> Result<(), String> {
         report.skip(
             "A: work record",
             "uri::owner_of is not confirmed on existing work record URIs",
+        );
+        return Ok(());
+    }
+    // The request names the user, which the writer (the fixtures only) may not write.
+    if !g.writer.write_allowed(&polarion::uri::user_uri(&f.user)) {
+        report.skip(
+            "A: work record",
+            "the user is not a write target (createWorkRecord names the user)",
         );
         return Ok(());
     }
@@ -2344,6 +2356,99 @@ async fn transactions(report: &mut Report, g: &Gate, token: &str) -> Result<(), 
         "title {after:?}"
     );
     Ok(())
+}
+
+/// Updates of several requests run as one transaction in a session of their own: both writes
+/// land, the client's session is untouched, and a write the server refuses rolls back the other.
+/// (The Markdown step with a new diagram reads the upload's attachment id back between its two
+/// steps: Polarion does not list an attachment uploaded in a transaction before the commit.)
+async fn a_several_writes(report: &mut Report, g: &Gate, token: &str) -> Result<(), String> {
+    let (f, writer, items) = (&g.fixtures, &g.writer, g.writer.items());
+    let before = a_fields(g, &["title", "description"]).await?;
+    let title = before.title.clone().unwrap_or_default();
+    let session = writer.soap().session_id();
+
+    // `updateWorkItem` and `setFieldsNull`: two writes.
+    let changed = format!("{MARKER_A} two writes by the live suite {token}");
+    let update = WorkItemUpdate {
+        title: Some(changed.clone()),
+        clear: vec!["description".to_owned()],
+        ..WorkItemUpdate::default()
+    };
+    sent(
+        report,
+        "A: title and cleared description, one transaction",
+        items.update(&f.a, &update).await,
+    )?;
+    let after = a_fields(g, &["title", "description"]).await?;
+    check!(
+        report,
+        after.title.as_deref() == Some(changed.as_str()) && after.description.is_none(),
+        "A: both writes landed",
+        "title {:?}, description {:?}",
+        after.title,
+        after.description
+    );
+    check!(
+        report,
+        writer.soap().session_id() == session && !writer.soap().transaction_open(),
+        "the client's session is untouched by the session of its own",
+        "session {:?} (was {session:?})",
+        writer.soap().session_id()
+    );
+    let restore = WorkItemUpdate {
+        title: Some(title.clone()),
+        description: before.description.clone(),
+        clear: if before.description.is_none() {
+            vec!["description".to_owned()]
+        } else {
+            Vec::new()
+        },
+        ..WorkItemUpdate::default()
+    };
+    sent(
+        report,
+        "A: title and description restored",
+        items.update(&f.a, &restore).await,
+    )?;
+
+    // A write the server refuses (a field that does not exist) rolls back the title.
+    let refused = WorkItemUpdate {
+        title: Some(format!("{MARKER_A} rolled back by the live suite {token}")),
+        clear: vec!["polarionRsNoSuchField".to_owned()],
+        ..WorkItemUpdate::default()
+    };
+    let result = items.update(&f.a, &refused).await;
+    let after = a_fields(g, &["title"]).await?.title.unwrap_or_default();
+    match result {
+        Err(_) => {
+            check!(
+                report,
+                after == title,
+                "A: a refused write rolled back the title written before it",
+                "title {after:?}"
+            );
+        }
+        Ok(()) => {
+            report.skip(
+                "A: rollback of a refused write",
+                "the server accepted clearing a field that does not exist: not verified",
+            );
+            sent(
+                report,
+                "A: title restored",
+                items.update(&f.a, &set_title(&title)).await,
+            )?;
+        }
+    };
+    Ok(())
+}
+
+fn set_title(title: &str) -> WorkItemUpdate {
+    WorkItemUpdate {
+        title: Some(title.to_owned()),
+        ..WorkItemUpdate::default()
+    }
 }
 
 // ==================================================================== permanent

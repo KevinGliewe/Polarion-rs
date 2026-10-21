@@ -24,12 +24,19 @@ pub enum Error {
     #[error("refusing {operation}: not allowed by the client's write filter")]
     WriteFiltered { operation: String },
 
+    /// The client is [`crate::ClientBuilder::transaction_only`] and the write was not sent inside
+    /// a transaction; nothing was sent.
+    #[error("refusing {operation}: no transaction is open on this transaction-only client")]
+    NoTransaction { operation: String },
+
     /// Logging in did not produce a session.
     #[error("login failed: {0}")]
     Login(String),
 
     /// The session expired while an explicit transaction was open. The transaction is lost; the
     /// next call logs in again. (Outside a transaction the client logs in again by itself.)
+    /// A [`crate::ClientBuilder::transaction_only`] client returns it for every login after its
+    /// first one, a session renewal included: its transaction cannot survive a new session.
     #[error(
         "the Polarion session expired during an explicit transaction; its uncommitted changes are lost"
     )]

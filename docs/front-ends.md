@@ -257,23 +257,31 @@ output schema instead.
 
 ```mermaid
 flowchart LR
-    client["MCP client"] -- "POST /mcp<br/>Authorization: Bearer token" --> router["axum Router"]
-    router --> auth{"authorize middleware<br/>constant_time_eq"}
+    client["MCP client"] -- "POST /mcp + Authorization: Bearer token<br/>or POST /mcp/&lt;token&gt;" --> auth{"authorize middleware<br/>(around the Router)<br/>token_in_path, constant_time_eq"}
     auth -- "missing or wrong" --> r401(["401, WWW-Authenticate: Bearer"])
-    auth -- ok --> svc["rmcp StreamableHttpService<br/>Host and Origin validation,<br/>32 MiB body limit,<br/>stateless, JSON replies"]
+    auth -- "ok; /mcp/&lt;token&gt; rewritten to /mcp" --> router["axum Router"]
+    router --> svc["rmcp StreamableHttpService<br/>Host and Origin validation,<br/>32 MiB body limit,<br/>stateless, JSON replies"]
     svc --> h["PolarionMcp clone<br/>shared tools and client"]
     h --> pol[("one Polarion session<br/>for all clients")]
 ```
 
-- **Access:** [`http.rs`](../crates/polarion-mcp/src/http.rs) puts a bearer-token check
-  (`POLARION_MCP_AUTH_TOKEN`, at least 16 characters, compared in constant time) in front of rmcp's service.
+- **Access:** [`http.rs`](../crates/polarion-mcp/src/http.rs) puts a token check (`POLARION_MCP_AUTH_TOKEN`, at
+  least 16 characters, compared in constant time) in front of rmcp's service. The token comes as `Authorization:
+  Bearer` on `/mcp`, or as the path segment of `/mcp/<token>` (percent-decoded; for clients that cannot set
+  headers), which `authorize` rewrites to `/mcp`, query kept, before the router sees it: the middleware wraps the
+  router (`Layer::layer`), it is not a route layer. `POLARION_MCP_ALLOW_UNAUTHENTICATED` (refused together with a
+  token) lets every request to `/mcp` through (`Settings::auth_token` is `None`).
   rmcp checks `Host` against `POLARION_MCP_ALLOWED_HOSTS` (default: localhost names) and refuses browser `Origin`s
   that are not in `POLARION_MCP_ALLOWED_ORIGINS`, which protects against DNS rebinding.
 - **Stateless:** no `Mcp-Session-Id` and no server-initiated streams; every POST gets a JSON reply. That keeps the
   server free of per-client state; the guides read for the gate are kept per process, for all clients
   together (see [Guides](#guides)).
 - **One identity:** all clients act as the server's Polarion account and share its session. Transactions would
-  mix clients' changes, so `SESSION_BOUND` commands are left out of the tool list and refused by `run()` over
-  HTTP.
+  mix clients' changes, and a session check could log the shared session in again, so `SESSION_BOUND` commands
+  (`session.begin-transaction`, `commit`, `rollback`, `check`) are left out of the tool list and refused by
+  `admit()` over HTTP. Commands of several writes (a create with categories or links, an update of several fields,
+  the uploads of a Markdown description, its update and deletes) are not affected: the library runs them as one
+  transaction in a Polarion session of their own (`Polarion::atomic`, see
+  [Library](library.md#writes-of-several-requests)).
 - **Shutdown:** Ctrl-C or SIGTERM cancels rmcp's token, axum shuts down gracefully, and `PolarionMcp::shutdown`
   ends the Polarion session. Over stdio, the session ends when stdin closes.

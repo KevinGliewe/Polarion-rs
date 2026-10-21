@@ -15,6 +15,7 @@ flowchart TB
     mdcrate["polarion_markdown<br/>conversions, mermaid"]
     client["client.rs<br/>Polarion, PolarionBuilder,<br/>check_write and the target guards, session and transactions"]
     restricted["restricted.rs<br/>restricted mode: the SOAP write filter"]
+    atomic["atomic.rs<br/>Polarion::atomic: writes of several requests,<br/>one transaction in a session of its own"]
     inputs["write.rs, query.rs, uri.rs<br/>NewWorkItem, WorkItemUpdate, FieldValue::coerce,<br/>WorkItemQuery, Fields, ItemRef, DocumentRef"]
     convert["convert.rs<br/>SOAP type into domain type"]
     model["model.rs<br/>WorkItem, Document, TestRun, Plan, ..."]
@@ -23,6 +24,8 @@ flowchart TB
     caller -- "polarion.items() ..." --> handles
     caller -. "builds" .-> inputs
     handles -- "a guard before a write" --> client
+    handles -- "more than one write request" --> atomic
+    atomic -- "own_session, grant_created" --> client
     client -- "restrict_writes: write_filter" --> restricted
     restricted -. "Filter::allows on every write request" .-> soap
     handles -- "inputs" --> inputs
@@ -58,9 +61,15 @@ flowchart TB
   `MarkdownUpdate`. A top-level file of its own, so the commands' coverage test sees its methods. The writes call
   `WorkItems::writable` before anything else, render every new diagram before the first upload, upload before
   `updateWorkItem`, and delete only the diagram attachments the old description showed (see
-  [Markdown](markdown.md)). `polarion_markdown` is re-exported.
+  [Markdown](markdown.md)). The reads and the rendering come first (`write_markdown`); then two steps through
+  `Polarion::atomic`: the uploads, and after them the update and the deletes (`Plan::execute`). Each step of more
+  than one write is one transaction. Two steps, because Polarion lists an attachment uploaded in a transaction only
+  once it is committed (seen on a live server), and the HTML needs the new attachments' ids, read in between.
+  `polarion_markdown` is re-exported.
 - **Write inputs** ([`write.rs`](../crates/polarion/src/write.rs)): `NewWorkItem`, `WorkItemUpdate`,
-  `NewDocument`, ... `FieldValue::coerce(json, definition)` types JSON from a CLI or an agent for a custom field,
+  `NewDocument`, `NewTestRun`, `NewPlan`, ... The create inputs also carry what their create request cannot:
+  categories, assignees, links and the other follow-ups of a work item (`NewWorkItem::follow_ups`), the type,
+  status and custom fields of a document (`NewDocument::follow_up`), the `fields` of a test run or plan. `FieldValue::coerce(json, definition)` types JSON from a CLI or an agent for a custom field,
   using the field's definition from `schema()`.
 
 ## The write guard
@@ -111,17 +120,28 @@ What each guard allows:
 | `check_write_target(op, uri)` | `WorkItems::writable` (every other write to an existing work item, comments and Markdown included), `Documents::writable`, `TestRuns::writable_run`, `Plans::writable`, `TestRuns::set_steps` (the test case), `Baselines::update` | the project of `uri` is writable | `uri` (without `%revision`) is a target |
 | `check_write_targets(op, uri, named)` | `add_link`, `add_link_at_revision`, `remove_link`, test records (`TestRuns::writable_record`: test case, defect, executing user), `TestRuns::update` (summary defect), `Plans::add_items`/`remove_items` | the project of `uri` (links may point to other projects) | `uri` and every named object are targets |
 | `check_write_owned(op, owner, owned)` | replies to comments, `set_comment_resolved`, `set_comment_tags`, `delete_work_record` | the projects of both URIs are writable | `owner` is a target, and `uri::owner_of(owned)` reads that owner (an unknown format is refused) |
-| `check_create(op, project, kind)` | `WorkItems::create`, `Documents::create`, `TestRuns::create`, `create_with_title` | `project` is writable | `project` is the budget's, and its kind has a create left; every attempt takes one, even if it fails later |
+| `check_create(op, project, kind)` | `WorkItems::create`, `Documents::create`, `TestRuns::create` | `project` is writable | `project` is the budget's, and its kind has a create left; every attempt takes one, even if it fails later (or rolls back) |
 | `check_unbounded_write(op)` | workflow actions, deletes of whole objects, moves, reuse and derived documents, title headings, test executions, summary defects, project spans, external, OSLC and revision links, auto-suspect, auto-assign, document comments that refer to a work item, other creates (`create_module`, work items in a document, plans, baselines, folders, users), user updates, the account vault, activity comments | passes; the project check that follows decides | refused |
 | `check_write`, `check_write_uri`, `check_global_write`, `check_write_scope`, `check_any_write` | after `check_unbounded_write`; inside the target guards and `check_transaction` in project mode | the project is in `allow_writes`; writes that belong to no project need `allow_global_writes` | refused, so a method that calls only these is refused too |
 | `check_field_keys(op, keys)` | field writes: creating and updating work items, `set_custom_field`, `clear_fields`, updating documents, test runs and plans | nothing to check | never `status` or `resolution` (any case) |
-| `check_transaction(op)` | `begin_transaction`, `commit`, `rollback` | as `check_any_write` | allowed when the client has a target or a create left: transactions only wrap writes that are checked one by one |
+| `check_transaction(op)` | `begin_transaction`, `commit`, `rollback`, `Polarion::atomic` | as `check_any_write` | allowed when the client has a target or a create left: transactions only wrap writes that are checked one by one |
 
 **Documents** in restricted mode: `Documents::update` never writes the structure link role, never a body with work
 item macros (`module-workitem`), and the body or outline numbering only of a document that holds no work items. It
 reads them first (`getModuleWorkItemUris`) and leaves an approval (`Polarion::approve_document_write`) that the
 filter uses up with the next request that writes that document's body or outline numbering, also when it refuses
-the request.
+the request. The read and the write are separate requests: a work item added to the document in between is not
+seen.
+
+**Objects a session of its own created** (restricted mode): a create with follow-ups runs in a session of its own
+(`Polarion::own_session`, see [below](#writes-of-several-requests)), whose guard and filter also accept the objects
+that session created (`Polarion::grant_created`, kept in its `restricted::Created`; the filter checks them with
+`Filter::is_writable`, in its `Target` and `Owned` classes only). The URI the server returns must be an object of
+that kind in the budget's project, without a revision; otherwise the transaction rolls back. Neither the client's
+own session nor another session of its own may write to such an object, and `write_allowed` stays false for it.
+Before the budget is taken, the create's follow-ups are checked (`WorkItems::check_new`): link targets and plans
+must be targets; external, OSLC and revision links, and any follow-up while an explicit transaction is open
+(`OWN_SESSION`), are refused.
 
 **The SOAP write filter** ([`restricted.rs`](../crates/polarion/src/restricted.rs)) is installed by
 `PolarionBuilder::build()` in restricted mode (`ClientBuilder::write_filter`; the SOAP client is read-only too when
@@ -160,6 +180,57 @@ repeated (`polarion_soap::Error::SessionExpired`).
   `POLARION_ALLOW_GLOBAL_WRITES` → `allow_global_writes`, and `POLARION_WRITE_TARGETS` (which wins over both, even
   when empty) → `restrict_writes` with the resolved URIs, never a create budget (in
   [`polarion-commands/src/config.rs`](../crates/polarion-commands/src/config.rs), `Config::connect`).
+
+## Writes of several requests
+
+A library operation that needs more than one SOAP write sends them through `Polarion::atomic`
+([`atomic.rs`](../crates/polarion/src/atomic.rs)): a create with follow-ups (`WorkItems::create`,
+`create_in_document`, `Documents::create`, `create_module`, `TestRuns::create`, `Plans::create`), `WorkItems::update`
+with more than one request, and the Markdown description writes: their uploads, then their update and deletes. The guards, conversions and
+reads run first, on the client; one write alone, or a write inside the client's open transaction (an explicit one,
+or the transaction of a session of its own calling further methods), runs on the client as before.
+
+```mermaid
+sequenceDiagram
+    participant C as caller
+    participant P as Polarion (client's session)
+    participant T as spawned task
+    participant S as session of its own
+    C->>P: e.g. WorkItems::create(new)
+    P->>P: check_new, check_create, content() (getProject)
+    P->>P: atomic(op, 1 + follow_ups, f)
+    alt writes <= 1, or a transaction open on this client
+        P->>P: f(this client)
+    else
+        P->>P: check_transaction, own_session()
+        P->>T: tokio::spawn(transaction(session, f))
+        T->>S: beginTransaction (the session's only login)
+        T->>S: f: createWorkItem, grant_created, apply_follow_ups
+        alt f succeeded and transaction_open()
+            T->>S: endTransaction(false)
+        else f failed
+            T->>S: endTransaction(true), if still open
+        end
+        T->>S: Client::logout (endSession)
+        T-->>P: the result
+    end
+    P-->>C: Ok(item) or the error
+```
+
+- **A session of its own** (`Polarion::own_session`): a SOAP client built from the template the builder kept
+  (`Sessions`), with its own reqwest client and cookie jar, so it shares nothing with the client's session. It is
+  transaction-only (`ClientBuilder::transaction_only`): it logs in once (a renewal is `SessionExpired`) and sends no
+  write outside its transaction (`NoTransaction`). It shares the write policy and the SOAP write filter with the
+  client, so budgets stay single. The polarion-mcp HTTP server can therefore run these commands although all its
+  clients share one session.
+- **All or nothing:** a failed write or a follow-up that adds nothing (`Invalid`) rolls back; a commit the server
+  refuses committed nothing (its fault is returned); a commit without an answer is `Error::CommitUncertain`; an
+  expiry inside the transaction commits nothing (`SessionExpired`).
+- **Cancellation:** the transaction runs in a spawned task, so a caller that is dropped (an MCP cancel, a timeout)
+  does not stop it: it commits or rolls back and logs out, and the result is dropped. Rolling back from `Drop`
+  instead could overtake a write still on its way, which would then be committed alone. When the runtime shuts down
+  first, nothing is committed and the server times the session out. A panic in `f` is raised again in the caller.
+- **Cost:** one more login and logout per such operation.
 
 ## Contracts
 

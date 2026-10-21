@@ -15,6 +15,18 @@ use crate::restricted;
 use crate::uri::{DocumentRef, ItemRef};
 use crate::write::{DocumentUpdate, NewDocument, ReuseDocument};
 
+/// The document `uri` was just created from `new` by the session of `p`: with fields to write
+/// after the create, it is granted to that session ([`Polarion::grant_created`]) and they are
+/// written.
+async fn created(p: &Polarion, uri: String, new: &NewDocument) -> Result<DocumentRef> {
+    let document = DocumentRef::from_uri(uri);
+    if let Some(update) = new.follow_up() {
+        p.grant_created(CreateKind::Document, &document.uri)?;
+        p.documents().update(&document, &update).await?;
+    }
+    Ok(document)
+}
+
 /// Module fields fetched when listing documents (everything but the body).
 const LIST_FIELDS: &[&str] = &[
     "id",
@@ -312,6 +324,9 @@ impl<'a> Documents<'a> {
 
     /// Create a live document; returns its reference. A client restricted to write targets
     /// never creates one with work item macros in its body.
+    ///
+    /// With a type, status or custom fields ([`NewDocument`]), the create and the `updateModule`
+    /// that writes them run as one transaction in a Polarion session of its own (all or nothing).
     pub async fn create(&self, new: &NewDocument) -> Result<DocumentRef> {
         if self.polarion.writes_restricted()
             && new
@@ -326,50 +341,80 @@ impl<'a> Documents<'a> {
                 Some(DOCUMENT_MACROS),
             ));
         }
+        // Before the budget is taken: a refused create takes nothing.
+        self.check_follow_up("createDocument", new)?;
         self.polarion
             .check_create("createDocument", &new.project, CreateKind::Document)?;
-        let types: Vec<soap::EnumOptionId> =
-            new.allowed_types.iter().map(|t| option_id(t)).collect();
-        let uri = self
-            .tracker()
-            .create_document(
-                &new.project,
-                new.space.as_deref(),
-                &new.name,
-                new.title.as_deref(),
-                &types,
-                &option_id(&new.structure_link_role),
-                new.body.as_deref(),
-            )
-            .await?;
-        Ok(DocumentRef::from_uri(uri))
+        let new = new.clone();
+        let writes = 1 + usize::from(new.follow_up().is_some());
+        self.polarion
+            .atomic("createDocument", writes, move |p| async move {
+                let types: Vec<soap::EnumOptionId> =
+                    new.allowed_types.iter().map(|t| option_id(t)).collect();
+                // The guard ran above: the request is sent as it is.
+                let uri = p
+                    .soap()
+                    .tracker()
+                    .create_document(
+                        &new.project,
+                        new.space.as_deref(),
+                        &new.name,
+                        new.title.as_deref(),
+                        &types,
+                        &option_id(&new.structure_link_role),
+                        new.body.as_deref(),
+                    )
+                    .await?;
+                created(&p, uri, &new).await
+            })
+            .await
     }
 
     /// Create an old-style module (`createModule`); `parent_to_child` sets the link direction
-    /// of the structure. Prefer [`Documents::create`].
+    /// of the structure. Prefer [`Documents::create`]. Type, status and custom fields as there;
+    /// never in restricted mode.
     pub async fn create_module(
         &self,
         new: &NewDocument,
         parent_to_child: bool,
     ) -> Result<DocumentRef> {
+        self.check_follow_up("createModule", new)?;
         self.polarion.check_unbounded_write("createModule")?;
         self.polarion
             .check_write("createModule", Some(&new.project))?;
-        let types: Vec<soap::EnumOptionId> =
-            new.allowed_types.iter().map(|t| option_id(t)).collect();
-        let uri = self
-            .tracker()
-            .create_module(
-                &new.project,
-                new.space.as_deref(),
-                &new.name,
-                &types,
-                &option_id(&new.structure_link_role),
-                parent_to_child,
-                new.body.as_deref(),
-            )
-            .await?;
-        Ok(DocumentRef::from_uri(uri))
+        let new = new.clone();
+        let writes = 1 + usize::from(new.follow_up().is_some());
+        self.polarion
+            .atomic("createModule", writes, move |p| async move {
+                let types: Vec<soap::EnumOptionId> =
+                    new.allowed_types.iter().map(|t| option_id(t)).collect();
+                let uri = p
+                    .soap()
+                    .tracker()
+                    .create_module(
+                        &new.project,
+                        new.space.as_deref(),
+                        &new.name,
+                        &types,
+                        &option_id(&new.structure_link_role),
+                        parent_to_child,
+                        new.body.as_deref(),
+                    )
+                    .await?;
+                created(&p, uri, &new).await
+            })
+            .await
+    }
+
+    /// The checks of the fields written after a create, before anything is sent: the custom
+    /// field keys and the status (refused in restricted mode, as for [`Documents::update`]).
+    fn check_follow_up(&self, operation: &'static str, new: &NewDocument) -> Result<()> {
+        let keys = new
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(new.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys(operation, keys)
     }
 
     /// Change fields of a document.

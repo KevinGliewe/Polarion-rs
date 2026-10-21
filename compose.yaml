@@ -1,0 +1,46 @@
+# polarion-mcp over HTTP at http://localhost:8787/mcp, configured from the host's environment.
+#
+#   export POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=...
+#   export POLARION_MCP_AUTH_TOKEN=$(openssl rand -hex 32)   # or POLARION_MCP_ALLOW_UNAUTHENTICATED=1
+#   docker compose up -d --build
+#
+# The image: built here from the Dockerfile (target `mcp`) as `polarion-mcp`. To run a published
+# one instead, name it and pull it first (otherwise compose builds it under that name):
+#
+#   export POLARION_MCP_IMAGE=<namespace>/polarion-mcp:latest
+#   docker compose pull && docker compose up -d
+#
+# Variables are passed through by name: one that is not set on the host is not set in the
+# container either (POLARION_WRITE_TARGETS restricts writes as soon as it is set, even empty).
+# A .env file next to this one works too. The image's defaults (full access, see Dockerfile)
+# apply unless the host overrides them, e.g. POLARION_ALLOW_GLOBAL_WRITES=0.
+
+services:
+  polarion-mcp:
+    image: ${POLARION_MCP_IMAGE:-polarion-mcp}
+    build:
+      context: .
+      target: mcp
+      # The Dockerfile's build arguments, from the host or .env when set (the Dockerfile's
+      # defaults otherwise).
+      args:
+        - BASE_REGISTRY
+        - RUST_VERSION
+        - DEBIAN_RELEASE
+        - RUST_IMAGE
+        - RUNTIME_IMAGE
+    restart: unless-stopped
+    ports:
+      # Only reachable from this machine; see README.md (Docker) before publishing it further.
+      - "127.0.0.1:${POLARION_MCP_PORT:-8787}:8787"
+    environment:
+      - POLARION_URL
+      - POLARION_TOKEN
+      - POLARION_USER
+      - POLARION_PROJECT
+      # One of the two, or the server does not start: the token (16+ characters), which clients
+      # send as `Authorization: Bearer <token>` or in the URL, /mcp/<token>; or
+      # POLARION_MCP_ALLOW_UNAUTHENTICATED=1: no token, everyone who reaches the port acts as
+      # the Polarion account.
+      - POLARION_MCP_AUTH_TOKEN
+      - POLARION_MCP_ALLOW_UNAUTHENTICATED

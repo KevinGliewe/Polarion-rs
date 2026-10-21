@@ -13,7 +13,8 @@
 //! - a request whose object (the parameter that names what the operation changes, see
 //!   [`Subject`]) is missing or not a write target, or that names any object URI (in an element's
 //!   text or an attribute value, the whole value) that is not a write target, an object owned by
-//!   the target, or the project of a budgeted create;
+//!   the target, or the project of a budgeted create (in a session of its own, objects it
+//!   created count as targets, see [`Created`]);
 //! - identity fields (`id`, `project`, ...) in the object of an update, which could name another
 //!   object than its URI;
 //! - `status` and `resolution` in field writes; in documents link settings (structure link role,
@@ -199,7 +200,33 @@ impl Approvals {
     }
 }
 
-/// The SOAP write filter of a write-restricted client.
+/// The objects a session of its own ([`crate::Polarion::own_session`]) created, by URI without
+/// `%revision` ([`crate::Polarion::grant_created`]): its guards and its SOAP write filter treat
+/// them as write targets, for its follow-up writes only. Each session has its own set, so
+/// neither the main session nor another one (nor [`crate::Polarion::soap`] of the main client)
+/// can write to them. Creates never name them (`Filter::allows_create` checks only targets).
+#[derive(Debug, Default)]
+pub(crate) struct Created(Mutex<BTreeSet<String>>);
+
+impl Created {
+    /// The session created the object `uri`.
+    pub(crate) fn insert(&self, uri: &str) {
+        self.0
+            .lock()
+            .expect("created lock")
+            .insert(uri::strip_revision(uri).to_owned());
+    }
+
+    /// Whether the session created the object `uri` (a `%revision` suffix is ignored).
+    pub(crate) fn contains(&self, uri: &str) -> bool {
+        self.0
+            .lock()
+            .expect("created lock")
+            .contains(uri::strip_revision(uri))
+    }
+}
+
+/// The SOAP write filter of a write-restricted client, shared by its sessions of their own.
 #[derive(Debug)]
 pub(crate) struct Filter {
     targets: BTreeSet<String>,
@@ -223,8 +250,9 @@ impl Filter {
         }
     }
 
-    /// Whether the write `operation` with this request body may be sent.
-    pub(crate) fn allows(&self, operation: &str, body: &str) -> bool {
+    /// Whether the write `operation` with this request body may be sent, by a session that
+    /// created the objects in `created` (a session of its own) or none (the main session).
+    pub(crate) fn allows(&self, operation: &str, body: &str, created: Option<&Created>) -> bool {
         let Some((_, class, subject, params)) = find(operation) else {
             return false;
         };
@@ -263,15 +291,15 @@ impl Filter {
         let uris = object_uris(root);
         match class {
             Class::Target => self.subject(*subject, &args).is_some_and(|s| {
-                self.is_target(&s)
-                    && uris.iter().all(|u| self.is_target(u))
+                self.is_writable(&s, created)
+                    && uris.iter().all(|u| self.is_writable(u, created))
                     && (!needs_approval || approved)
             }),
             Class::Owned => self.subject(*subject, &args).is_some_and(|s| {
-                let owner = if self.is_target(&s) {
+                let owner = if self.is_writable(&s, created) {
                     Some(uri::strip_revision(&s).to_owned())
                 } else {
-                    uri::owner_of(&s).filter(|o| self.targets.contains(o.as_str()))
+                    uri::owner_of(&s).filter(|o| self.is_writable(o, created))
                 };
                 owner.is_some_and(|owner| {
                     uris.iter().all(|u| {
@@ -287,6 +315,12 @@ impl Filter {
 
     fn is_target(&self, uri: &str) -> bool {
         self.targets.contains(uri::strip_revision(uri))
+    }
+
+    /// A target, or an object the sending session created: what a write to an existing object
+    /// may change or name. Creates use [`Filter::is_target`] only.
+    fn is_writable(&self, uri: &str, created: Option<&Created>) -> bool {
+        self.is_target(uri) || created.is_some_and(|c| c.contains(uri))
     }
 
     /// The object the request names (see [`Subject`]); `None` when it names none in the expected
@@ -568,6 +602,13 @@ mod tests {
         Filter::new(Some(&targets), creates.as_ref(), Arc::default())
     }
 
+    impl Filter {
+        /// [`Filter::allows`] for a request of the main session.
+        fn allows_main(&self, operation: &str, body: &str) -> bool {
+            self.allows(operation, body, None)
+        }
+    }
+
     fn parsed(body: &str, check: impl FnOnce(Node<'_, '_>)) {
         let wrapped = wrap(body);
         let document = Document::parse(&wrapped).unwrap();
@@ -655,7 +696,7 @@ mod tests {
     fn markup_the_writer_never_emits_is_refused() {
         let a = format!("{BASE}P${{WorkItem}}P-1");
         let f = filter(&[&a], None);
-        assert!(f.allows("addHyperlink", &hyperlink(&a)));
+        assert!(f.allows_main("addHyperlink", &hyperlink(&a)));
         for body in [
             hyperlink(&format!("{a}<!-- x -->")),
             hyperlink(&format!("<![CDATA[{a}]]>")),
@@ -683,7 +724,7 @@ mod tests {
             hyperlink(&a).replace("trackeri:url", "nope:url"),
             hyperlink(&a).replace("</trackeri:addHyperlink>", ""),
         ] {
-            assert!(!f.allows("addHyperlink", &body), "{body}");
+            assert!(!f.allows_main("addHyperlink", &body), "{body}");
         }
     }
 
@@ -702,7 +743,7 @@ mod tests {
                 "<trackert:key>risk</trackert:key><trackert:parentItemURI>{parent}</trackert:parentItemURI><trackert:value xsi:type=\"xsd:int\">1</trackert:value>"
             )
         };
-        assert!(f.allows("setCustomField", &custom(&field(&a))));
+        assert!(f.allows_main("setCustomField", &custom(&field(&a))));
         for body in [
             // A second parent, a second field element, a parameter twice, an unknown one.
             custom(&format!(
@@ -725,18 +766,18 @@ mod tests {
             )),
             custom("<trackert:key>risk</trackert:key>"),
         ] {
-            assert!(!f.allows("setCustomField", &body), "{body}");
+            assert!(!f.allows_main("setCustomField", &body), "{body}");
         }
         // Parameters out of order; arrays repeat.
         let swapped = hyperlink(&a).replace(
             "<trackeri:workitemURI>",
             "<trackeri:url>https://y</trackeri:url><trackeri:workitemURI>",
         );
-        assert!(!f.allows("addHyperlink", &swapped));
+        assert!(!f.allows_main("addHyperlink", &swapped));
         let cleared = format!(
             "<trackeri:setFieldsNull><trackeri:workitemURI>{a}</trackeri:workitemURI><trackeri:fields>dueDate</trackeri:fields><trackeri:fields>severity</trackeri:fields></trackeri:setFieldsNull>"
         );
-        assert!(f.allows("setFieldsNull", &cleared));
+        assert!(f.allows_main("setFieldsNull", &cleared));
     }
 
     #[test]
@@ -750,7 +791,7 @@ mod tests {
             )
         };
         let title = |t: &str| format!("<trackert:title>{t}</trackert:title>");
-        assert!(f.allows(
+        assert!(f.allows_main(
             "updateWorkItem",
             &update(&format!(" uri=\"{a}\""), &title("x"))
         ));
@@ -772,7 +813,7 @@ mod tests {
             ),
             update(&format!(" uri=\"{b}\""), &title("x")),
         ] {
-            assert!(!f.allows("updateWorkItem", &body), "{body}");
+            assert!(!f.allows_main("updateWorkItem", &body), "{body}");
         }
         // The first parameter must be the object, not the target named elsewhere.
         let link = |item: &str, linked: &str| {
@@ -780,14 +821,14 @@ mod tests {
                 "<trackeri:addLinkedItem><trackeri:workitemURI>{item}</trackeri:workitemURI><trackeri:linkedWorkitemURI>{linked}</trackeri:linkedWorkitemURI><trackeri:role><trackert:id>r</trackert:id></trackeri:role></trackeri:addLinkedItem>"
             )
         };
-        assert!(f.allows("addLinkedItem", &link(&a, &a)));
-        assert!(!f.allows("addLinkedItem", &link(&b, &a)));
-        assert!(!f.allows("addLinkedItem", &link(&a, &b)));
+        assert!(f.allows_main("addLinkedItem", &link(&a, &a)));
+        assert!(!f.allows_main("addLinkedItem", &link(&b, &a)));
+        assert!(!f.allows_main("addLinkedItem", &link(&a, &b)));
         let nil = "<trackeri:addHyperlink><trackeri:workitemURI xsi:nil=\"true\"/><trackeri:url>x</trackeri:url></trackeri:addHyperlink>";
-        assert!(!f.allows("addHyperlink", nil));
+        assert!(!f.allows_main("addHyperlink", nil));
         let missing =
             "<trackeri:addHyperlink><trackeri:url>x</trackeri:url></trackeri:addHyperlink>";
-        assert!(!f.allows("addHyperlink", missing));
+        assert!(!f.allows_main("addHyperlink", missing));
     }
 
     #[test]
@@ -817,39 +858,39 @@ mod tests {
                 item.replacen("${WorkItem}", "${WorkRecord}{WorkItem}", 1)
             )
         };
-        assert!(f.allows("addHyperlink", &hyperlink(&a)));
-        assert!(f.allows("addHyperlink", &hyperlink(&format!("{a}%42"))));
-        assert!(f.allows("addComment", &comment(&a)));
-        assert!(f.allows("addComment", &comment(&a_comment(&a, "7"))));
-        assert!(f.allows("deleteWorkRecord", &record(&a, &a_record(&a, "wr-1"))));
+        assert!(f.allows_main("addHyperlink", &hyperlink(&a)));
+        assert!(f.allows_main("addHyperlink", &hyperlink(&format!("{a}%42"))));
+        assert!(f.allows_main("addComment", &comment(&a)));
+        assert!(f.allows_main("addComment", &comment(&a_comment(&a, "7"))));
+        assert!(f.allows_main("deleteWorkRecord", &record(&a, &a_record(&a, "wr-1"))));
         // Only comment and work record operations take owned objects; the owner must be a
         // target, and the work record the work item's.
-        assert!(!f.allows("addHyperlink", &hyperlink(&a_comment(&a, "7"))));
+        assert!(!f.allows_main("addHyperlink", &hyperlink(&a_comment(&a, "7"))));
         let a12 = format!("{BASE}P${{WorkItem}}P-12");
-        assert!(!f.allows("addComment", &comment(&a_comment(&a12, "7"))));
-        assert!(!f.allows("addComment", &comment(&a_comment(&a, "x${WorkItem}P-3"))));
+        assert!(!f.allows_main("addComment", &comment(&a_comment(&a12, "7"))));
+        assert!(!f.allows_main("addComment", &comment(&a_comment(&a, "x${WorkItem}P-3"))));
         let other = format!("{BASE}P${{WorkItem}}P-2");
-        assert!(!f.allows("deleteWorkRecord", &record(&a, &a_record(&other, "wr-1"))));
+        assert!(!f.allows_main("deleteWorkRecord", &record(&a, &a_record(&other, "wr-1"))));
 
-        assert!(!f.allows("addHyperlink", &hyperlink(&other)));
-        assert!(!f.allows("deleteWorkItem", &hyperlink(&a)));
-        assert!(!f.allows("performWorkflowAction", &hyperlink(&a)));
-        assert!(!f.allows("noSuchOperation", &hyperlink(&a)));
+        assert!(!f.allows_main("addHyperlink", &hyperlink(&other)));
+        assert!(!f.allows_main("deleteWorkItem", &hyperlink(&a)));
+        assert!(!f.allows_main("performWorkflowAction", &hyperlink(&a)));
+        assert!(!f.allows_main("noSuchOperation", &hyperlink(&a)));
         // Status and resolution.
         let status = format!(
             r#"<trackeri:updateWorkItem><trackeri:content uri="{a}"><trackert:status><trackert:id>done</trackert:id></trackert:status></trackeri:content></trackeri:updateWorkItem>"#
         );
-        assert!(!f.allows("updateWorkItem", &status));
+        assert!(!f.allows_main("updateWorkItem", &status));
         let approval = format!(
             "<trackeri:editApproval><trackeri:workitemURI>{a}</trackeri:workitemURI><trackeri:approveeId>me</trackeri:approveeId><trackeri:status><trackert:id>approved</trackert:id></trackeri:status></trackeri:editApproval>"
         );
-        assert!(f.allows("editApproval", &approval));
+        assert!(f.allows_main("editApproval", &approval));
         // Transactions name nothing.
-        assert!(f.allows(
+        assert!(f.allows_main(
             "beginTransaction",
             "<sessioni:beginTransaction></sessioni:beginTransaction>"
         ));
-        assert!(!f.allows(
+        assert!(!f.allows_main(
             "endTransaction",
             &format!("<sessioni:endTransaction><sessioni:rollback>{a}</sessioni:rollback></sessioni:endTransaction>")
         ));
@@ -870,15 +911,15 @@ mod tests {
             )
         };
         let title = "<trackert:title>t</trackert:title>";
-        assert!(f.allows("updateModule", &update(title)));
+        assert!(f.allows_main("updateModule", &update(title)));
         // The body only after the library checked the document (once per check).
         let paragraph = body("&lt;p&gt;x&lt;/p&gt;");
-        assert!(!f.allows("updateModule", &update(&paragraph)));
+        assert!(!f.allows_main("updateModule", &update(&paragraph)));
         f.approvals.approve(&d);
-        assert!(f.allows("updateModule", &update(&paragraph)));
-        assert!(!f.allows("updateModule", &update(&paragraph)));
+        assert!(f.allows_main("updateModule", &update(&paragraph)));
+        assert!(!f.allows_main("updateModule", &update(&paragraph)));
         f.approvals.approve(&format!("{d}%12"));
-        assert!(f.allows(
+        assert!(f.allows_main(
             "updateModule",
             &update("<trackert:usesOutlineNumbering>true</trackert:usesOutlineNumbering>")
         ));
@@ -889,18 +930,18 @@ mod tests {
             "<trackert:autoSuspect>true</trackert:autoSuspect>".to_owned(),
             "<trackert:moduleName>Other</trackert:moduleName>".to_owned(),
         ] {
-            assert!(!f.allows("updateModule", &update(&fields)), "{fields}");
+            assert!(!f.allows_main("updateModule", &update(&fields)), "{fields}");
         }
         // A refused body uses up its approval: none is left for the next request.
         f.approvals.approve(&d);
         let other = format!("{BASE}P${{WorkItem}}P-3");
-        assert!(!f.allows(
+        assert!(!f.allows_main(
             "updateModule",
             &update(&body(&format!(
                 "&lt;a href=&quot;{other}&quot;&gt;x&lt;/a&gt;"
             )))
         ));
-        assert!(!f.allows("updateModule", &update(&paragraph)));
+        assert!(!f.allows_main("updateModule", &update(&paragraph)));
         // A new document never names work items either.
         let budget = CreateBudget {
             documents: 1,
@@ -912,13 +953,13 @@ mod tests {
                 "<trackeri:createDocument><trackeri:projectId>P</trackeri:projectId><trackeri:documentName>D</trackeri:documentName><trackeri:homePageContent>{html}</trackeri:homePageContent></trackeri:createDocument>"
             )
         };
-        assert!(!creator.allows(
+        assert!(!creator.allows_main(
             "createDocument",
             &create(
                 "&lt;div id=&quot;polarion_wiki macro name=Module-WorkItem;params=id=P-3&quot;/&gt;"
             )
         ));
-        assert!(creator.allows("createDocument", &create("&lt;p&gt;D&lt;/p&gt;")));
+        assert!(creator.allows_main("createDocument", &create("&lt;p&gt;D&lt;/p&gt;")));
     }
 
     #[test]
@@ -934,39 +975,39 @@ mod tests {
                 r#"<trackeri:createWorkItem><trackeri:content><trackert:project uri="{BASE}{project}${{Project}}{project}"><trackert:id>{project}</trackert:id></trackert:project>{extra}</trackeri:content></trackeri:createWorkItem>"#
             )
         };
-        assert!(!f.allows("createWorkItem", &item("Q", "")));
-        assert!(!f.allows("createWorkItem", "<trackeri:createWorkItem/>"));
+        assert!(!f.allows_main("createWorkItem", &item("Q", "")));
+        assert!(!f.allows_main("createWorkItem", "<trackeri:createWorkItem/>"));
         // The project by id only, with the budget's project URI in the title.
         let by_id = format!(
             "<trackeri:createWorkItem><trackeri:content><trackert:project><trackert:id>Q</trackert:id></trackert:project><trackert:title>{BASE}P${{Project}}P</trackert:title></trackeri:content></trackeri:createWorkItem>"
         );
-        assert!(!f.allows("createWorkItem", &by_id));
+        assert!(!f.allows_main("createWorkItem", &by_id));
         // A project URI with another id, a URI on the content, another object named.
         let mixed = item("P", "").replace(
             "<trackert:id>P</trackert:id>",
             "<trackert:id>Q</trackert:id>",
         );
-        assert!(!f.allows("createWorkItem", &mixed));
+        assert!(!f.allows_main("createWorkItem", &mixed));
         let with_uri = item("P", "").replacen(
             "<trackeri:content>",
             &format!("<trackeri:content uri=\"{BASE}P${{WorkItem}}P-1\">"),
             1,
         );
-        assert!(!f.allows("createWorkItem", &with_uri));
+        assert!(!f.allows_main("createWorkItem", &with_uri));
         let linked = item(
             "P",
             &format!(
                 "<trackert:description><trackert:content>{BASE}P${{WorkItem}}P-1</trackert:content></trackert:description>"
             ),
         );
-        assert!(!f.allows("createWorkItem", &linked));
-        assert!(f.allows("createWorkItem", &item("P", "")));
-        assert!(f.allows(
+        assert!(!f.allows_main("createWorkItem", &linked));
+        assert!(f.allows_main("createWorkItem", &item("P", "")));
+        assert!(f.allows_main(
             "createWorkItem",
             &item("P", "<trackert:title>x</trackert:title>")
         ));
         assert!(
-            !f.allows("createWorkItem", &item("P", "")),
+            !f.allows_main("createWorkItem", &item("P", "")),
             "budget used up"
         );
 
@@ -975,16 +1016,91 @@ mod tests {
                 "<testmanagementi:createTestRun><testmanagementi:project>{project}</testmanagementi:project><testmanagementi:id>R</testmanagementi:id></testmanagementi:createTestRun>"
             )
         };
-        assert!(!f.allows("createTestRun", &run("Q")));
+        assert!(!f.allows_main("createTestRun", &run("Q")));
         let titled = run("P").replace("createTestRun>", "createTestRunWithTitle>");
-        assert!(f.allows("createTestRunWithTitle", &titled));
-        assert!(!f.allows("createTestRun", &run("P")), "budget used up");
+        assert!(f.allows_main("createTestRunWithTitle", &titled));
+        assert!(!f.allows_main("createTestRun", &run("P")), "budget used up");
 
         let doc = "<trackeri:createDocument><trackeri:projectId>P</trackeri:projectId></trackeri:createDocument>";
         assert!(
-            !f.allows("createDocument", doc),
+            !f.allows_main("createDocument", doc),
             "no documents in the budget"
         );
-        assert!(!filter(&[], None).allows("createDocument", doc));
+        assert!(!filter(&[], None).allows_main("createDocument", doc));
+    }
+
+    #[test]
+    fn created_objects_are_writable_only_by_their_session() {
+        let a = format!("{BASE}P${{WorkItem}}P-1");
+        let new = format!("{BASE}P${{WorkItem}}P-9");
+        let budget = CreateBudget {
+            work_items: 2,
+            ..CreateBudget::default()
+        };
+        let f = filter(&[&a], Some(("P", budget)));
+        let created = Created::default();
+        created.insert(&format!("{new}%5"));
+        let other = Created::default();
+        other.insert(&format!("{BASE}P${{WorkItem}}P-8"));
+        // The session that created it, a revision included; not the main session or another one.
+        assert!(created.contains(&new));
+        assert!(f.allows("addHyperlink", &hyperlink(&new), Some(&created)));
+        assert!(f.allows(
+            "addHyperlink",
+            &hyperlink(&format!("{new}%7")),
+            Some(&created)
+        ));
+        assert!(!f.allows_main("addHyperlink", &hyperlink(&new)));
+        assert!(!f.allows("addHyperlink", &hyperlink(&new), Some(&other)));
+        // Links between targets and created objects, both ways.
+        let link = |item: &str, linked: &str| {
+            format!(
+                "<trackeri:addLinkedItem><trackeri:workitemURI>{item}</trackeri:workitemURI><trackeri:linkedWorkitemURI>{linked}</trackeri:linkedWorkitemURI><trackeri:role><trackert:id>r</trackert:id></trackeri:role></trackeri:addLinkedItem>"
+            )
+        };
+        assert!(f.allows("addLinkedItem", &link(&new, &a), Some(&created)));
+        assert!(f.allows("addLinkedItem", &link(&a, &new), Some(&created)));
+        assert!(!f.allows("addLinkedItem", &link(&a, &new), Some(&other)));
+        // Comments count as their owner's.
+        let comment = format!(
+            "<trackeri:addComment><trackeri:parentObjectUri>{}#3</trackeri:parentObjectUri><trackeri:title xsi:nil=\"true\"/></trackeri:addComment>",
+            new.replacen("${WorkItem}", "${Comment}{WorkItem}", 1)
+        );
+        assert!(f.allows("addComment", &comment, Some(&created)));
+        assert!(!f.allows_main("addComment", &comment));
+        // Identity fields and status stay refused for created objects too.
+        let update = |fields: &str| {
+            format!(
+                "<trackeri:updateWorkItem><trackeri:content uri=\"{new}\">{fields}</trackeri:content></trackeri:updateWorkItem>"
+            )
+        };
+        assert!(f.allows(
+            "updateWorkItem",
+            &update("<trackert:title>x</trackert:title>"),
+            Some(&created)
+        ));
+        for fields in [
+            "<trackert:id>P-1</trackert:id>",
+            "<trackert:project><trackert:id>Q</trackert:id></trackert:project>",
+            "<trackert:status><trackert:id>done</trackert:id></trackert:status>",
+        ] {
+            assert!(
+                !f.allows("updateWorkItem", &update(fields), Some(&created)),
+                "{fields}"
+            );
+        }
+        // A create never names a created object (creates check targets only).
+        let create = |extra: &str| {
+            format!(
+                r#"<trackeri:createWorkItem><trackeri:content><trackert:project uri="{BASE}P${{Project}}P"><trackert:id>P</trackert:id></trackert:project>{extra}</trackeri:content></trackeri:createWorkItem>"#
+            )
+        };
+        let naming = create(&format!("<trackert:title>{new}</trackert:title>"));
+        assert!(!f.allows("createWorkItem", &naming, Some(&created)));
+        assert!(f.allows(
+            "createWorkItem",
+            &create(&format!("<trackert:title>{a}</trackert:title>")),
+            Some(&created)
+        ));
     }
 }

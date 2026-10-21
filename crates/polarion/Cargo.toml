@@ -20,6 +20,8 @@ schemars = { version = "1", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+# Writes of several requests run their transaction in a task of their own (`atomic.rs`).
+tokio = { version = "1", features = ["rt"] }
 
 [features]
 # `schemars::JsonSchema` for the result types, describing their JSON form.

@@ -1,6 +1,6 @@
 //! `tests.*`: test management.
 
-use polarion::{TestRecord, TestRunUpdate, TestStepResult, Text};
+use polarion::{NewTestRun, TestRecord, TestRunUpdate, TestStepResult, Text};
 use polarion_commands_derive::{cmd, cmd_args};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -405,47 +405,9 @@ impl Run for CustomFieldOf {
     }
 }
 
-/// Create a test run from a template; returns its URI.
-#[cmd(write, view = scalar)]
-pub struct Create {
-    /// Test run id
-    #[positional]
-    pub id: String,
-    /// Template id
-    pub template: String,
-    /// Project id (default: POLARION_PROJECT or -p)
-    pub project: Option<String>,
-    /// Title (template's if omitted)
-    pub title: Option<String>,
-}
-
-impl Run for Create {
-    type Output = String;
-
-    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let (project, id, template) =
-            (cx.project(self.project.as_deref())?, self.id, self.template);
-        let uri = match self.title {
-            None => cx.polarion.tests().create(&project, &id, &template).await?,
-            Some(title) => {
-                cx.polarion
-                    .tests()
-                    .create_with_title(&project, &id, Some(&title), &template)
-                    .await?
-            }
-        };
-        Ok(uri)
-    }
-}
-
-/// Change fields of a test run.
-#[cmd(write, view = done)]
-pub struct Update {
-    /// Test run URI
-    #[positional]
-    pub run: String,
-    /// Title
-    pub title: Option<String>,
+/// The fields of a test run other than its title, shared by `create` and `update`.
+#[cmd_args]
+pub struct TestRunFields {
     /// Type id
     pub r#type: Option<String>,
     /// Status id
@@ -466,19 +428,27 @@ pub struct Update {
     pub custom_fields: Option<JsonObject>,
 }
 
-impl Run for Update {
-    type Output = Done;
-
-    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let run = self.run;
+impl TestRunFields {
+    /// The update these fields make, with `title`; the custom fields typed by `definitions`
+    /// (looked up through `definitions` only when there are any).
+    async fn into_update<F, Fut>(
+        self,
+        cx: &Context<'_>,
+        title: Option<String>,
+        definitions: F,
+    ) -> Result<TestRunUpdate>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = polarion::Result<Vec<polarion::FieldDefinition>>>,
+    {
         let custom = self.custom_fields.unwrap_or_default().0;
         let definitions = if custom.is_empty() {
             Vec::new()
         } else {
-            cx.polarion.tests().custom_fields_of(&run).await?
+            definitions().await?
         };
-        let update = TestRunUpdate {
-            title: self.title,
+        Ok(TestRunUpdate {
+            title,
             kind: self.r#type,
             status: self.status,
             group_id: self.group_id,
@@ -495,7 +465,68 @@ impl Run for Update {
                 .into_iter()
                 .filter_map(|(k, v)| Some((k, v?)))
                 .collect(),
+        })
+    }
+}
+
+/// Create a test run from a template; returns its URI. Fields a workflow may require are written
+/// in the same transaction, right after the create.
+#[cmd(write, view = scalar)]
+pub struct Create {
+    /// Test run id
+    #[positional]
+    pub id: String,
+    /// Template id
+    pub template: String,
+    /// Project id (default: POLARION_PROJECT or -p)
+    pub project: Option<String>,
+    /// Title (template's if omitted)
+    pub title: Option<String>,
+    #[flatten]
+    pub fields: TestRunFields,
+}
+
+impl Run for Create {
+    type Output = String;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let project = cx.project(self.project.as_deref())?;
+        let tests = cx.polarion.tests();
+        let fields = self
+            .fields
+            .into_update(cx, None, || tests.custom_fields(Some(&project)))
+            .await?;
+        let new = NewTestRun {
+            title: self.title,
+            fields,
+            ..NewTestRun::new(&project, self.id, self.template)
         };
+        Ok(cx.polarion.tests().create(&new).await?)
+    }
+}
+
+/// Change fields of a test run.
+#[cmd(write, view = done)]
+pub struct Update {
+    /// Test run URI
+    #[positional]
+    pub run: String,
+    /// Title
+    pub title: Option<String>,
+    #[flatten]
+    pub fields: TestRunFields,
+}
+
+impl Run for Update {
+    type Output = Done;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let run = self.run;
+        let tests = cx.polarion.tests();
+        let update = self
+            .fields
+            .into_update(cx, self.title, || tests.custom_fields_of(&run))
+            .await?;
         cx.polarion.tests().update(&run, &update).await?;
         Ok(Done)
     }

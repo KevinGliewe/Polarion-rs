@@ -17,6 +17,8 @@ results are its test records, one per executed test case (and iteration).
 
 - Runs are created from a template: `tests.search-templates` finds them (Lucene), `create_test_run` takes the
   new run's `id`, the `template` id and optionally a `title` (the template's otherwise). It returns the URI.
+  The other fields of `update_test_run` (except `title`) can be given to `create_test_run` as well: they are
+  written right after the create, in the same transaction (all or nothing).
 - `update_test_run`: `run` (URI), `title`, `type`, `status`, `group-id`, `query` (the test case query),
   `select-test-cases-by`, `keep-in-history`, `finished-on`, `summary-defect`, and `custom-fields` (typed by the
   run's field definitions).

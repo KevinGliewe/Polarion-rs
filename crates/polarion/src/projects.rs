@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, VecDeque};
 
 use crate::client::{Polarion, not_found};
 use crate::convert::soap_text;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::{Project, ProjectGroup, User};
 use crate::write::UserUpdate;
 
@@ -206,6 +206,12 @@ impl<'a> Users<'a> {
         let mut user = service.get_user(id).await?;
         if user.unresolvable == Some(true) || (user.id.is_none() && user.uri.is_none()) {
             return Err(not_found("user", id));
+        }
+        // The user goes back as it came; one without its URI would be a new user to create.
+        if user.uri.is_none() {
+            return Err(Error::Invalid(format!(
+                "the user `{id}` came back without a URI; `updateUser` would create a new user"
+            )));
         }
         if let Some(name) = &update.name {
             user.name = Some(name.clone());

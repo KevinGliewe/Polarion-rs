@@ -36,6 +36,11 @@ The repository is English only: code, comments, docs and commit messages.
   otherwise.
   Markdown descriptions (`markdown.rs`, feature `markdown`): the guard comes first; every new diagram is rendered, then
   uploaded, before `updateWorkItem`; pruning deletes only this work item's diagram attachments the old description showed.
+  A library operation of more than one SOAP write sends them through `Polarion::atomic` (`atomic.rs`): one transaction
+  in a Polarion session of its own (`own_session`, a `transaction_only` SOAP client sharing the write policy and filter),
+  run in a spawned task; guards, conversions and reads come first, on the client. Fields a create request cannot carry
+  (`NewWorkItem` follow-ups, `NewDocument`/`NewTestRun`/`NewPlan` fields) are written that way; in restricted mode the
+  session may write to what it created (`grant_created`), nothing else.
   `tests/coverage.rs` fails when a SOAP operation is neither called by the library nor listed in its `EXCLUDED` with a
   reason; new operations from a newer WSDL must be exposed or excluded there. Writes are verified against wiremock only; keep the
   "Not yet verified" list in README.md current.
@@ -55,7 +60,8 @@ The repository is English only: code, comments, docs and commit messages.
   (`server.rs`) are generated from the catalog. CLI text output in `render.rs` (table columns come from the
   command's `View`); JSON output is the library's serde form, don't reshape it. The MCP server is an
   `rmcp` `ServerHandler` (`server.rs`) whose tools are built at runtime from the catalog (no `#[tool]` macros),
-  served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a bearer-token layer (`http.rs`:
+  served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a token check (`http.rs`: bearer header or
+  `/mcp/<token>`, rewritten to `/mcp` before routing; `POLARION_MCP_ALLOW_UNAUTHENTICATED` turns it off;
   stateless, JSON replies, rmcp's Host/Origin checks); which tools are offered is `config.rs` (`--config`/`POLARION_MCP_CONFIG`
   TOML file plus `POLARION_MCP_TOOLS`: `tools` and `disable` selectors, `output_schemas`; its `CURATED` table holds
   the curated read tools and `CURATED_WRITES` the curated write tools (both grouped by area), which are listed only when
@@ -81,6 +87,9 @@ The repository is English only: code, comments, docs and commit messages.
 - Releases: a semver tag runs `.github/workflows/release.yml` (`docs/releasing.md`): the GitHub release (an existing
   one is only added to), `polarion` and `polarion-mcp` for every target, then `cargo publish` per crate. A new
   published crate must be added to the publish loop there (dependencies first); its version is the workspace's.
+  `.github/workflows/docker.yml` pushes the images `polarion-cli` and `polarion-mcp` (`Dockerfile` targets `cli`,
+  `mcp`; scenario profiles in `docker/profiles/<image>/`, selected by `POLARION_PROFILE`, applied by
+  `docker/entrypoint.sh`) to Docker Hub; `docker/check-images.sh` checks built images.
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo test -p polarion-markdown --no-default-features && cargo check -p polarion` (CI also runs the last two: the conversion without mermaid and highlighting, the library without markdown).
 - Live tests: a real server, production included, is written to only by the live suite
   (`crates/polarion/tests/live.rs`, the CLI's and the MCP server's `tests/live.rs`, the bootstrap

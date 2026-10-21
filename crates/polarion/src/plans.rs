@@ -5,11 +5,11 @@ use polarion_soap::types as soap;
 
 use crate::client::{Polarion, not_found};
 use crate::convert::{option_id, soap_custom_fields, soap_text};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::{Plan, Text};
 use crate::query::Query;
 use crate::uri::ItemRef;
-use crate::write::PlanUpdate;
+use crate::write::{NewPlan, PlanUpdate};
 
 fn plans(list: Vec<soap::Plan>) -> Vec<Plan> {
     list.into_iter()
@@ -124,20 +124,46 @@ impl<'a> Plans<'a> {
     // --------------------------------------------------------------- writes
 
     /// Create a plan from a template, optionally under a parent plan (by id); returns its URI.
-    pub async fn create(
-        &self,
-        project: &str,
-        id: &str,
-        name: &str,
-        parent: Option<&str>,
-        template: &str,
-    ) -> Result<String> {
+    ///
+    /// With `fields` ([`NewPlan`]), the create and the `updatePlan` that writes them run as one
+    /// transaction in a Polarion session of its own (all or nothing).
+    pub async fn create(&self, new: &NewPlan) -> Result<String> {
+        if new.fields.name.is_some() {
+            return Err(Error::Invalid(
+                "a new plan's name is `name`, not `fields.name`".into(),
+            ));
+        }
         self.polarion.check_unbounded_write("createPlan")?;
-        self.polarion.check_write("createPlan", Some(project))?;
-        Ok(self
-            .service()
-            .create_plan(project, name, id, parent, template)
-            .await?)
+        self.polarion
+            .check_write("createPlan", Some(&new.project))?;
+        let keys = new
+            .fields
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(new.fields.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys("createPlan", keys)?;
+        let new = new.clone();
+        let writes = 1 + usize::from(!new.fields.is_empty());
+        self.polarion
+            .atomic("createPlan", writes, move |p| async move {
+                let uri = p
+                    .soap()
+                    .planning()
+                    .create_plan(
+                        &new.project,
+                        &new.name,
+                        &new.id,
+                        new.parent.as_deref(),
+                        &new.template,
+                    )
+                    .await?;
+                if !new.fields.is_empty() {
+                    p.plans().update(&uri, &new.fields).await?;
+                }
+                Ok(uri)
+            })
+            .await
     }
 
     /// Create a plan template, optionally based on another template (by id); returns its URI.

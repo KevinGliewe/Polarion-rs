@@ -8,10 +8,18 @@ use crate::error::{Error, Result};
 use crate::model::{FieldDefinition, FieldValue, Text};
 use crate::uri::ItemRef;
 
-/// A work item to create with [`crate::WorkItems::create`].
+/// A work item to create with [`crate::WorkItems::create`] (or
+/// [`crate::WorkItems::create_in_document`]).
 ///
-/// Assignees, categories, links, hyperlinks, comments and attachments are not
-/// accepted by `createWorkItem`; add them afterwards with the dedicated methods.
+/// `createWorkItem` carries the fields up to `custom_fields`. The others are sent by follow-up
+/// requests right after the create, in the order of the fields: as one transaction, in a Polarion
+/// session of its own ([`NewWorkItem::follow_ups`]), so a workflow that requires one of them
+/// (e.g. a category) sees it, and a failure leaves nothing behind. A follow-up the server
+/// answers with "nothing added" (e.g. a category given twice) fails the whole create.
+///
+/// Not set on create: the status and resolution (workflow actions, [`crate::WorkItems::transition`]),
+/// comments, attachments, work records and approval states; add them afterwards with the
+/// dedicated methods.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewWorkItem {
     pub project: String,
@@ -26,6 +34,30 @@ pub struct NewWorkItem {
     pub initial_estimate: Option<String>,
     pub remaining_estimate: Option<String>,
     pub custom_fields: BTreeMap<String, FieldValue>,
+    /// Category ids (`addCategory`).
+    pub categories: Vec<String>,
+    /// Assignee user ids (`addAssignee`).
+    pub assignees: Vec<String>,
+    /// User ids to request approvals from (`addApprovee`).
+    pub approvees: Vec<String>,
+    /// Hyperlinks (`addHyperlink`).
+    pub hyperlinks: Vec<NewHyperlink>,
+    /// Links to other work items (`addLinkedItem`, or `addLinkedItemWithRev` with a revision or
+    /// `suspect`).
+    pub links: Vec<NewLink>,
+    /// Planning constraints (`addPlaningContraint`).
+    pub planning_constraints: Vec<NewPlanningConstraint>,
+    /// URIs of plans to add the work item to (`addPlanItems`, one request per plan).
+    pub planned_in: Vec<String>,
+    /// Test steps, one cell per column of [`crate::TestRuns::steps_configuration`]
+    /// (`setTestSteps`, one request for all).
+    pub test_steps: Vec<Vec<Text>>,
+    /// Links to work items on other servers (`addExternallyLinkedItem`).
+    pub external_links: Vec<NewExternalLink>,
+    /// Links to OSLC resources (`addLinkedOslcItem`).
+    pub oslc_links: Vec<NewOslcLink>,
+    /// Source repository revisions (`addLinkedRevision`, `addExternalLinkedRevision`).
+    pub linked_revisions: Vec<NewLinkedRevision>,
 }
 
 impl NewWorkItem {
@@ -41,6 +73,87 @@ impl NewWorkItem {
             ..Self::default()
         }
     }
+
+    /// The number of follow-up requests after the create.
+    pub fn follow_ups(&self) -> usize {
+        self.categories.len()
+            + self.assignees.len()
+            + self.approvees.len()
+            + self.hyperlinks.len()
+            + self.links.len()
+            + self.planning_constraints.len()
+            + self.planned_in.len()
+            + usize::from(!self.test_steps.is_empty())
+            + self.external_links.len()
+            + self.oslc_links.len()
+            + self.linked_revisions.len()
+    }
+}
+
+/// A hyperlink of a [`NewWorkItem`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewHyperlink {
+    /// Hyperlink role id, e.g. `ref_ext`.
+    pub role: String,
+    pub url: String,
+}
+
+/// A link of a [`NewWorkItem`] to another work item.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewLink {
+    /// Link role id, e.g. `parent`.
+    pub role: String,
+    pub target: ItemRef,
+    /// Pin the link to this revision of the target (`None`: HEAD).
+    pub revision: Option<String>,
+    /// Mark the link suspect.
+    pub suspect: bool,
+}
+
+impl NewLink {
+    /// A plain link (HEAD, not suspect).
+    pub fn new(role: impl Into<String>, target: ItemRef) -> Self {
+        Self {
+            role: role.into(),
+            target,
+            revision: None,
+            suspect: false,
+        }
+    }
+}
+
+/// A planning constraint of a [`NewWorkItem`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewPlanningConstraint {
+    /// Constraint id, e.g. `startNoEarlierThan`.
+    pub constraint: String,
+    /// `YYYY-MM-DD`.
+    pub date: String,
+}
+
+/// A link of a [`NewWorkItem`] to a work item on another server.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewExternalLink {
+    /// Link role id.
+    pub role: String,
+    pub url: String,
+}
+
+/// A link of a [`NewWorkItem`] to an OSLC resource.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewOslcLink {
+    /// Link role id.
+    pub role: String,
+    pub url: String,
+    pub label: String,
+}
+
+/// A source repository revision of a [`NewWorkItem`].
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewLinkedRevision {
+    /// Repository id; `None` for the default repository.
+    pub repository: Option<String>,
+    pub revision: String,
 }
 
 /// Changes for [`crate::WorkItems::update`]. Fields left `None` are not touched.
@@ -94,6 +207,11 @@ pub struct NewWorkRecord {
 }
 
 /// A document to create with [`crate::Documents::create`].
+///
+/// `createDocument` carries the fields up to `body`. The type, status and custom fields are
+/// written by an `updateModule` right after the create: as one transaction, in a Polarion
+/// session of its own, so a workflow that requires one of them sees it, and a failure leaves
+/// nothing behind.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NewDocument {
     pub project: String,
@@ -107,6 +225,23 @@ pub struct NewDocument {
     pub structure_link_role: String,
     /// Initial content (HTML).
     pub body: Option<String>,
+    /// Document type id.
+    pub kind: Option<String>,
+    pub status: Option<String>,
+    pub custom_fields: BTreeMap<String, FieldValue>,
+}
+
+impl NewDocument {
+    /// The fields written after the create, if any.
+    pub(crate) fn follow_up(&self) -> Option<DocumentUpdate> {
+        let update = DocumentUpdate {
+            kind: self.kind.clone(),
+            status: self.status.clone(),
+            custom_fields: self.custom_fields.clone(),
+            ..DocumentUpdate::default()
+        };
+        (update != DocumentUpdate::default()).then_some(update)
+    }
 }
 
 /// Changes for [`crate::Documents::update`]. Fields left `None` are not touched.
@@ -152,6 +287,86 @@ pub struct TestRunUpdate {
     pub finished_on: Option<String>,
     pub summary_defect: Option<ItemRef>,
     pub custom_fields: BTreeMap<String, FieldValue>,
+}
+
+impl TestRunUpdate {
+    /// Whether nothing is changed.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// A test run to create with [`crate::TestRuns::create`].
+///
+/// `createTestRun` (`createTestRunWithTitle` with a title) carries the project, id, template and
+/// title. The other `fields` are written by an `updateTestRun` right after the create: as one
+/// transaction, in a Polarion session of its own, so a workflow that requires one of them sees
+/// it, and a failure leaves nothing behind. `fields.title` must be `None` (use `title`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewTestRun {
+    pub project: String,
+    pub id: String,
+    /// Test run template id.
+    pub template: String,
+    /// `None`: the template's.
+    pub title: Option<String>,
+    pub fields: TestRunUpdate,
+}
+
+impl NewTestRun {
+    pub fn new(
+        project: impl Into<String>,
+        id: impl Into<String>,
+        template: impl Into<String>,
+    ) -> Self {
+        Self {
+            project: project.into(),
+            id: id.into(),
+            template: template.into(),
+            ..Self::default()
+        }
+    }
+}
+
+/// A plan to create with [`crate::Plans::create`].
+///
+/// `createPlan` carries the project, id, name, parent and template. The other `fields` are
+/// written by an `updatePlan` right after the create, as one transaction in a Polarion session of
+/// its own. `fields.name` must be `None` (use `name`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct NewPlan {
+    pub project: String,
+    pub id: String,
+    pub name: String,
+    /// Parent plan id.
+    pub parent: Option<String>,
+    /// Plan template id.
+    pub template: String,
+    pub fields: PlanUpdate,
+}
+
+impl NewPlan {
+    pub fn new(
+        project: impl Into<String>,
+        id: impl Into<String>,
+        name: impl Into<String>,
+        template: impl Into<String>,
+    ) -> Self {
+        Self {
+            project: project.into(),
+            id: id.into(),
+            name: name.into(),
+            template: template.into(),
+            ..Self::default()
+        }
+    }
+}
+
+impl PlanUpdate {
+    /// Whether nothing is changed.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// Changes for [`crate::Plans::update`]. Fields left `None` are not touched.

@@ -23,11 +23,13 @@ use crate::config::{self, RequireGuides, Selection};
 use crate::files::{self, Exchange};
 use crate::guides::{self, Guide};
 
-/// Commands that need a Polarion session of their own: refused over HTTP, where all clients share one.
+/// Commands that change or renew the Polarion session: refused over HTTP, where all clients share
+/// one. (Commands of several writes open a session of their own for them and are fine there.)
 const SESSION_BOUND: &[&str] = &[
     "session.begin-transaction",
     "session.commit",
     "session.rollback",
+    "session.check",
 ];
 
 /// Commands that keep their thread busy for up to seconds (they render mermaid diagrams).
@@ -432,9 +434,11 @@ impl PolarionMcp {
         if self.0.transport == Transport::Http
             && SESSION_BOUND.contains(&command.full_name().as_str())
         {
-            return Err(CommandError::invalid(
-                "transactions are not available over HTTP: all clients share one Polarion session",
-            ));
+            return Err(CommandError::invalid(format!(
+                "`{}` is not available over HTTP: all clients share one Polarion session (commands \
+                 of several writes run as one transaction in a session of their own anyway)",
+                command.full_name()
+            )));
         }
         match self.required_guide(command) {
             None => Ok(()),
@@ -483,7 +487,9 @@ impl PolarionMcp {
             .map(|p| format!(" The default project is {p}."))
             .unwrap_or_default();
         let shared = if self.0.transport == Transport::Http {
-            " Transactions are not available: all clients share one Polarion session."
+            " Explicit transactions and session checks are not available: all clients share one \
+             Polarion session. Commands of several writes (a create with categories or links, an \
+             update of several fields) still run as one transaction, in a session of their own."
         } else {
             ""
         };

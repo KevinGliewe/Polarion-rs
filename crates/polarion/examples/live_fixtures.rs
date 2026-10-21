@@ -54,7 +54,7 @@ use std::process::ExitCode;
 use live_support::*;
 use polarion::{
     CreateBudget, Document, DocumentRef, Error, FieldDefinition, FieldValue, Fields, ItemRef,
-    NewDocument, NewWorkItem, Polarion, Query, TestRun, WorkItem,
+    NewDocument, NewTestRun, NewWorkItem, Polarion, Query, TestRun, WorkItem,
 };
 use serde_json::{Value, json};
 
@@ -705,12 +705,10 @@ async fn create_missing(
         *sent = true;
         let uri = writer
             .tests()
-            .create_with_title(
-                project,
-                RUN_ID,
-                Some(&fixture_title(MARKER_R)),
-                &place.template,
-            )
+            .create(&NewTestRun {
+                title: Some(fixture_title(MARKER_R)),
+                ..NewTestRun::new(project, RUN_ID, &place.template)
+            })
             .await
             .map_err(|e| format!("creating R: {e}"))?;
         log_created(log, "R", &uri)?;
@@ -754,6 +752,7 @@ async fn create_missing(
             allowed_types: vec![TYPE_A.to_owned()],
             structure_link_role: "parent".to_owned(),
             body: Some(fixture_description(MARKER_D, "document")),
+            ..NewDocument::default()
         };
         *sent = true;
         let created = writer

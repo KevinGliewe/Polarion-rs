@@ -375,7 +375,8 @@ impl Run for ExportPdf {
     }
 }
 
-/// Create a live document.
+/// Create a live document. A type, status and custom fields a workflow may require are written
+/// in the same transaction, right after the create.
 #[cmd(write, view = object)]
 pub struct Create {
     /// Project id (default: POLARION_PROJECT or -p)
@@ -396,6 +397,13 @@ pub struct Create {
     pub legacy_module: bool,
     /// Old-style modules: links go from parent to child
     pub parent_to_child: bool,
+    /// Document type id (written right after the create, in the same transaction)
+    pub r#type: Option<String>,
+    /// Status id (written right after the create, in the same transaction)
+    pub status: Option<String>,
+    /// Custom field values (typed from JSON; use {"enum": id} for enums; written right after
+    /// the create, in the same transaction)
+    pub custom_fields: Option<JsonObject>,
 }
 
 /// A new or reused document: its reference and URI.
@@ -426,6 +434,15 @@ impl Run for Create {
             allowed_types: self.allowed_types,
             structure_link_role: self.structure_link_role.unwrap_or_else(|| "parent".into()),
             body: self.content,
+            kind: self.r#type,
+            status: self.status,
+            custom_fields: crate::values::custom_values(
+                &self.custom_fields.unwrap_or_default().0,
+                &[],
+            )?
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v?)))
+            .collect(),
         };
         let created = if self.legacy_module {
             cx.polarion

@@ -39,7 +39,23 @@ fn xml(body: &str) -> ResponseTemplate {
 
 /// Mock server that accepts a token login and expects exactly one logout.
 async fn server() -> MockServer {
+    server_with_logouts(1).await
+}
+
+/// Mock server that accepts token logins, answers transactions and expects `logouts` logouts
+/// (one more for each write of several requests, which runs in a session of its own).
+async fn server_with_logouts(logouts: u64) -> MockServer {
     let server = MockServer::start().await;
+    for (op, response) in [
+        ("beginTransaction>", "<beginTransactionResponse/>"),
+        ("endTransaction>", "<endTransactionResponse/>"),
+    ] {
+        Mock::given(path(SESSION))
+            .and(body_string_contains(op))
+            .respond_with(xml(response))
+            .mount(&server)
+            .await;
+    }
     Mock::given(path(SESSION))
         .and(body_string_contains("logInWithToken>"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(
@@ -54,7 +70,7 @@ async fn server() -> MockServer {
     Mock::given(path(SESSION))
         .and(body_string_contains("endSession>"))
         .respond_with(xml("<endSessionResponse/>"))
-        .expect(1)
+        .expect(logouts)
         .mount(&server)
         .await;
     server
@@ -794,6 +810,7 @@ async fn markdown_from_a_file_is_written_only_with_write_projects() {
     );
 
     // The diagram is rendered, uploaded and shown; reading the attachments again gives its id.
+    // One upload, then one update: single writes, on the client's session.
     let server = server().await;
     let attachment = format!("1-{DIAGRAM}");
     read(&server, 1, &work_item(None, &[])).await;
@@ -953,4 +970,88 @@ async fn markdown_is_saved_with_out_and_an_empty_description_is_no_error() {
     assert_eq!(run.code, 0, "{}", run.stderr);
     assert_eq!(run.stdout, "");
     assert!(!run.stderr.contains("no results"), "{}", run.stderr);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn fields_a_workflow_requires_are_written_with_the_create() {
+    // The create, its category and its link: one transaction, in a session of its own.
+    let server = server_with_logouts(2).await;
+    Mock::given(path("/polarion/ws/services/ProjectWebService"))
+        .and(body_string_contains("getProject>"))
+        .respond_with(xml(
+            r#"<getProjectResponse><getProjectReturn uri="subterra:data-service:objects:/default/Sandbox${Project}Sandbox"><id>Sandbox</id></getProjectReturn></getProjectResponse>"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let new = "subterra:data-service:objects:/default/Sandbox${WorkItem}SB-9";
+    mock(
+        &server,
+        &["createWorkItem>", "type><trackert:id>task<"],
+        &format!("<createWorkItemResponse><createWorkItemReturn>{new}</createWorkItemReturn></createWorkItemResponse>"),
+    )
+    .await;
+    mock(
+        &server,
+        &["addCategory>", new, "categoryId>software<"],
+        "<addCategoryResponse><addCategoryReturn>true</addCategoryReturn></addCategoryResponse>",
+    )
+    .await;
+    mock(
+        &server,
+        &["addLinkedItem>", new, "role><trackert:id>parent<"],
+        "<addLinkedItemResponse><addLinkedItemReturn>true</addLinkedItemReturn></addLinkedItemResponse>",
+    )
+    .await;
+    let run = polarion(
+        Some(&server),
+        &[
+            ("POLARION_WRITE_PROJECTS", "Sandbox"),
+            ("POLARION_PROJECT", "Sandbox"),
+        ],
+        &[
+            "--json",
+            "items",
+            "create",
+            "--type",
+            "task",
+            "--title",
+            "Brakes",
+            "--categories",
+            "software",
+            "--links",
+            "parent=Sandbox/SB-1",
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let created: Value = serde_json::from_str(run.stdout.trim()).unwrap();
+    assert_eq!(created["uri"], new);
+    let operations: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|r| {
+            let body = String::from_utf8_lossy(&r.body);
+            let rest = body.split_once("<soapenv:Body><")?.1.to_owned();
+            let element = rest.split([' ', '>', '/']).next()?.to_owned();
+            Some(element.rsplit(':').next()?.to_owned())
+        })
+        .collect();
+    assert_eq!(
+        operations,
+        [
+            "logInWithToken",
+            "getProject",
+            "logInWithToken",
+            "beginTransaction",
+            "createWorkItem",
+            "addCategory",
+            "addLinkedItem",
+            "endTransaction",
+            "endSession",
+            "endSession",
+        ]
+    );
 }

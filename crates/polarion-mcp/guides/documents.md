@@ -39,6 +39,8 @@ work items in document order. They live in spaces (folders) of a project.
 
 - `create_document`: `name`, optionally `space` (default `_default`), `title`, `allowed-types` (the work item
   types the document may hold), `structure-link-role` (default `parent`) and initial `content` (HTML).
+  `type`, `status` and `custom-fields` are written right after the create, in the same transaction (all or
+  nothing): give them when the project requires them for a new document.
 - `update_document`: `title`, `type`, `status`, `content` (the whole body), `structure-link-role`,
   `outline-numbering`, `custom-fields` (typed from JSON; `{"enum": "id"}` for an enum option).
 - `documents.update-title-heading` sets the first title heading of the body.

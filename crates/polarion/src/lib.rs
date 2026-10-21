@@ -87,7 +87,13 @@
 //! nor uploaded again), and the description shows them as images; reading the description back
 //! restores the blocks. `highlight` highlights fenced code that names its language.
 
+// The mock helpers of the integration tests (`tests/common`), shared by the unit tests, name
+// this crate `polarion`.
+#[cfg(test)]
+extern crate self as polarion;
+
 mod activities;
+mod atomic;
 mod baselines;
 mod builds;
 mod client;
@@ -141,6 +147,7 @@ pub use tests_mgmt::TestRuns;
 pub use uri::{DocumentRef, ItemRef};
 pub use wiki::Wiki;
 pub use write::{
-    DocumentUpdate, NewDocument, NewWorkItem, NewWorkRecord, PlanUpdate, ReuseDocument,
-    TestRunUpdate, UserUpdate, WorkItemUpdate,
+    DocumentUpdate, NewDocument, NewExternalLink, NewHyperlink, NewLink, NewLinkedRevision,
+    NewOslcLink, NewPlan, NewPlanningConstraint, NewTestRun, NewWorkItem, NewWorkRecord,
+    PlanUpdate, ReuseDocument, TestRunUpdate, UserUpdate, WorkItemUpdate,
 };

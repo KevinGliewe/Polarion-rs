@@ -36,12 +36,23 @@ in the default project, `PROJECT/ID`, or its URI.
   estimates, `custom-fields`, and `document` (+ `parent`) to create it inside a document. It returns the new
   item and its URI. A type's template work item, if the project configures one, can replace the description
   and clear other fields: read the item back after creating it.
+- Fields Polarion's create request cannot carry are arguments of `create_work_item` too: `categories`,
+  `assignees`, `approvees`, `links` (`ROLE=ITEM`, `ROLE=ITEM@REVISION` or `{role, item, revision, suspect}`),
+  `hyperlinks` (`ROLE=URL`), `planning-constraints` (`CONSTRAINT=DATE`), `planned-in` (plans), `test-steps`,
+  `external-links`, `oslc-links` (`ROLE=LABEL=URL`) and `linked-revisions`. They are written right after the
+  create, in the same transaction: give here what the project's workflow requires when an item is created (an
+  error like "Workflow initialization failed ... required field 'categories' ... is empty" names it). The create
+  and these writes succeed or fail together; a failed call leaves no work item behind.
+- `commitUncertain`: the writes were sent but the commit got no answer. Look for the item (e.g. by title)
+  before you create it again.
 - `update_work_item`: `title`, `description`, `priority`, `severity`, `resolution`, `due-date`, estimates,
   `time-spent`, `custom-fields` (`null` clears one) and `clear` (built-in field keys to empty). Fields not given
   stay as they are.
 - `items.set-custom-field` sets or clears one custom field; `items.clear-fields` empties fields by key.
-- Assignees, categories and approvals have commands of their own: `items.add-assignee`, `items.add-category`,
-  `items.add-approvee`, `items.set-approval`, and their `remove-` counterparts.
+- Assignees, categories and approvals of an existing item have commands of their own: `items.add-assignee`,
+  `items.add-category`, `items.add-approvee`, `items.set-approval`, and their `remove-` counterparts.
+- An update that needs several requests (standard fields, custom fields and cleared fields together) is one
+  transaction as well: all or nothing.
 
 ## Status: only through the workflow
 

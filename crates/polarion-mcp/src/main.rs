@@ -72,7 +72,11 @@ Environment:
                                   uploads read from there (data-file)
 
   POLARION_MCP_HTTP=ADDR          same as --http ADDR
-  POLARION_MCP_AUTH_TOKEN         HTTP: required bearer token for clients (16+ characters)
+  POLARION_MCP_AUTH_TOKEN         HTTP: required token for clients (16+ characters), sent as
+                                  Authorization: Bearer <token>, or in the URL: /mcp/<token>
+  POLARION_MCP_ALLOW_UNAUTHENTICATED=1
+                                  HTTP: no token (instead of POLARION_MCP_AUTH_TOKEN); every
+                                  client that reaches the port acts as the Polarion account
   POLARION_MCP_ALLOWED_ORIGINS    HTTP: browser origins allowed to connect, with scheme and port
                                   (comma-separated, e.g. http://localhost:3000; default: none)
   POLARION_MCP_ALLOWED_HOSTS      HTTP: Host names the server answers to (comma-separated;

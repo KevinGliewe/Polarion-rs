@@ -616,3 +616,164 @@ async fn the_write_filter_sees_every_write_before_it_is_sent() {
         seen[1].1
     );
 }
+
+// ---- separate sessions and transaction-only clients
+
+/// Logins answer with these session ids and a cookie named after each, one per login, in order.
+async fn logins_with_cookies(server: &MockServer, ids: &[&str]) {
+    for (i, id) in ids.iter().enumerate() {
+        let header = format!(
+            r#"<soapenv:Header><ns1:sessionID xmlns:ns1="http://ws.polarion.com/session">{id}</ns1:sessionID></soapenv:Header>"#
+        );
+        Mock::given(path(SESSION))
+            .and(body_string_contains("logInWithToken>"))
+            .respond_with(
+                xml(envelope(&header, "<logInWithTokenResponse/>"))
+                    .insert_header("set-cookie", format!("JSESSIONID={id}; Path=/").as_str()),
+            )
+            .up_to_n_times(1)
+            .with_priority(u8::try_from(i + 1).unwrap())
+            .expect(1)
+            .mount(server)
+            .await;
+    }
+}
+
+#[tokio::test]
+async fn clients_from_a_cloned_builder_have_sessions_of_their_own() {
+    let server = MockServer::start().await;
+    let builder = Client::builder(
+        &format!("{}/polarion", server.uri()),
+        Auth::Token("secret-token".into()),
+    )
+    .read_only(true);
+    let first = builder.clone().build().unwrap();
+    let second = builder.build().unwrap();
+    logins_with_cookies(&server, &["s1", "s2"]).await;
+    for (session, times) in [("s1", 2), ("s2", 1)] {
+        Mock::given(path(TRACKER))
+            .and(body_string_contains("getWorkItemById>"))
+            .and(session_is(session))
+            .and(header("cookie", format!("JSESSIONID={session}").as_str()))
+            .respond_with(xml(work_item_response()))
+            .expect(times)
+            .mount(&server)
+            .await;
+    }
+
+    // The second login sets its cookie in the second client's jar only.
+    for client in [&first, &second, &first] {
+        client
+            .tracker()
+            .get_work_item_by_id("PROJ", "PROJ-1")
+            .await
+            .unwrap();
+    }
+    assert_eq!(first.session_id().as_deref(), Some("s1"));
+    assert_eq!(second.session_id().as_deref(), Some("s2"));
+}
+
+#[tokio::test]
+async fn transaction_only_clients_write_inside_their_transaction_and_log_in_once() {
+    let server = MockServer::start().await;
+    let client = Client::builder(
+        &format!("{}/polarion", server.uri()),
+        Auth::Token("secret-token".into()),
+    )
+    .transaction_only(true)
+    .build()
+    .unwrap();
+
+    // Before the transaction: refused, nothing sent (not even a login).
+    let err = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::NoTransaction { operation } if operation == "TrackerWebService.addHyperlink"),
+        "{err:?}"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+
+    logins(&server, &["s1"]).await;
+    for operation in ["beginTransaction", "endTransaction"] {
+        Mock::given(path(SESSION))
+            .and(body_string_contains(format!("{operation}>")))
+            .and(session_is("s1"))
+            .respond_with(xml(envelope("", &format!("<{operation}Response/>"))))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    add_hyperlink(&server, "s1", hyperlink_added(), 1).await;
+    get_item(&server, "s1", fault("Not authorized."), 1).await;
+    has_subject(&server, "s1", subject(false)).await;
+
+    // The transaction's begin is the only login.
+    client.session().begin_transaction().await.unwrap();
+    assert!(client.transaction_open());
+    assert!(
+        client
+            .tracker()
+            .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+            .await
+            .unwrap()
+    );
+    client.session().end_transaction(false).await.unwrap();
+    assert!(!client.transaction_open());
+
+    // After the commit, writes are refused again.
+    let err = client
+        .tracker()
+        .add_hyperlink(ITEM_URI, "https://example.invalid", &role())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::NoTransaction { .. }), "{err:?}");
+
+    // An expired session is not renewed, and no later call logs in again.
+    let sent = server.received_requests().await.unwrap().len();
+    let err = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::SessionExpired), "{err:?}");
+    assert_eq!(client.session_id(), None);
+    let err = client
+        .tracker()
+        .get_work_item_by_id("PROJ", "PROJ-1")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::SessionExpired), "{err:?}");
+    // The failed read and its hasSubject check; no further login.
+    assert_eq!(server.received_requests().await.unwrap().len(), sent + 2);
+}
+
+#[tokio::test]
+async fn logout_clears_the_session_when_end_session_fails() {
+    let (server, client) = setup(false).await;
+    logins(&server, &["s1"]).await;
+    Mock::given(path(SESSION))
+        .and(body_string_contains("beginTransaction>"))
+        .respond_with(xml(envelope("", "<beginTransactionResponse/>")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path(SESSION))
+        .and(body_string_contains("endSession>"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("<html>Internal error</html>"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    client.session().begin_transaction().await.unwrap();
+    assert!(client.transaction_open());
+    let err = client.logout().await.unwrap_err();
+    assert!(
+        matches!(&err, Error::Status { status, .. } if status.as_u16() == 500),
+        "{err:?}"
+    );
+    assert_eq!(client.session_id(), None);
+    assert!(!client.transaction_open());
+}

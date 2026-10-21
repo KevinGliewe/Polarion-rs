@@ -3,13 +3,13 @@
 use polarion_soap::services::TrackerService;
 use polarion_soap::types as soap;
 
-use crate::client::{CreateKind, Polarion, not_found};
+use crate::client::{self, CreateKind, Polarion, not_found};
 use crate::convert::{self, any_value, option_id, soap_text};
 use crate::error::{Error, Result};
 use crate::model::{Change, EnumOption, FieldValue, Link, Text, User, WorkItem, WorkflowAction};
 use crate::query::{Fields, WorkItemQuery};
 use crate::uri::{DocumentRef, ItemRef};
-use crate::write::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
+use crate::write::{NewLink, NewWorkItem, NewWorkRecord, WorkItemUpdate};
 
 /// Work items: [`Polarion::items`].
 ///
@@ -22,7 +22,7 @@ use crate::write::{NewWorkItem, NewWorkRecord, WorkItemUpdate};
 /// [`Error::WriteNotAllowed`] without sending anything.
 #[derive(Debug, Clone, Copy)]
 pub struct WorkItems<'a> {
-    polarion: &'a Polarion,
+    pub(crate) polarion: &'a Polarion,
 }
 
 fn items(list: Vec<soap::WorkItem>) -> Vec<WorkItem> {
@@ -41,6 +41,103 @@ fn found(item: soap::WorkItem, reference: &ItemRef) -> Result<WorkItem> {
         return Err(not_found("work item", reference));
     }
     Ok(item.into())
+}
+
+/// The operation that sends `link`.
+fn link_operation(link: &NewLink) -> &'static str {
+    if link.revision.is_some() || link.suspect {
+        "addLinkedItemWithRev"
+    } else {
+        "addLinkedItem"
+    }
+}
+
+/// The work item `uri` was just created from `new` by the session of `p`: with follow-ups, it is
+/// granted to that session ([`Polarion::grant_created`]) and the follow-ups are sent.
+async fn created(p: &Polarion, uri: String, new: &NewWorkItem) -> Result<ItemRef> {
+    let item = ItemRef::from_uri(uri);
+    if new.follow_ups() > 0 {
+        p.grant_created(CreateKind::WorkItem, &item.uri)?;
+        apply_follow_ups(p, &item, new).await?;
+    }
+    Ok(item)
+}
+
+/// The follow-ups of `new` to the new work item `item`, in the order of [`NewWorkItem`]'s
+/// fields, through the guarded methods. A request that adds nothing is [`Error::Invalid`].
+async fn apply_follow_ups(p: &Polarion, item: &ItemRef, new: &NewWorkItem) -> Result<()> {
+    let items = p.items();
+    let added = |operation: &str, what: &str, added: bool| {
+        if added {
+            Ok(())
+        } else {
+            Err(Error::Invalid(format!(
+                "`{operation}` added nothing to the new work item {item}: `{what}`"
+            )))
+        }
+    };
+    for category in &new.categories {
+        let done = items.add_category(item, category).await?;
+        added("addCategory", category, done)?;
+    }
+    for user in &new.assignees {
+        let done = items.add_assignee(item, user).await?;
+        added("addAssignee", user, done)?;
+    }
+    for user in &new.approvees {
+        items.add_approvee(item, user).await?;
+    }
+    for link in &new.hyperlinks {
+        let done = items.add_hyperlink(item, &link.url, &link.role).await?;
+        added("addHyperlink", &link.url, done)?;
+    }
+    for link in &new.links {
+        let done = if link.revision.is_some() || link.suspect {
+            let revision = link.revision.as_deref();
+            items
+                .add_link_at_revision(item, &link.role, &link.target, revision, link.suspect)
+                .await?
+        } else {
+            items.add_link(item, &link.role, &link.target).await?
+        };
+        let what = format!("{} {}", link.role, link.target);
+        added(link_operation(link), &what, done)?;
+    }
+    for c in &new.planning_constraints {
+        let done = items
+            .add_planning_constraint(item, &c.date, &c.constraint)
+            .await?;
+        added(
+            "addPlaningContraint",
+            &format!("{} {}", c.constraint, c.date),
+            done,
+        )?;
+    }
+    for plan in &new.planned_in {
+        p.plans()
+            .add_items(plan, std::slice::from_ref(item))
+            .await?;
+    }
+    if !new.test_steps.is_empty() {
+        p.tests().set_steps(item, &new.test_steps).await?;
+    }
+    for link in &new.external_links {
+        let done = items.add_external_link(item, &link.url, &link.role).await?;
+        added("addExternallyLinkedItem", &link.url, done)?;
+    }
+    for link in &new.oslc_links {
+        let done = items
+            .add_oslc_link(item, &link.url, &link.role, &link.label)
+            .await?;
+        added("addLinkedOslcItem", &link.url, done)?;
+    }
+    for r in &new.linked_revisions {
+        let done = items
+            .add_linked_revision(item, r.repository.as_deref(), &r.revision)
+            .await?;
+        added("addLinkedRevision", &r.revision, done)?;
+    }
+    Ok(())
 }
 
 impl<'a> WorkItems<'a> {
@@ -400,27 +497,42 @@ impl<'a> WorkItems<'a> {
 
     // --------------------------------------------------------------- writes
 
-    /// Create a work item; returns its reference.
+    /// Create a work item; returns its reference. With follow-ups (categories, links, ...: see
+    /// [`NewWorkItem`]), the create and its follow-ups run as one transaction in a Polarion
+    /// session of its own (all or nothing).
+    ///
+    /// Restricted mode: the follow-ups may change the new work item, in that session only; link
+    /// targets and plans must be write targets; external links, OSLC links and linked revisions
+    /// are refused, and so is any follow-up while an explicit transaction is open.
     pub async fn create(&self, new: &NewWorkItem) -> Result<ItemRef> {
-        // Before the budget is taken: the SOAP write filter would refuse the request.
-        self.polarion.check_field_keys(
-            "createWorkItem",
-            new.custom_fields.keys().map(String::as_str),
-        )?;
+        // Before the budget is taken: a refused create takes nothing.
+        self.check_new("createWorkItem", new)?;
         self.polarion
             .check_create("createWorkItem", &new.project, CreateKind::WorkItem)?;
         let content = self.content(new).await?;
-        let uri = self.tracker().create_work_item(&content).await?;
-        Ok(ItemRef::from_uri(uri))
+        let new = new.clone();
+        self.polarion
+            .atomic(
+                "createWorkItem",
+                1 + new.follow_ups(),
+                move |p| async move {
+                    // The guard ran above: the request is sent as it is.
+                    let uri = p.soap().tracker().create_work_item(&content).await?;
+                    created(&p, uri, &new).await
+                },
+            )
+            .await
     }
 
-    /// Create a work item inside a document, under `parent` or at the top level.
+    /// Create a work item inside a document, under `parent` or at the top level. Follow-ups as
+    /// for [`WorkItems::create`]; never in restricted mode.
     pub async fn create_in_document(
         &self,
         new: &NewWorkItem,
         document: &DocumentRef,
         parent: Option<&ItemRef>,
     ) -> Result<ItemRef> {
+        self.check_new("createWorkItemInModule", new)?;
         self.polarion
             .check_unbounded_write("createWorkItemInModule")?;
         self.polarion
@@ -428,11 +540,63 @@ impl<'a> WorkItems<'a> {
         self.polarion
             .check_write_uri("createWorkItemInModule", &document.uri)?;
         let content = self.content(new).await?;
-        let uri = self
-            .tracker()
-            .create_work_item_in_module(&document.uri, parent.map(|p| p.uri.as_str()), &content)
-            .await?;
-        Ok(ItemRef::from_uri(uri))
+        let new = new.clone();
+        let document = document.uri.clone();
+        let parent = parent.map(|p| p.uri.clone());
+        self.polarion
+            .atomic(
+                "createWorkItemInModule",
+                1 + new.follow_ups(),
+                move |p| async move {
+                    let uri = p
+                        .soap()
+                        .tracker()
+                        .create_work_item_in_module(&document, parent.as_deref(), &content)
+                        .await?;
+                    created(&p, uri, &new).await
+                },
+            )
+            .await
+    }
+
+    /// The checks of a create and its follow-ups that need no new work item, before the create
+    /// is allowed (and takes from the budget): the custom field keys; in restricted mode no
+    /// follow-ups while a transaction is open (`client::OWN_SESSION`: only the session of its own
+    /// that created the work item may write to it), no unbounded follow-ups, and link targets
+    /// must be write targets; plans must be write targets, or (otherwise) in a writable project.
+    fn check_new(&self, operation: &'static str, new: &NewWorkItem) -> Result<()> {
+        let p = self.polarion;
+        p.check_field_keys(operation, new.custom_fields.keys().map(String::as_str))?;
+        if new.follow_ups() == 0 {
+            return Ok(());
+        }
+        if p.writes_restricted() && p.soap().transaction_open() {
+            return Err(Polarion::refused(
+                operation,
+                None,
+                None,
+                Some(client::OWN_SESSION),
+            ));
+        }
+        if !new.external_links.is_empty() {
+            p.check_unbounded_write("addExternallyLinkedItem")?;
+        }
+        if !new.oslc_links.is_empty() {
+            p.check_unbounded_write("addLinkedOslcItem")?;
+        }
+        if !new.linked_revisions.is_empty() {
+            p.check_unbounded_write("addLinkedRevision")?;
+        }
+        if p.writes_restricted() {
+            // Otherwise links may point to other projects, as with `add_link`.
+            for link in &new.links {
+                p.check_write_target(link_operation(link), &link.target.uri)?;
+            }
+        }
+        for plan in &new.planned_in {
+            p.check_write_target("addPlanItems", plan)?;
+        }
+        Ok(())
     }
 
     /// `createWorkItem` content; the project is looked up so its URI is exact.
@@ -450,9 +614,10 @@ impl<'a> WorkItems<'a> {
     }
 
     /// Change fields. Standard fields go in one `updateWorkItem`, each custom field
-    /// through `setCustomField`, and cleared fields through one `setFieldsNull`.
+    /// through `setCustomField`, and cleared fields through one `setFieldsNull`. More than one
+    /// of these requests run as one transaction in a session of its own (all or nothing).
     pub async fn update(&self, item: &ItemRef, update: &WorkItemUpdate) -> Result<()> {
-        let tracker = self.writable("updateWorkItem", item)?;
+        self.writable("updateWorkItem", item)?;
         let keys = update
             .custom_fields
             .keys()
@@ -480,19 +645,29 @@ impl<'a> WorkItems<'a> {
             .map(|(key, _)| key.clone())
             .chain(update.clear.iter().cloned())
             .collect();
+        let standard = update
+            .has_standard_fields()
+            .then(|| convert::work_item_update(&item.uri, update));
 
-        if update.has_standard_fields() {
-            tracker
-                .update_work_item(&convert::work_item_update(&item.uri, update))
-                .await?;
-        }
-        for field in &custom {
-            tracker.set_custom_field(field).await?;
-        }
-        if !clear.is_empty() {
-            tracker.set_fields_null(&item.uri, &clear).await?;
-        }
-        Ok(())
+        // The guard ran above: the session of its own sends the requests as they are.
+        let writes =
+            usize::from(standard.is_some()) + custom.len() + usize::from(!clear.is_empty());
+        let uri = item.uri.clone();
+        self.polarion
+            .atomic("updateWorkItem", writes, move |p| async move {
+                let tracker = p.soap().tracker();
+                if let Some(standard) = &standard {
+                    tracker.update_work_item(standard).await?;
+                }
+                for field in &custom {
+                    tracker.set_custom_field(field).await?;
+                }
+                if !clear.is_empty() {
+                    tracker.set_fields_null(&uri, &clear).await?;
+                }
+                Ok(())
+            })
+            .await
     }
 
     /// Set (`Some`) or clear (`None`) one custom field.
@@ -895,9 +1070,14 @@ impl<'a> WorkItems<'a> {
     // ---- time tracking
 
     pub async fn add_work_record(&self, item: &ItemRef, record: &NewWorkRecord) -> Result<()> {
-        let tracker = self.writable("createWorkRecord", item)?;
+        // By URI: Polarion takes a user without one for a new user to create. The request names
+        // the user, so in restricted mode the user must be a target too (as for test records).
+        let user_uri = crate::uri::user_uri(&record.user);
+        self.polarion
+            .check_write_targets("createWorkRecord", &item.uri, &[user_uri.as_str()])?;
+        let tracker = self.tracker();
         let user = soap::User {
-            id: Some(record.user.clone()),
+            uri: Some(user_uri),
             ..soap::User::default()
         };
         match (&record.kind, &record.comment) {

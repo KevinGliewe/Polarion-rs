@@ -414,6 +414,149 @@ async fn global_writes_and_transactions() {
     polarion.rollback().await.unwrap();
 }
 
+#[tokio::test]
+async fn writes_name_their_objects_by_uri() {
+    let server = server().await;
+    let baseline = format!("{URI}Sandbox${{Baseline}}b1");
+    expect(
+        &server,
+        TRACKER,
+        &[
+            "updateBaseline>",
+            &format!(r#"baseline uri="{baseline}""#),
+            "name>B1<",
+        ],
+        "<updateBaselineResponse/>",
+    )
+    .await;
+    let run = format!("{URI}Sandbox${{TestRun}}R1");
+    let case = ItemRef::new("Sandbox", "SB-5");
+    expect(
+        &server,
+        TESTS,
+        &[
+            "updateTestRecordAtIndex>",
+            &format!("testRunUri>{run}<"),
+            "index>0<",
+            &format!("testCaseURI>{}<", case.uri),
+            "result><trackert:id>passed<",
+            &format!("executedByURI>{}<", polarion::uri::user_uri("amy")),
+        ],
+        "<updateTestRecordAtIndexResponse/>",
+    )
+    .await;
+    let document = polarion::DocumentRef::new("Sandbox", "Specs", "SRS");
+    let parent = ItemRef::new("Sandbox", "SB-1");
+    expect(
+        &server,
+        PROJECT,
+        &["getProject>", ">Sandbox<"],
+        &format!(
+            r#"<getProjectResponse><getProjectReturn uri="{URI}Sandbox${{Project}}Sandbox"><id>Sandbox</id></getProjectReturn></getProjectResponse>"#
+        ),
+    )
+    .await;
+    expect(
+        &server,
+        TRACKER,
+        &[
+            "createWorkItemInModule>",
+            &format!("moduleURI>{}<", document.uri),
+            &format!("parentWorkItemURI>{}<", parent.uri),
+            &format!(r#"project uri="{URI}Sandbox${{Project}}Sandbox""#),
+            "type><trackert:id>requirement<",
+            "title>Brakes<",
+        ],
+        &format!(
+            "<createWorkItemInModuleResponse><createWorkItemInModuleReturn>{URI}Sandbox${{WorkItem}}SB-7</createWorkItemInModuleReturn></createWorkItemInModuleResponse>"
+        ),
+    )
+    .await;
+
+    let polarion = writer(&server);
+    polarion
+        .baselines()
+        .update(&baseline, Some("B1"), None)
+        .await
+        .unwrap();
+    let record = polarion::TestRecord {
+        test_case: Some(case),
+        result: Some("passed".into()),
+        executed_by: Some("amy".into()),
+        ..polarion::TestRecord::default()
+    };
+    polarion
+        .tests()
+        .update_record(&run, 0, &record)
+        .await
+        .unwrap();
+    let new = polarion::NewWorkItem::new("Sandbox", "requirement", "Brakes");
+    let created = polarion
+        .items()
+        .create_in_document(&new, &document, Some(&parent))
+        .await
+        .unwrap();
+    assert_eq!(created, ItemRef::new("Sandbox", "SB-7"));
+    // The baseline is named by its URI only.
+    let sent = &bodies(&server, "updateBaseline").await[0];
+    assert!(!sent.contains(">b1<"), "{sent}");
+}
+
+#[tokio::test]
+async fn users_are_updated_by_uri_only() {
+    let server = server().await;
+    let user_uri = polarion::uri::user_uri("jdoe");
+    expect(
+        &server,
+        PROJECT,
+        &["getUser>", "userID>jdoe<"],
+        &format!(
+            r#"<getUserResponse><getUserReturn uri="{user_uri}"><id>jdoe</id><name>J</name></getUserReturn></getUserResponse>"#
+        ),
+    )
+    .await;
+    expect(
+        &server,
+        PROJECT,
+        &[
+            "updateUser>",
+            &format!(r#"in0 uri="{user_uri}""#),
+            "name>Jane<",
+        ],
+        "<updateUserResponse/>",
+    )
+    .await;
+    let update = polarion::UserUpdate {
+        name: Some("Jane".into()),
+        ..polarion::UserUpdate::default()
+    };
+    admin(&server)
+        .users()
+        .update("jdoe", &update)
+        .await
+        .unwrap();
+
+    // Without its URI, the user would be a new one to create: nothing is sent.
+    let server = common::server().await;
+    expect(
+        &server,
+        PROJECT,
+        &["getUser>"],
+        "<getUserResponse><getUserReturn><id>jdoe</id></getUserReturn></getUserResponse>",
+    )
+    .await;
+    let err = admin(&server)
+        .users()
+        .update("jdoe", &update)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Invalid(m) if m.contains("jdoe")),
+        "{err:?}"
+    );
+    assert!(bodies(&server, "updateUser").await.is_empty());
+}
+
 #[test]
 fn soap_types_serialize_to_json() {
     let folder = polarion::soap::types::Folder {

@@ -184,9 +184,13 @@ impl<'a> WorkItems<'a> {
     ///
     /// A description that already is this HTML is not written again (`updated: false`).
     ///
-    /// The requests are not atomic (read, upload, read the attachments again, update, delete).
-    /// A diagram uploaded by a call that failed later is not deleted, but the next call that
-    /// writes the same diagram shows it.
+    /// The reads and the rendering come first. Then the uploads, then the update and the deletes;
+    /// each of the two steps of more than one write runs as one transaction in a Polarion session
+    /// of its own. Two steps, because Polarion does not list an attachment uploaded in a
+    /// transaction until it is committed, and the description needs the new attachments' ids. A
+    /// call that fails in the second step leaves the uploaded diagrams behind, not shown; a later
+    /// write of the same diagrams shows them instead of uploading them again. A delete that fails
+    /// stays a warning, as said above.
     ///
     /// Rendering is CPU-bound and blocks the calling thread until it is done: milliseconds for a
     /// typical diagram, seconds for a large one, and the first render of a process also loads
@@ -236,7 +240,7 @@ impl<'a> WorkItems<'a> {
         let fetched = self.get_fields(item, &description_fields()).await?;
         let old = description_html(&fetched);
         let shown_before = own_diagram_refs(&old, item, &fetched);
-        let mut attachments = existing(&fetched.attachments, &diagrams, &shown_before);
+        let attachments = existing(&fetched.attachments, &diagrams, &shown_before);
 
         // Every diagram without an attachment is rendered before the first write.
         let mut warnings = Vec::new();
@@ -250,37 +254,142 @@ impl<'a> WorkItems<'a> {
                 Err(e) => warnings.push(unrendered(&diagram.source, &e, options.allow_unrendered)?),
             }
         }
-        for (file_name, svg) in &uploads {
-            self.add_attachment(item, file_name, DIAGRAM_TITLE, svg.as_bytes())
+
+        let mut plan = Plan {
+            item: item.clone(),
+            markdown: markdown.to_owned(),
+            html_options: ToHtmlOptions {
+                work_items: links(options.work_items.as_ref(), item, &fetched),
+                highlight: options.highlight,
+            },
+            old,
+            append,
+            prune: !append && !options.keep_orphans,
+            shown_before,
+            listed: attachment_ids(&fetched.attachments),
+            uploads,
+            attachments,
+        };
+        let uploaded: BTreeSet<String> = plan.uploads.iter().map(|(n, _)| n.clone()).collect();
+        if !plan.uploads.is_empty() {
+            let uploads = std::mem::take(&mut plan.uploads);
+            let target = item.clone();
+            self.polarion
+                .atomic("createAttachment", uploads.len(), move |p| async move {
+                    let items = p.items();
+                    for (file_name, svg) in &uploads {
+                        items
+                            .add_attachment(&target, file_name, DIAGRAM_TITLE, svg.as_bytes())
+                            .await?;
+                    }
+                    Ok(())
+                })
                 .await?;
-        }
-        if !uploads.is_empty() {
-            // `createAttachment` returns nothing; the ids are `<counter>-<file name>`.
+            // Committed, so listed. `createAttachment` returns nothing; the ids are
+            // `<counter>-<file name>`.
             let listed = self
                 .get_fields(item, &Fields::new(["attachments"]))
                 .await?
                 .attachments;
-            for (file_name, _) in &uploads {
+            for file_name in &uploaded {
                 let id = newest(listed.iter().filter(|a| named(a, file_name))).ok_or_else(|| {
                     Error::Invalid(format!(
                         "the diagram {file_name} was uploaded to {item} but is not among its attachments"
                     ))
                 })?;
-                attachments.insert(file_name.clone(), id);
+                plan.attachments.insert(file_name.clone(), id);
             }
         }
+        let (content, updated) = plan.content(&plan.attachments);
+        let writes = usize::from(updated) + plan.orphans(&content).len();
+        let done = self
+            .polarion
+            .atomic("updateWorkItem", writes, move |p| {
+                plan.execute(p, content, updated)
+            })
+            .await?;
+        warnings.extend(done.warnings);
 
-        let html_options = ToHtmlOptions {
-            work_items: links(options.work_items.as_ref(), item, &fetched),
-            highlight: options.highlight,
-        };
-        let html = md::to_html_with_diagrams(markdown, &html_options, &attachments);
-        let content = if append {
-            md::append_html(&old, &html)
+        let diagrams = diagrams
+            .into_iter()
+            .map(|d| DiagramAttachment {
+                attachment: done.attachments.get(&d.file_name).cloned(),
+                uploaded: uploaded.contains(&d.file_name),
+                file_name: d.file_name,
+            })
+            .collect();
+        Ok(MarkdownUpdate {
+            updated: done.updated,
+            diagrams,
+            deleted: done.deleted,
+            warnings,
+        })
+    }
+}
+
+/// The writes of a Markdown description, planned on the client: everything
+/// [`Plan::execute`] needs, owned, so it can run in a session of its own.
+struct Plan {
+    item: ItemRef,
+    markdown: String,
+    html_options: ToHtmlOptions,
+    /// The description before, as HTML.
+    old: String,
+    append: bool,
+    /// Delete the diagram attachments no longer shown.
+    prune: bool,
+    /// The diagram attachments of this work item the old description shows.
+    shown_before: BTreeSet<String>,
+    /// The attachment ids the work item had.
+    listed: BTreeSet<String>,
+    /// Rendered diagrams to upload: file name and SVG.
+    uploads: Vec<(String, String)>,
+    /// The diagrams that have an attachment (the uploaded ones once they are): file name and
+    /// attachment id.
+    attachments: DiagramAttachments,
+}
+
+/// What [`Plan::execute`] did.
+struct Done {
+    updated: bool,
+    attachments: DiagramAttachments,
+    deleted: Vec<String>,
+    warnings: Vec<String>,
+}
+
+impl Plan {
+    /// The new description with these diagram attachments, and whether it differs from the old.
+    fn content(&self, attachments: &DiagramAttachments) -> (String, bool) {
+        let html = md::to_html_with_diagrams(&self.markdown, &self.html_options, attachments);
+        let content = if self.append {
+            md::append_html(&self.old, &html)
         } else {
             html
         };
-        let updated = content != old;
+        let updated = content != self.old;
+        (content, updated)
+    }
+
+    /// The attachments to delete once `content` is written.
+    fn orphans(&self, content: &str) -> Vec<String> {
+        if !self.prune {
+            return Vec::new();
+        }
+        // Every reference counts here, URLs of other work items included: deleting too little
+        // is safe.
+        let shown = md::diagram_refs(content);
+        self.shown_before
+            .difference(&shown)
+            .filter(|id| self.listed.contains(*id))
+            .cloned()
+            .collect()
+    }
+
+    /// Write `content` (when `updated`), then delete the orphans: through `p`, the client or
+    /// (several writes) the session of its own of [`crate::Polarion::atomic`].
+    async fn execute(self, p: crate::Polarion, content: String, updated: bool) -> Result<Done> {
+        let items = p.items();
+        let item = &self.item;
         if updated {
             let update = WorkItemUpdate {
                 description: Some(Text {
@@ -289,43 +398,24 @@ impl<'a> WorkItems<'a> {
                 }),
                 ..WorkItemUpdate::default()
             };
-            self.update(item, &update).await?;
+            // One write: it runs in this session (inside its transaction, if any).
+            items.update(item, &update).await?;
         }
 
         let mut deleted = Vec::new();
-        if !append && !options.keep_orphans {
-            // Every reference counts here, URLs of other work items included: deleting too
-            // little is safe.
-            let shown = md::diagram_refs(&content);
-            let listed = attachment_ids(&fetched.attachments);
-            let orphans: Vec<String> = shown_before
-                .difference(&shown)
-                .filter(|id| listed.contains(*id))
-                .cloned()
-                .collect();
-            for id in orphans {
-                match self.delete_attachment(item, &id).await {
-                    Ok(()) => deleted.push(id),
-                    Err(e) => warnings.push(format!(
-                        "the diagram attachment {id} is no longer shown but could not be deleted: \
-                         {e} (later writes do not delete it either; delete it by hand)"
-                    )),
-                }
+        let mut warnings = Vec::new();
+        for id in self.orphans(&content) {
+            match items.delete_attachment(item, &id).await {
+                Ok(()) => deleted.push(id),
+                Err(e) => warnings.push(format!(
+                    "the diagram attachment {id} is no longer shown but could not be deleted: \
+                     {e} (later writes do not delete it either; delete it by hand)"
+                )),
             }
         }
-
-        let uploaded: BTreeSet<String> = uploads.into_iter().map(|(name, _)| name).collect();
-        let diagrams = diagrams
-            .into_iter()
-            .map(|d| DiagramAttachment {
-                attachment: attachments.get(&d.file_name).cloned(),
-                uploaded: uploaded.contains(&d.file_name),
-                file_name: d.file_name,
-            })
-            .collect();
-        Ok(MarkdownUpdate {
+        Ok(Done {
             updated,
-            diagrams,
+            attachments: self.attachments,
             deleted,
             warnings,
         })

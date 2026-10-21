@@ -30,6 +30,11 @@ const UNCHECKED: &str =
 /// Why a write-restricted client refuses a status or resolution change.
 const STATUS: &str =
     "the client writes only to its write targets and never changes `status` or `resolution`";
+/// Why a client cannot open a session of its own.
+const NO_OWN_SESSION: &str = "this client cannot open a Polarion session of its own: it wraps a SOAP client (`Polarion::from_client`) or is such a session already";
+/// Why a write-restricted client refuses a create with further writes while an explicit
+/// transaction is open.
+pub(crate) const OWN_SESSION: &str = "the client writes only to its write targets, and a create with further writes runs in a Polarion session of its own, which cannot join the open transaction";
 /// Why a write-restricted client refuses a create.
 const NO_CREATE: &str = "the client's create budget has no create of this kind left";
 /// Why a write-restricted client without targets or creates refuses a transaction.
@@ -66,6 +71,47 @@ const STATUS_KEYS: [&str; 2] = ["status", "resolution"];
 pub struct Polarion {
     soap: polarion_soap::Client,
     writes: Arc<WritePolicy>,
+    /// How to open sessions of their own ([`Polarion::own_session`]); `None` for
+    /// [`Polarion::from_client`] clients and for such sessions themselves.
+    sessions: Option<Arc<Sessions>>,
+    /// Restricted mode, in a session of its own: the objects it created
+    /// ([`Polarion::grant_created`]), which its guards and its write filter treat as targets.
+    created: Option<Arc<restricted::Created>>,
+}
+
+/// What [`PolarionBuilder::build`] keeps to build further SOAP clients, one per session of its
+/// own.
+#[derive(Debug)]
+struct Sessions {
+    /// The SOAP client's settings before read-only and the write filter are applied.
+    template: polarion_soap::ClientBuilder,
+    /// Restricted mode: the write filter, shared (with its create budget) by every session.
+    filter: Option<Arc<restricted::Filter>>,
+}
+
+/// A SOAP client built from `sessions`: read-only unless `writes` allows writes; in restricted
+/// mode with the shared write filter, which also lets this client write to the objects in
+/// `created`; `transaction_only` for a session of its own
+/// ([`polarion_soap::ClientBuilder::transaction_only`]).
+fn soap_client(
+    sessions: &Sessions,
+    writes: &WritePolicy,
+    created: Option<Arc<restricted::Created>>,
+    transaction_only: bool,
+) -> Result<polarion_soap::Client> {
+    let builder = sessions.template.clone().transaction_only(transaction_only);
+    let builder = match &sessions.filter {
+        Some(filter) => {
+            let filter = filter.clone();
+            builder
+                .read_only(!writes.restricted_can_write())
+                .write_filter(Arc::new(move |operation, body| {
+                    filter.allows(operation, body, created.as_deref())
+                }))
+        }
+        None => builder.read_only(writes.projects.is_empty() && !writes.global),
+    };
+    Ok(builder.build()?)
 }
 
 /// How many objects of each kind a write-restricted client may create
@@ -182,6 +228,8 @@ impl Polarion {
         Self {
             soap,
             writes: Arc::default(),
+            sessions: None,
+            created: None,
         }
     }
 
@@ -231,6 +279,70 @@ impl Polarion {
         } else {
             uri::project_of(uri).is_some_and(|p| self.writes.projects.contains(p))
         }
+    }
+
+    /// A client with a Polarion session of its own, for one transaction: a new SOAP client (its
+    /// own HTTP client, cookies and session; it logs in at most once and writes only inside its
+    /// transaction, see [`polarion_soap::ClientBuilder::transaction_only`]) with the same write
+    /// policy (targets, create budget, approvals) and, in restricted mode, the same write filter
+    /// (and its budget). In restricted mode it records the objects it creates
+    /// ([`Polarion::grant_created`]). It cannot open a session of its own itself, and neither can
+    /// a [`Polarion::from_client`] client.
+    pub(crate) fn own_session(&self) -> Result<Polarion> {
+        let Some(sessions) = &self.sessions else {
+            return Err(Error::Invalid(NO_OWN_SESSION.to_owned()));
+        };
+        let created = self
+            .writes
+            .restricted()
+            .then(|| Arc::new(restricted::Created::default()));
+        Ok(Polarion {
+            soap: soap_client(sessions, &self.writes, created.clone(), true)?,
+            writes: self.writes.clone(),
+            sessions: None,
+            created,
+        })
+    }
+
+    /// Restricted mode, in a session of its own: this session just created the object `uri` of
+    /// `kind`, so its follow-up writes may change it (its guards and its write filter treat it as
+    /// a target; no other session does). The URI the server returned must have no `%revision`,
+    /// belong to the create budget's project and name an object of `kind` (`${WorkItem}`,
+    /// `${TestRun}`, `${Module}`); anything else is [`Error::Invalid`], which rolls the
+    /// transaction back. Nothing to do outside restricted mode.
+    pub(crate) fn grant_created(&self, kind: CreateKind, uri: &str) -> Result<()> {
+        if !self.writes.restricted() {
+            return Ok(());
+        }
+        let invalid = |why: &str| {
+            Error::Invalid(format!(
+                "the server returned `{uri}` for the new object, which {why}"
+            ))
+        };
+        let Some(created) = &self.created else {
+            return Err(invalid(
+                "cannot be written to: only a session of its own writes to the objects it created",
+            ));
+        };
+        let Some(creates) = &self.writes.creates else {
+            return Err(invalid("is outside the create budget"));
+        };
+        let marker = match kind {
+            CreateKind::WorkItem => uri::WORK_ITEM,
+            CreateKind::TestRun => uri::TEST_RUN,
+            CreateKind::Document => uri::MODULE,
+        };
+        if uri::strip_revision(uri) != uri {
+            return Err(invalid("has a revision"));
+        }
+        if !uri::is_object_uri(uri, &creates.project, marker) {
+            return Err(invalid(&format!(
+                "is not an object of this kind in project `{}`",
+                creates.project
+            )));
+        }
+        created.insert(uri);
+        Ok(())
     }
 
     /// End the session on the server.
@@ -365,8 +477,10 @@ impl Polarion {
         }
     }
 
+    /// Restricted mode: `uri` is a write target or an object this session created
+    /// ([`Polarion::grant_created`]).
     fn require_target(&self, operation: &'static str, uri: &str) -> Result<()> {
-        if self.writes.is_target(uri) {
+        if self.writes.is_target(uri) || self.created.as_ref().is_some_and(|c| c.contains(uri)) {
             Ok(())
         } else {
             Err(Self::refused(operation, None, Some(uri), None))
@@ -481,7 +595,7 @@ impl Polarion {
 
     /// Transactions only wrap writes that are checked one by one: allowed in restricted mode
     /// when the client can write anything at all; otherwise when some writes are allowed.
-    fn check_transaction(&self, operation: &'static str) -> Result<()> {
+    pub(crate) fn check_transaction(&self, operation: &'static str) -> Result<()> {
         if !self.writes.restricted() {
             self.check_any_write(operation)
         } else if self.writes.restricted_can_write() {
@@ -652,24 +766,22 @@ impl PolarionBuilder {
 
     pub fn build(self) -> Result<Polarion> {
         let writes = self.writes;
-        let soap = if writes.restricted() {
-            let filter = restricted::Filter::new(
+        let filter = writes.restricted().then(|| {
+            Arc::new(restricted::Filter::new(
                 writes.targets.as_ref(),
                 writes.creates.as_ref(),
                 writes.approvals.clone(),
-            );
-            self.soap
-                .read_only(!writes.restricted_can_write())
-                .write_filter(Arc::new(move |operation, body| {
-                    filter.allows(operation, body)
-                }))
-        } else {
-            self.soap
-                .read_only(writes.projects.is_empty() && !writes.global)
+            ))
+        });
+        let sessions = Sessions {
+            template: self.soap,
+            filter,
         };
         Ok(Polarion {
-            soap: soap.build()?,
+            soap: soap_client(&sessions, &writes, None, false)?,
             writes: Arc::new(writes),
+            sessions: Some(Arc::new(sessions)),
+            created: None,
         })
     }
 }
@@ -807,6 +919,103 @@ mod tests {
             refused(polarion.check_write_owned("op", ITEM, "c-1")).0,
             None
         );
+    }
+
+    #[test]
+    fn sessions_of_their_own_write_to_what_they_created() {
+        const BASE: &str = "subterra:data-service:objects:/default/";
+        let new = format!("{BASE}Sandbox${{WorkItem}}SB-9");
+        let budget = CreateBudget {
+            work_items: 1,
+            test_runs: 1,
+            documents: 1,
+        };
+        let polarion = client(|b| b.restrict_writes([ITEM]).allow_creates("Sandbox", budget));
+        let fork = polarion.own_session().unwrap();
+        assert!(fork.soap().has_write_filter());
+        assert!(fork.writes_restricted());
+        assert!(matches!(fork.own_session(), Err(Error::Invalid(_))));
+        assert_eq!(
+            refused(fork.check_write_target("op", &new)).1.as_deref(),
+            Some(new.as_str())
+        );
+        fork.grant_created(CreateKind::WorkItem, &new).unwrap();
+        fork.check_write_target("op", &new).unwrap();
+        fork.check_write_target("op", &format!("{new}%4")).unwrap();
+        fork.check_write_targets("op", ITEM, &[&new]).unwrap();
+        fork.check_write_targets("op", &new, &[ITEM]).unwrap();
+        let comment = format!(
+            "{}#1",
+            new.replacen("${WorkItem}", "${Comment}{WorkItem}", 1)
+        );
+        fork.check_write_owned("op", &new, &comment).unwrap();
+        // Project checks still refuse; `write_allowed` is the policy only.
+        refused(fork.check_write("op", Some("Sandbox")));
+        assert!(!fork.write_allowed(&new));
+        // Neither the main session nor another session of its own may write to it.
+        refused(polarion.check_write_target("op", &new));
+        refused(
+            polarion
+                .own_session()
+                .unwrap()
+                .check_write_target("op", &new),
+        );
+        assert!(matches!(
+            polarion.grant_created(CreateKind::WorkItem, &new),
+            Err(Error::Invalid(_))
+        ));
+        // Only URIs without revision, in the budget's project, of the created kind.
+        for (kind, uri) in [
+            (CreateKind::WorkItem, format!("{new}%3")),
+            (CreateKind::WorkItem, format!("{BASE}Prod${{WorkItem}}PR-1")),
+            (
+                CreateKind::WorkItem,
+                format!("{BASE}Sandbox${{TestRun}}R-1"),
+            ),
+            (CreateKind::WorkItem, format!("{BASE}Sandbox${{WorkItem}}")),
+            (
+                CreateKind::WorkItem,
+                format!("{BASE}Sandbox${{WorkItem}}SB-1${{Comment}}x"),
+            ),
+            (CreateKind::WorkItem, comment.clone()),
+            (
+                CreateKind::WorkItem,
+                format!("{BASE}Sandbox${{Project}}Sandbox"),
+            ),
+            (CreateKind::TestRun, new.clone()),
+            (
+                CreateKind::Document,
+                format!("{BASE}Sandbox${{ModuleComment}}{{Module}}{{moduleFolder}}S#D#1"),
+            ),
+            (CreateKind::Document, "Sandbox${Module}S#D".to_owned()),
+        ] {
+            assert!(
+                matches!(fork.grant_created(kind, &uri), Err(Error::Invalid(_))),
+                "{uri}"
+            );
+            if uri::strip_revision(&uri) != new {
+                refused(fork.check_write_target("op", &uri));
+            }
+        }
+        let run = format!("{BASE}Sandbox${{TestRun}}R-1");
+        let document = format!("{BASE}Sandbox${{Module}}{{moduleFolder}}Specs#New");
+        fork.grant_created(CreateKind::TestRun, &run).unwrap();
+        fork.grant_created(CreateKind::Document, &document).unwrap();
+        fork.check_write_target("op", &run).unwrap();
+        fork.check_write_target("op", &document).unwrap();
+
+        // Outside restricted mode a grant changes nothing; the SOAP client is read-only as the
+        // main one; a wrapped SOAP client has no sessions of its own.
+        let writer = client(|b| b.allow_writes(["Sandbox"]));
+        let writer_fork = writer.own_session().unwrap();
+        writer_fork
+            .grant_created(CreateKind::WorkItem, "x")
+            .unwrap();
+        assert!(!writer_fork.soap().is_read_only());
+        assert!(!writer_fork.soap().has_write_filter());
+        assert!(client(|b| b).own_session().unwrap().soap().is_read_only());
+        let wrapped = Polarion::from_client(writer.soap().clone());
+        assert!(matches!(wrapped.own_session(), Err(Error::Invalid(_))));
     }
 
     #[test]

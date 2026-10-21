@@ -24,7 +24,9 @@ be nested (`parent`).
 ## Creating and changing plans
 
 - `create_plan`: `id`, `name`, `template` (a template id), optionally `parent` (a plan id) and `project`. It
-  returns the new plan's URI. `plans.create-template` creates a template.
+  returns the new plan's URI. The other fields of `update_plan` (except `name`) can be given to `create_plan`
+  as well: they are written right after the create, in the same transaction (all or nothing).
+  `plans.create-template` creates a template.
 - `update_plan`: `plan` (URI), `name`, `status`, `description`, `start-date`, `due-date`, `capacity`,
   `default-estimate`, `estimation-field`, `prioritization-field`, `color`, `sort-order`, and `custom-fields`
   (typed from JSON; `{"enum": "id"}` for an enum option). Fields not given stay as they are.

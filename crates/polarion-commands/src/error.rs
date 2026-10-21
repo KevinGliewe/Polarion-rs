@@ -3,7 +3,8 @@ use polarion::soap::Error as SoapError;
 /// A failed command, with a stable code for machine consumers.
 #[derive(Debug)]
 pub struct CommandError {
-    /// `notFound`, `readOnly`, `invalid`, `fault`, `login`, `sessionExpired`, `http`, `config` or `other`.
+    /// `notFound`, `readOnly`, `invalid`, `fault`, `login`, `sessionExpired`, `commitUncertain`,
+    /// `http`, `config` or `other`.
     pub code: &'static str,
     pub message: String,
 }
@@ -43,6 +44,7 @@ impl From<polarion::Error> for CommandError {
             polarion::Error::NotFound { .. } => "notFound",
             polarion::Error::WriteNotAllowed { .. } => "readOnly",
             polarion::Error::Invalid(_) => "invalid",
+            polarion::Error::CommitUncertain(_) => "commitUncertain",
             polarion::Error::Soap(s) => match s {
                 SoapError::Fault { .. } => "fault",
                 SoapError::Login(_) => "login",

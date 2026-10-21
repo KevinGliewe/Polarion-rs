@@ -57,3 +57,25 @@ The `dist` profile (root `Cargo.toml`) is `release` with thin LTO and stripped s
 
 Actions > Release > Run workflow builds every target and keeps the archives as workflow artifacts; it creates no
 release and publishes nothing.
+
+## Docker images
+
+`.github/workflows/docker.yml` builds the images `polarion-cli` and `polarion-mcp` (the `Dockerfile`'s targets
+`cli` and `mcp`, see [README](../README.md#docker)) and pushes them to Docker Hub.
+
+| Event | Pushed tags |
+|---|---|
+| semver tag `v1.2.3` (or `1.2.3`) | `1.2.3`, `1.2`, `1`, `latest` |
+| semver tag with a pre-release part (`v1.2.3-rc.1`) | `1.2.3-rc.1` |
+| push to `main` | `edge`, `sha-<short sha>` |
+| pull request, Actions > Docker > Run workflow | nothing: built and checked only |
+
+- **Steps:** both targets are built with the GitHub Actions cache (the `test` stage, and with it the workspace's
+  tests, runs once for both), loaded, checked by [`docker/check-images.sh`](../docker/check-images.sh) (no Polarion
+  server: the binaries run, every built-in profile starts, `read-only` removes the write scope), and only then
+  pushed from the cache.
+- **Platform:** `linux/amd64` only.
+- **Setup** (Settings > Secrets and variables > Actions): the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`
+  (an access token with Read & Write); the variable `DOCKERHUB_NAMESPACE` when the repositories belong to an
+  organization instead of that user; optionally the variable `BASE_REGISTRY`, a mirror of the official base images.
+  A push without the secrets fails; pull requests build without them.

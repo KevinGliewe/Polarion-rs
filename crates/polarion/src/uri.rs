@@ -8,11 +8,11 @@ use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 /// Prefix of object URIs in the default repository.
 const OBJECTS: &str = "subterra:data-service:objects:/default/";
-const WORK_ITEM: &str = "${WorkItem}";
-const MODULE: &str = "${Module}";
+pub(crate) const WORK_ITEM: &str = "${WorkItem}";
+pub(crate) const MODULE: &str = "${Module}";
 const MODULE_FOLDER: &str = "{moduleFolder}";
 const USER: &str = "${User}";
-const TEST_RUN: &str = "${TestRun}";
+pub(crate) const TEST_RUN: &str = "${TestRun}";
 const PROJECT: &str = "${Project}";
 
 /// A work item, as referenced from links and other objects.
@@ -280,6 +280,16 @@ pub(crate) fn is_project_uri(uri: &str, project: &str) -> bool {
         .and_then(|rest| rest.strip_prefix(project))
         .and_then(|rest| rest.strip_prefix(PROJECT))
         .is_some_and(|id| id == project)
+}
+
+/// Whether `uri` is `…/default/PROJECT<marker>REST` for this project and object marker
+/// (`${WorkItem}`, `${TestRun}`, `${Module}`), with a non-empty rest that holds no further
+/// marker (`$`).
+pub(crate) fn is_object_uri(uri: &str, project: &str, marker: &str) -> bool {
+    uri.strip_prefix(OBJECTS)
+        .and_then(|rest| rest.strip_prefix(project))
+        .and_then(|rest| rest.strip_prefix(marker))
+        .is_some_and(|rest| !rest.is_empty() && !rest.contains('$'))
 }
 
 /// A project id or a work item id: ASCII letters, digits, `_`, `-` and `.`.

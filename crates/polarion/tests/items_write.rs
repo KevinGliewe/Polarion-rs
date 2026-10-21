@@ -132,7 +132,8 @@ async fn create_sends_project_type_and_typed_custom_fields() {
 
 #[tokio::test]
 async fn update_splits_standard_custom_and_cleared_fields() {
-    let server = server().await;
+    // Three writes: one transaction in a session of its own (`tests/atomic.rs`).
+    let server = session_server().await;
     for (op, response) in [
         ("updateWorkItem>", "<updateWorkItemResponse/>"),
         ("setCustomField>", "<setCustomFieldResponse/>"),
@@ -323,7 +324,13 @@ async fn links_comments_people_and_more() {
     expect(
         &server,
         TRACKER,
-        &["createWorkRecord>", "date>2024-01-31<", "timeSpent>2h<"],
+        &[
+            "createWorkRecord>",
+            // A user without a URI would be a new user to create (PermissionDeniedException).
+            &format!(r#"user uri="{URI}${{User}}jdoe""#),
+            "date>2024-01-31<",
+            "timeSpent>2h<",
+        ],
         "<createWorkRecordResponse/>",
     )
     .await;

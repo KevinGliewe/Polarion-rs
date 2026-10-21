@@ -261,7 +261,7 @@ fn diagram(file_name: &str, attachment: Option<&str>, uploaded: bool) -> Diagram
 
 #[tokio::test]
 async fn writes_are_refused_before_anything_is_sent() {
-    let server = server().await;
+    let server = session_server().await;
     let (reader, writer) = (reader(&server), writer(&server));
     let options = set_options();
     let markdown = format!("Text\n\n{}", fence(SIMPLE));
@@ -299,7 +299,7 @@ async fn writes_are_refused_before_anything_is_sent() {
 
 #[tokio::test]
 async fn a_new_diagram_is_rendered_uploaded_and_shown() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let id = format!("1-{FILE}");
     read(&server, 1, work_item(&item, None, &[])).await;
@@ -347,6 +347,14 @@ async fn a_new_diagram_is_rendered_uploaded_and_shown() {
             "updateWorkItem"
         ]
     );
+    // One upload, then one update: single writes, both on the client's session.
+    let sessions: Vec<String> = log(&server)
+        .await
+        .into_iter()
+        .filter(|(_, o)| o != "logInWithToken")
+        .map(|(s, _)| s)
+        .collect();
+    assert_eq!(sessions, ["-1", "-1", "-1", "-1"]);
 
     let reads = bodies(&server, "getWorkItemByIdsWithFields").await;
     assert_eq!(element(&reads[0], "trackeri:projectId"), "Sandbox");
@@ -372,9 +380,119 @@ async fn a_new_diagram_is_rendered_uploaded_and_shown() {
     );
 }
 
+/// Several uploads, then the update and a delete: two transactions, each in a session of its
+/// own. Polarion lists an attachment uploaded in a transaction only once it is committed, so the
+/// ids of the new attachments are read between them, on the client's session.
+#[tokio::test]
+async fn new_diagrams_are_uploaded_before_the_transaction_that_shows_them() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    let second = "graph TD
+    C-->D";
+    let second_file = mermaid::diagram(second).file_name;
+    let (old, first_id, second_id) = (
+        format!("2-{OLD}"),
+        format!("3-{FILE}"),
+        format!("4-{second_file}"),
+    );
+    read(
+        &server,
+        1,
+        work_item(
+            &item,
+            Some(("text/html", &diagram_img(&old))),
+            &[(&old, OLD)],
+        ),
+    )
+    .await;
+    read(
+        &server,
+        2,
+        work_item(
+            &item,
+            None,
+            &[(&old, OLD), (&first_id, FILE), (&second_id, &second_file)],
+        ),
+    )
+    .await;
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("createAttachment>"))
+        .respond_with(xml("<createAttachmentResponse/>"))
+        .expect(2)
+        .mount(&server)
+        .await;
+    expect(
+        &server,
+        TRACKER,
+        &["updateWorkItem>"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+    expect(
+        &server,
+        TRACKER,
+        &["deleteAttachment>", &format!("id>{old}<")],
+        "<deleteAttachmentResponse/>",
+    )
+    .await;
+
+    let markdown = format!(
+        "{}
+{}",
+        fence(SIMPLE),
+        fence(second)
+    );
+    let update = writer(&server)
+        .items()
+        .set_description_markdown(&item, &markdown, &set_options())
+        .await
+        .unwrap();
+
+    assert!(update.updated);
+    assert_eq!(
+        update.diagrams,
+        [
+            diagram(FILE, Some(&first_id), true),
+            diagram(&second_file, Some(&second_id), true)
+        ]
+    );
+    assert_eq!(update.deleted, [old]);
+    let requests: Vec<(String, String)> = log(&server)
+        .await
+        .into_iter()
+        .filter(|(_, o)| o != "logInWithToken")
+        .collect();
+    assert_eq!(
+        requests,
+        [
+            ("-1", "getWorkItemByIdsWithFields"),
+            ("-2", "beginTransaction"),
+            ("-2", "createAttachment"),
+            ("-2", "createAttachment"),
+            ("-2", "endTransaction"),
+            ("-2", "endSession"),
+            ("-1", "getWorkItemByIdsWithFields"),
+            ("-3", "beginTransaction"),
+            ("-3", "updateWorkItem"),
+            ("-3", "deleteAttachment"),
+            ("-3", "endTransaction"),
+            ("-3", "endSession"),
+        ]
+        .map(|(s, o)| (s.to_owned(), o.to_owned()))
+    );
+    assert_eq!(
+        written(&server, &item).await,
+        format!(
+            "{}<br/><br/>{}",
+            diagram_img(&first_id),
+            diagram_img(&second_id)
+        )
+    );
+}
+
 #[tokio::test]
 async fn an_upload_missing_from_the_attachments_fails() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     read(&server, 1, work_item(&item, None, &[])).await;
     read(
@@ -413,7 +531,7 @@ async fn an_upload_missing_from_the_attachments_fails() {
 
 #[tokio::test]
 async fn highlighting_can_be_turned_off() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     Mock::given(path(TRACKER))
         .and(body_string_contains("getWorkItemByIdsWithFields>"))
@@ -461,7 +579,7 @@ async fn highlighting_can_be_turned_off() {
 
 #[tokio::test]
 async fn an_existing_diagram_attachment_is_reused() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let id = format!("7-{FILE}");
     read(
@@ -547,7 +665,7 @@ async fn description_with_old_diagrams(server: &MockServer, item: &ItemRef) {
 
 #[tokio::test]
 async fn diagram_attachments_only_the_old_description_showed_are_deleted() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     description_with_old_diagrams(&server, &item).await;
     let (old, other) = (format!("2-{OLD}"), format!("4-{OTHER}"));
@@ -594,10 +712,13 @@ async fn diagram_attachments_only_the_old_description_showed_are_deleted() {
         operations(&server).await,
         [
             "getWorkItemByIdsWithFields",
+            "beginTransaction",
             "updateWorkItem",
             "deleteAttachment",
             "deleteAttachment",
-            "hasSubject"
+            "hasSubject",
+            "endTransaction",
+            "endSession"
         ]
     );
     let deletes = bodies(&server, "deleteAttachment").await;
@@ -613,7 +734,7 @@ async fn diagram_attachments_only_the_old_description_showed_are_deleted() {
 
 #[tokio::test]
 async fn keep_orphans_deletes_nothing() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     description_with_old_diagrams(&server, &item).await;
 
@@ -643,7 +764,7 @@ async fn of_several_attachments_of_a_diagram_the_shown_one_is_reused() {
         // None shown: the newest.
         ("<b>old</b>".to_owned(), &newest),
     ] {
-        let server = server().await;
+        let server = session_server().await;
         let item = sandbox("SB-1");
         read(
             &server,
@@ -704,7 +825,7 @@ async fn appending_keeps_the_description() {
             r#"line 1<br/>line 2<br/><br/><span style="font-weight: bold;">new</span>"#.to_owned(),
         ),
     ] {
-        let server = server().await;
+        let server = session_server().await;
         let item = sandbox("SB-1");
         read(
             &server,
@@ -744,7 +865,7 @@ async fn appending_keeps_the_description() {
 
 #[tokio::test]
 async fn appending_blank_markdown_sends_nothing() {
-    let server = server().await;
+    let server = session_server().await;
     let update = writer(&server)
         .items()
         .append_description_markdown(&sandbox("SB-1"), " \n\t\n", &set_options())
@@ -764,7 +885,7 @@ async fn a_diagram_that_cannot_be_rendered_fails_before_anything_is_written() {
     let markdown = format!("{}\n{}", fence(SIMPLE), fence(bad));
     let item = sandbox("SB-1");
 
-    let refusing = server().await;
+    let refusing = session_server().await;
     read(
         &refusing,
         1,
@@ -794,7 +915,7 @@ async fn a_diagram_that_cannot_be_rendered_fails_before_anything_is_written() {
     assert_eq!(operations(&refusing).await, ["getWorkItemByIdsWithFields"]);
 
     // Allowed: the diagram is a code block, with a warning.
-    let server = server().await;
+    let server = session_server().await;
     let id = format!("1-{FILE}");
     read(&server, 1, work_item(&item, None, &[])).await;
     read(&server, 2, work_item(&item, None, &[(&id, FILE)])).await;
@@ -859,7 +980,7 @@ async fn a_diagram_that_cannot_be_rendered_fails_before_anything_is_written() {
 
 #[tokio::test]
 async fn an_unchanged_description_is_not_written() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let id = format!("1-{FILE}");
     let html = format!(
@@ -897,7 +1018,7 @@ async fn an_unchanged_description_is_not_written() {
 
 #[tokio::test]
 async fn ids_with_the_work_items_own_prefix_become_links() {
-    let server = server().await;
+    let server = session_server().await;
     let polarion = Polarion::builder(&base_url(&server), Auth::Token("t".into()))
         .allow_writes(["MyProject"])
         .build()
@@ -953,11 +1074,20 @@ async fn ids_with_the_work_items_own_prefix_become_links() {
         sent(&item, &updates[2]).1,
         format!("See {} and {}.", link("MP-1"), link("UTF-8"))
     );
+    // Text only: one write each, on the client's session.
+    assert!(
+        log(&server)
+            .await
+            .iter()
+            .all(|(s, o)| s == "-1" || (s.is_empty() && o == "logInWithToken")),
+        "{:?}",
+        log(&server).await
+    );
 }
 
 #[tokio::test]
 async fn diagrams_are_read_back_from_their_svg() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let (with_source, failing, without_source) = (
         format!("1-{FILE}"),
@@ -1055,7 +1185,7 @@ async fn diagrams_are_read_back_from_their_svg() {
 
 #[tokio::test]
 async fn read_options_are_passed_on() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let html = format!(
         r#"<span style="color: #FF0000;">Red</span> {}"#,
@@ -1098,7 +1228,7 @@ async fn read_options_are_passed_on() {
 
 #[tokio::test]
 async fn a_plain_text_description_is_read_as_text() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let plain = "Plain & simple\n<b>not bold</b>";
     read(
@@ -1127,7 +1257,7 @@ async fn a_plain_text_description_is_read_as_text() {
 
 #[tokio::test]
 async fn other_errors_reading_a_diagram_fail_the_read() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let id = format!("1-{FILE}");
     read(
@@ -1161,7 +1291,7 @@ async fn other_errors_reading_a_diagram_fail_the_read() {
 
 #[tokio::test]
 async fn line_breaks_at_the_end_of_a_plain_text_description_are_not_read() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     read(
         &server,
@@ -1193,7 +1323,7 @@ async fn line_breaks_at_the_end_of_a_plain_text_description_are_not_read() {
 
 #[tokio::test]
 async fn a_server_without_get_attachment_is_asked_once() {
-    let server = server().await;
+    let server = session_server().await;
     let item = sandbox("SB-1");
     let ids = [
         format!("1-{FILE}"),
@@ -1257,7 +1387,7 @@ async fn another_work_items_diagram_is_not_this_ones() {
     ];
 
     // Writing: SB-1's `1-…` is neither preferred nor deleted; its own old diagram is deleted.
-    let server = server().await;
+    let server = session_server().await;
     read(
         &server,
         1,
@@ -1289,13 +1419,16 @@ async fn another_work_items_diagram_is_not_this_ones() {
         operations(&server).await,
         [
             "getWorkItemByIdsWithFields",
+            "beginTransaction",
             "updateWorkItem",
-            "deleteAttachment"
+            "deleteAttachment",
+            "endTransaction",
+            "endSession"
         ]
     );
 
     // Reading: only the work item's own diagram is fetched.
-    let server = common::server().await;
+    let server = common::session_server().await;
     read(
         &server,
         1,

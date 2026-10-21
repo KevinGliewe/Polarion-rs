@@ -28,6 +28,12 @@ pub enum Error {
         reason: Option<&'static str>,
     },
 
+    /// The commit of a write of several requests ([`crate::Polarion`] runs them as one
+    /// transaction in a session of its own) was sent, but no answer came back (HTTP or status
+    /// error): the changes may or may not have been committed. Check before repeating the write.
+    #[error("the commit was sent without an answer; the changes may or may not be committed: {0}")]
+    CommitUncertain(#[source] polarion_soap::Error),
+
     /// Invalid input, e.g. a value that does not fit a field's type, or no workflow action
     /// leading to the requested status.
     #[error("{0}")]

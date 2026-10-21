@@ -210,7 +210,8 @@ share one Polarion session.
 .\Start-PolarionMcp.ps1 -Http 127.0.0.1:8787 -Config full-access     # keep this window open
 ```
 
-Clients send the token as `Authorization: Bearer <POLARION_MCP_AUTH_TOKEN>`; see
+Clients send the token as `Authorization: Bearer <POLARION_MCP_AUTH_TOKEN>`, or, where a client cannot set
+headers, in the URL: `http://127.0.0.1:8787/mcp/<token>` (it then shows up wherever the URL is logged). See
 [`clients/claude-code-http.mcp.json`](clients/claude-code-http.mcp.json) and
 [`clients/vscode.mcp.json`](clients/vscode.mcp.json) (`polarion-http`, which asks for the token once). Notes:
 
@@ -325,7 +326,8 @@ folder on your machine, so you and the agent can both open what was saved.
 | `POLARION_MCP_REQUIRE_GUIDES` | `write` | `write`, `all` or `none`; wins over the file |
 | `POLARION_MCP_FILES` | off | exchange folder (must exist) |
 | `POLARION_MCP_HTTP` | | serve HTTP at this address, as `--http ADDR` |
-| `POLARION_MCP_AUTH_TOKEN` | (required for HTTP) | bearer token clients must send, 16+ characters |
+| `POLARION_MCP_AUTH_TOKEN` | (required for HTTP) | token clients must send, 16+ characters: `Authorization: Bearer <token>` or the URL `/mcp/<token>` |
+| `POLARION_MCP_ALLOW_UNAUTHENTICATED` | off | `1`: HTTP without a token (instead of `POLARION_MCP_AUTH_TOKEN`); everyone who reaches the port acts as your account |
 | `POLARION_MCP_ALLOWED_HOSTS` | `localhost,127.0.0.1,::1` | `Host` names the HTTP server answers to |
 | `POLARION_MCP_ALLOWED_ORIGINS` | none | browser origins allowed to connect |
 

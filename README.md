@@ -18,15 +18,35 @@ server for AI agents, and the libraries behind them.
 
 ## Contents
 
-- [Crates](#crates)
-- [polarion (command line)](#polarion-command-line)
-- [polarion-mcp (MCP server)](#polarion-mcp-mcp-server)
-- [polarion-commands](#polarion-commands)
-- [polarion (library)](#polarion), including [Writes](#writes)
-- [polarion-markdown](#polarion-markdown)
-- [polarion-soap](#polarion-soap)
-- [Code generation](#code-generation)
-- [License](#license)
+- [Polarion-rs](#polarion-rs)
+  - [Contents](#contents)
+  - [Crates](#crates)
+  - [polarion (command line)](#polarion-command-line)
+    - [Install](#install)
+    - [Configure](#configure)
+    - [Use](#use)
+    - [Enabling writes](#enabling-writes)
+    - [Arguments](#arguments)
+    - [Markdown descriptions](#markdown-descriptions)
+    - [Output and exit codes](#output-and-exit-codes)
+  - [polarion-mcp (MCP server)](#polarion-mcp-mcp-server)
+    - [Install](#install-1)
+    - [Connect a client](#connect-a-client)
+    - [Tools](#tools)
+    - [Guides first](#guides-first)
+    - [Choosing tools](#choosing-tools)
+    - [Results and errors](#results-and-errors)
+    - [Attachments](#attachments)
+    - [Shared server over HTTP](#shared-server-over-http)
+    - [Docker](#docker)
+  - [polarion-commands](#polarion-commands)
+  - [polarion](#polarion)
+    - [Writes](#writes)
+      - [What has been checked against a real server](#what-has-been-checked-against-a-real-server)
+  - [polarion-markdown](#polarion-markdown)
+  - [polarion-soap](#polarion-soap)
+  - [Code generation](#code-generation)
+  - [License](#license)
 
 ## Crates
 
@@ -95,6 +115,7 @@ polarion items links MP-42                  # outgoing and incoming
 polarion items history MP-42
 polarion items description-markdown MP-42 > desc.md
 polarion items set-description-markdown MP-42 --markdown @desc.md   # a write: see below
+polarion items create --type task --title "Brakes" --categories software --links parent=MP-42   # one transaction
 polarion documents list [--space Specs]
 polarion documents get Specs/SRS [--body]
 polarion documents work-items Specs/SRS
@@ -395,6 +416,9 @@ claude mcp add --transport http polarion https://mcp.example.com/mcp \
   --header "Authorization: Bearer $POLARION_MCP_AUTH_TOKEN"
 ```
 
+A client that cannot set headers gives the token in the URL instead: `https://mcp.example.com/mcp/<token>`
+(percent-encoded, e.g. `%20` for a space; a trailing `/` is fine).
+
 Or another client:
 
 ```json
@@ -411,7 +435,14 @@ Or another client:
 
 **Access:**
 
-- `POLARION_MCP_AUTH_TOKEN` (at least 16 characters) is required. Requests without it get 401.
+- `POLARION_MCP_AUTH_TOKEN` (at least 16 characters) is required. Clients send it as `Authorization: Bearer
+  <token>` to `/mcp`, or as part of the URL, `/mcp/<token>`. Requests without it get 401.
+- **Token in the URL:** it ends up wherever URLs are kept: proxy and access logs, the client's configuration,
+  browser history. Prefer the header where the client supports it, and keep such logs private.
+- **No authentication:** `POLARION_MCP_ALLOW_UNAUTHENTICATED=1` (without `POLARION_MCP_AUTH_TOKEN`; both together
+  are refused) accepts every request to `/mcp`. Everyone who reaches the port acts as the Polarion account, with
+  its write scope; the startup line says `NO AUTHENTICATION`. Only for a port nobody else reaches (loopback, a
+  private Docker network); the Host and Origin checks below stay.
 - **Browsers:** requests with an `Origin` header are refused unless the origin is listed, with scheme and port, in
   `POLARION_MCP_ALLOWED_ORIGINS` (e.g. `http://localhost:3000`).
 - **Host names:** the server answers only to the `Host` names in `POLARION_MCP_ALLOWED_HOSTS` (default:
@@ -420,7 +451,7 @@ Or another client:
 
 **One identity:**
 
-- Everyone with the bearer token acts as the service account. Polarion's history shows that account, not the
+- Everyone with the token (or, without authentication, everyone who reaches the port) acts as the service account. Polarion's history shows that account, not the
   person.
 - Give it the narrowest Polarion role that works (read-only for production).
 - Enable writes with `POLARION_WRITE_PROJECTS` only where they are meant to happen.
@@ -428,13 +459,123 @@ Or another client:
 **One Polarion session** for all clients:
 
 - It is logged in again when it expires, and ended on Ctrl-C/SIGTERM.
-- Explicit transactions (`session.begin-transaction`, `commit`, `rollback`) are therefore refused over HTTP. Use
-  stdio for them.
+- Explicit transactions (`session.begin-transaction`, `commit`, `rollback`) and `session.check` are therefore
+  refused over HTTP. Use stdio for them.
+- Commands of several writes (a create with categories, assignees or links, an update of several fields) still
+  apply them as one transaction (a description with new diagrams: the uploads, then the update and deletes): the library opens a Polarion session of its own
+  for each such call (one more login), so it never mixes with other clients' calls.
 
 **Stateless:**
 
 - No `Mcp-Session-Id` sessions and no server-initiated SSE streams. Every request is answered with plain JSON.
 - OAuth is not included, so claude.ai web connectors cannot use it.
+
+### Docker
+
+The [`Dockerfile`](Dockerfile) builds two images, both on Debian slim, run as a non-root user:
+
+| Image | Target | Runs |
+|---|---|---|
+| `polarion-mcp` | `mcp` (the default) | the [HTTP server](#shared-server-over-http) on port 8787 |
+| `polarion-cli` | `cli` | `polarion` with the container's arguments (`--help` without any) |
+
+Its stages:
+
+- **build:** both release binaries.
+- **test:** the workspace's tests. The images are only built when they pass. `--target build` or `--target test`
+  stops early.
+- **runtime:** the base of both images, with the entry point that applies the profile (below).
+
+```sh
+docker build -t polarion-mcp .
+docker run --rm -p 127.0.0.1:8787:8787 \
+  -e POLARION_URL=https://polarion.example.com/polarion \
+  -e POLARION_TOKEN=<service account token> \
+  -e POLARION_PROJECT=MYPROJECT \
+  -e POLARION_WRITE_PROJECTS=MYPROJECT \
+  -e POLARION_MCP_AUTH_TOKEN=<16+ characters> \
+  polarion-mcp
+
+docker build --target cli -t polarion-cli .
+docker run --rm -e POLARION_URL -e POLARION_TOKEN -e POLARION_PROJECT polarion-cli items get MP-42
+# Files named in arguments (@desc.md, --out) are relative to /work:
+docker run --rm -v "$PWD:/work" --user "$(id -u):$(id -g)" -e POLARION_URL -e POLARION_TOKEN \
+  polarion-cli items description-markdown MP-42 --out desc.md
+```
+
+**Profiles:** each image has the configurations of a few scenarios built in. `POLARION_PROFILE` selects one:
+
+| Image | `POLARION_PROFILE` | Tools / access |
+|---|---|---|
+| `polarion-mcp` | `full-access` (default) | the tools of [`full-access.toml`](examples/mcp/config/full-access.toml), `POLARION_ALLOW_GLOBAL_WRITES=1` |
+| | `every-tool` | every command as a tool ([`every-tool.toml`](examples/mcp/config/every-tool.toml)), `POLARION_ALLOW_GLOBAL_WRITES=1` |
+| | `no-deletes` | no deletes, no user accounts ([`no-deletes.toml`](examples/mcp/config/no-deletes.toml)); no global writes |
+| | `read-only` | [`read-only.toml`](examples/mcp/config/read-only.toml); the write scope is removed |
+| `polarion-cli` | none (default) | the environment as given (read-only without a write scope) |
+| | `full-access` | `POLARION_ALLOW_GLOBAL_WRITES=1` |
+| | `read-only` | the write scope is removed from the environment (write flags given as arguments still apply) |
+
+- A profile only sets what the container was not given (given empty counts as given):
+  `-e POLARION_ALLOW_GLOBAL_WRITES=0` or `-e POLARION_MCP_CONFIG=...` still win. Only `read-only` takes something away (`POLARION_WRITE_PROJECTS`,
+  `POLARION_WRITE_TARGETS`, `POLARION_ALLOW_GLOBAL_WRITES`).
+- The projects that may be written are always `POLARION_WRITE_PROJECTS`, set at run time; there is no "every
+  project" wildcard.
+- The profiles are shell fragments in `/etc/polarion/profiles` ([`docker/profiles`](docker/profiles)); the MCP
+  tool selections are in `/etc/polarion/mcp`. A profile of your own: mount it and give its path,
+  `-v ./mine.sh:/etc/polarion/mine.sh -e POLARION_PROFILE=/etc/polarion/mine.sh`; or mount a config file and set
+  `POLARION_MCP_CONFIG`. An unknown profile stops the container (exit code 64) with the list of the built-in ones.
+- [`docker/check-images.sh`](docker/check-images.sh) checks built images without a Polarion server.
+
+**Docker Hub:** [`.github/workflows/docker.yml`](.github/workflows/docker.yml) builds both images, checks them, and
+pushes `polarion-cli` and `polarion-mcp`: `edge` and `sha-<commit>` from `main`; `1.2.3`, `1.2`, `1` and `latest`
+from a semver tag (a pre-release only its version). See [Releasing](docs/releasing.md#docker-images).
+
+**Base images:** from Docker Hub. Where it is blocked or rate-limited, `--build-arg BASE_REGISTRY=...` with
+`docker build` (the variable `BASE_REGISTRY` in the workflow) names a mirror of the official images, e.g.
+`mirror.gcr.io/library`. `RUST_IMAGE` and `RUNTIME_IMAGE` replace a base image whole (their defaults are built from
+`BASE_REGISTRY`, `RUST_VERSION` and `DEBIAN_RELEASE`); keep both on the same Debian release.
+
+**compose:** [`compose.yaml`](compose.yaml) runs `polarion-mcp` with the variables it lists, taken from the host's
+environment (or a `.env` file next to it). It builds the image from the `Dockerfile` (target `mcp`):
+
+```sh
+export POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=<service account token>
+export POLARION_PROJECT=MYPROJECT
+export POLARION_MCP_AUTH_TOKEN=$(openssl rand -hex 32)
+docker compose up -d --build
+```
+
+- **Token:** `POLARION_MCP_AUTH_TOKEN`, or `POLARION_MCP_ALLOW_UNAUTHENTICATED=1` instead; with neither (or both) the
+  server does not start.
+- **Build arguments:** `BASE_REGISTRY`, `RUST_VERSION`, `DEBIAN_RELEASE`, `RUST_IMAGE` and `RUNTIME_IMAGE` come from
+  the host or the `.env` file too (`docker compose --env-file FILE` names another file); those not set keep the
+  Dockerfile's defaults.
+- **A published image instead:** `POLARION_MCP_IMAGE=<namespace>/polarion-mcp:latest`, then `docker compose pull`
+  before `docker compose up -d` (without the pull, compose builds the image under that name).
+
+- **Passed through by name:** only the variables listed under `environment:`; one not set on the host is not set in
+  the container. Add the others you need there (`POLARION_WRITE_PROJECTS`, `POLARION_PROFILE`,
+  `POLARION_MCP_ALLOWED_HOSTS`, ...).
+- **Port:** `127.0.0.1:8787`; `POLARION_MCP_PORT` changes the host port.
+
+**Who can reach it:**
+
+- Inside the container the server listens on `0.0.0.0:8787`, so that Docker's port forwarding reaches it. What is
+  reachable from outside is decided by `-p`:
+
+  | `docker run` option | Who can connect |
+  |---|---|
+  | `-p 127.0.0.1:8787:8787` | Only programs on the Docker host |
+  | `-p 8787:8787` | Anyone who can reach the host on that port. On Linux, Docker's port rules bypass host firewalls such as ufw |
+  | no `-p` | Only containers on the same Docker network |
+
+- The [access checks](#shared-server-over-http) still apply: every request needs the token (in the header or the
+  URL; unless `POLARION_MCP_ALLOW_UNAUTHENTICATED=1`), and the server
+  answers only to the `Host` names in `POLARION_MCP_ALLOWED_HOSTS` (default: `localhost`, `127.0.0.1`, `::1`). A
+  request to `http://192.168.1.50:8787/mcp` is refused until that name is listed.
+- **Remote access:** the token, and with it write access to Polarion, would cross the network in plain HTTP.
+  Publish the port only on `127.0.0.1` (or a Docker network), put a TLS reverse proxy in front, and set
+  `POLARION_MCP_ALLOWED_HOSTS` to the proxy's public name.
 
 ## polarion-commands
 
@@ -476,7 +617,7 @@ Operations are grouped by area:
 | `folders()` | Document & page folders, project or global |
 | `projects()`, `users()` | Projects and project groups; users (get, list, avatar, create, update) |
 | `security()` | Permission checks, roles, location of objects, token owner, licenses, account vault |
-| `Polarion` | Login/logout, session check, transactions (`begin_transaction`, `commit`, `rollback`) |
+| `Polarion` | Login/logout, session check, transactions (`begin_transaction`, `commit`, `rollback`); writes of several requests run as one transaction in a session of their own on their own |
 
 Result types:
 
@@ -538,9 +679,16 @@ Writes are enabled per project, or only for listed objects.
   folders, comments on activities, the account vault.
 - `Polarion::soap()` is the raw client and is not checked against the allowlist. In restricted mode its writes pass
   the write filter.
+- **Several requests, one transaction:** a write that needs more than one request (a create with follow-ups such
+  as categories, assignees or links; a document, test run or plan create with its fields; an update of standard
+  and custom fields) runs them as one transaction, all or nothing, in a Polarion session of its own that the
+  library opens and ends. A Markdown description with new diagrams takes two: the uploads, then the update and
+  the deletes (Polarion lists an attachment uploaded in a transaction only once it is committed). A commit without an answer is
+  `Error::CommitUncertain`. A call dropped after it started still finishes (commit or rollback, then logout). See
+  [Writes of several requests](docs/library.md#writes-of-several-requests).
 
 ```rust
-use polarion::{Auth, FieldValue, ItemRef, NewWorkItem, Polarion, WorkItemUpdate};
+use polarion::{Auth, FieldValue, ItemRef, NewLink, NewWorkItem, Polarion, WorkItemUpdate};
 
 let polarion = Polarion::builder("https://polarion.example.com/polarion", Auth::Token("<token>".into()))
     .allow_writes(["Sandbox"])
@@ -549,6 +697,10 @@ let items = polarion.items();
 
 let mut new = NewWorkItem::new("Sandbox", "requirement", "Brakes must work");
 new.custom_fields.insert("asil".into(), FieldValue::Enum("D".into()));
+// Fields createWorkItem cannot carry, e.g. what the project's workflow requires on create:
+// sent right after the create, as one transaction in a Polarion session of its own.
+new.categories = vec!["software".into()];
+new.links = vec![NewLink::new("parent", ItemRef::new("Sandbox", "SB-1"))];
 let item = items.create(&new).await?;
 
 items.update(&item, &WorkItemUpdate { title: Some("Brakes must always work".into()), ..Default::default() }).await?;
@@ -651,12 +803,19 @@ The live write tier, the CLI and MCP tiers and the bootstrap (see [docs/testing.
 
 - Currency custom fields sent as `xsd:decimal` (the project has none), multi-user custom fields, planning
   constraints (their options could not be read).
-- Work records (the test user may not create them) and test records naming the executing user
-  (`subterra:data-service:objects:/default/${User}ID`).
+- Test records naming the executing user, by URI (`subterra:data-service:objects:/default/${User}ID`). Work records
+  name the user the same way; one was booked by hand against a real server, but restricted mode treats the user as
+  a write target, so the live suite (restricted to its fixtures) skips them.
 - Update operations for plans, and every write the live suite never makes (workflow actions, deletes, document
   structure, plans, baselines, users).
 - A write repeated after a session renewal: only after a SOAP fault (the server refused it), never after an HTTP
   error, and through the write filter again (a create beyond the budget is not repeated).
+- Creates with follow-ups for every kind (work items, documents, test runs, plans): the live suite creates nothing.
+  A task with a category was created by hand (begin transaction, `createWorkItem`, `addCategory`, commit in one
+  session) against a real server whose workflow requires the category. The live suite covers updates of several
+  requests in a session of their own.
+- A commit without an answer (`CommitUncertain`), and the cleanup of a session of its own after a cancelled call
+  (it finishes in a spawned task) or a runtime shutdown (the server times it out).
 
 ## polarion-markdown
 
@@ -724,7 +883,7 @@ for field in item.custom_fields.unwrap_or_default() {
 | Feature | What it does |
 |---|---|
 | Coverage | All 302 operations of the 7 services (Session, Project, Tracker, TestManagement, Planning, Security, Builder), with Javadoc from the WSDLs as method docs |
-| Session | Logs in lazily (token or user/password), shares one session across services and concurrent calls, and logs in again when the session expires (except inside a transaction). A failed read is then repeated; a failed write only when the server answered with a fault, never after an HTTP error (it may have been applied) |
+| Session | Logs in lazily (token or user/password), shares one session across services and concurrent calls, and logs in again when the session expires (except inside a transaction). A failed read is then repeated; a failed write only when the server answered with a fault, never after an HTTP error (it may have been applied). `ClientBuilder` is `Clone`: each built client has a session of its own; `transaction_only` clients log in once and write only inside their transaction |
 | Untyped values | Custom field values and other untyped elements are `AnyValue`, decoded from their `xsi:type`; unknown types are kept as raw XML |
 | Errors | SOAP faults surface with their code and message (`Error::Fault`) |
 | Read-only mode | `read_only(true)` refuses every operation that is not a read before anything is sent |

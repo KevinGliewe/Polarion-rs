@@ -85,11 +85,16 @@ Failures are tool results with `isError` and the text `error (code): message`:
 | `notFound` | the object was not found |
 | `fault` | Polarion refused the request; the message is Polarion's |
 | `login`, `sessionExpired`, `http`, `config` | the connection or the server's settings: report them to the user |
+| `commitUncertain` | the commit of several writes was sent but not answered: read the object back before repeating the call |
 
 - A disabled command is refused by every tool ("is disabled on this server") and not listed by
   `polarion_commands`.
 - Over HTTP all clients share one Polarion session, so transactions (`session.begin-transaction`, `commit`,
-  `rollback`) are refused there.
+  `rollback`) and `session.check` are refused there.
+- A command that sends several writes (a create with categories, assignees or links, an update of several fields)
+  applies them as one transaction, all or nothing, in a Polarion session of its own: over HTTP too. A description
+  with new diagrams uploads them first; when the update fails afterwards, they stay as attachments and the next
+  write of the same diagrams shows them. A call that was cancelled after it started still finishes on the server.
 
 ## Habits that work
 

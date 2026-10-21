@@ -29,6 +29,7 @@ const VARS: &[&str] = &[
     "POLARION_MCP_REQUIRE_GUIDES",
     "POLARION_MCP_HTTP",
     "POLARION_MCP_AUTH_TOKEN",
+    "POLARION_MCP_ALLOW_UNAUTHENTICATED",
     "POLARION_MCP_ALLOWED_ORIGINS",
     "POLARION_MCP_FILES",
     "POLARION_MCP_ALLOWED_HOSTS",
@@ -79,6 +80,8 @@ struct Mcp {
     /// Kept open so the server can write to it; read by the Unix-only signal test.
     #[cfg_attr(not(unix), allow(dead_code))]
     stderr: BufReader<ChildStderr>,
+    /// The `listening on` line.
+    line: String,
     url: String,
     http: reqwest::Client,
 }
@@ -106,8 +109,14 @@ fn command(polarion: Option<&MockServer>, env: &[(&str, &str)]) -> std::process:
 
 /// Start the server with the auth token and wait for its `listening on` line.
 fn start(polarion: Option<&MockServer>, env: &[(&str, &str)]) -> Mcp {
-    let mut child = command(polarion, env)
-        .env("POLARION_MCP_AUTH_TOKEN", TOKEN)
+    let mut cmd = command(polarion, env);
+    cmd.env("POLARION_MCP_AUTH_TOKEN", TOKEN);
+    listen(cmd)
+}
+
+/// Run `cmd` and wait for its `listening on` line.
+fn listen(mut cmd: std::process::Command) -> Mcp {
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -124,6 +133,7 @@ fn start(polarion: Option<&MockServer>, env: &[(&str, &str)]) -> Mcp {
     Mcp {
         child,
         stderr,
+        line,
         url,
         http: reqwest::Client::new(),
     }
@@ -131,8 +141,12 @@ fn start(polarion: Option<&MockServer>, env: &[(&str, &str)]) -> Mcp {
 
 impl Mcp {
     fn post(&self, body: &Value) -> reqwest::RequestBuilder {
+        self.post_to(&self.url, body)
+    }
+
+    fn post_to(&self, url: &str, body: &Value) -> reqwest::RequestBuilder {
         self.http
-            .post(&self.url)
+            .post(url)
             .header("Accept", "application/json, text/event-stream")
             .header("Content-Type", "application/json")
             .body(body.to_string())
@@ -174,12 +188,126 @@ fn ping() -> Value {
 
 #[test]
 fn startup_needs_an_auth_token() {
-    for env in [vec![], vec![("POLARION_MCP_AUTH_TOKEN", "short")]] {
+    for env in [
+        vec![],
+        vec![("POLARION_MCP_AUTH_TOKEN", "short")],
+        vec![("POLARION_MCP_ALLOW_UNAUTHENTICATED", "0")],
+        // Both: which one was meant is unclear.
+        vec![
+            ("POLARION_MCP_AUTH_TOKEN", TOKEN),
+            ("POLARION_MCP_ALLOW_UNAUTHENTICATED", "1"),
+        ],
+    ] {
         let out = command(None, &env).output().unwrap();
-        assert_eq!(out.status.code(), Some(1));
+        assert_eq!(out.status.code(), Some(1), "{env:?}");
         let stderr = String::from_utf8(out.stderr).unwrap();
         assert!(stderr.contains("POLARION_MCP_AUTH_TOKEN"), "{stderr}");
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_token_can_be_part_of_the_url() {
+    let mcp = start(None, &[]);
+    assert!(
+        mcp.line
+            .contains("Authorization: Bearer, or the URL /mcp/<token>"),
+        "{}",
+        mcp.line
+    );
+    assert!(!mcp.line.contains(TOKEN), "{}", mcp.line);
+
+    // The first character percent-encoded: the segment is decoded before the comparison.
+    let encoded = format!("%{:02X}{}", TOKEN.as_bytes()[0], &TOKEN[1..]);
+    for (suffix, status) in [
+        (format!("/{TOKEN}"), StatusCode::OK),
+        (format!("/{TOKEN}/"), StatusCode::OK),
+        (format!("/{TOKEN}?x=1"), StatusCode::OK),
+        (format!("/{encoded}"), StatusCode::OK),
+        (
+            "/0123456789abcdef-wrong".to_owned(),
+            StatusCode::UNAUTHORIZED,
+        ),
+        (format!("/{TOKEN}/more"), StatusCode::UNAUTHORIZED),
+        (format!("/{TOKEN}x"), StatusCode::UNAUTHORIZED),
+        ("/%zz".to_owned(), StatusCode::UNAUTHORIZED),
+        ("//".to_owned(), StatusCode::UNAUTHORIZED),
+    ] {
+        let url = format!("{}{suffix}", mcp.url);
+        let response = mcp
+            .post_to(&url, &ping())
+            .header("MCP-Protocol-Version", "2025-06-18")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status, "{suffix}");
+        if status == StatusCode::OK {
+            let reply: Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+            assert_eq!(reply["id"], 1, "{suffix}: {reply}");
+        }
+    }
+    // A wrong token in the URL is not saved by a right header, nor the other way round: each
+    // way stands alone.
+    let response = mcp
+        .post_to(&format!("{}/0123456789abcdef-wrong", mcp.url), &ping())
+        .bearer_auth(TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let response = mcp
+        .post_to(&format!("{}/{TOKEN}", mcp.url), &ping())
+        .bearer_auth("0123456789abcdef-wrong")
+        .header("MCP-Protocol-Version", "2025-06-18")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    // Other paths are not the endpoint.
+    for other in ["/mcpx", "/other"] {
+        let base = mcp.url.trim_end_matches("/mcp");
+        let response = mcp
+            .post_to(&format!("{base}{other}"), &ping())
+            .bearer_auth(TOKEN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{other}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn authentication_can_be_turned_off() {
+    let mut cmd = command(None, &[("POLARION_MCP_ALLOW_UNAUTHENTICATED", "1")]);
+    let mcp = listen({
+        cmd.env_remove("POLARION_MCP_AUTH_TOKEN");
+        cmd
+    });
+    assert!(mcp.line.contains("NO AUTHENTICATION"), "{}", mcp.line);
+
+    for url in [mcp.url.clone(), format!("{}/", mcp.url)] {
+        let response = mcp
+            .post_to(&url, &ping())
+            .header("MCP-Protocol-Version", "2025-06-18")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{url}");
+    }
+    // No token, so no token URL either.
+    let response = mcp
+        .post_to(&format!("{}/{TOKEN}", mcp.url), &ping())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    // The Host and Origin checks stay.
+    let response = mcp
+        .post(&ping())
+        .header("Origin", "http://evil.example")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -332,7 +460,127 @@ async fn transactions_are_refused_over_http() {
         error && text.contains("share one Polarion session"),
         "{text}"
     );
+    // A session check could log the shared session in again.
+    let (text, error) = mcp
+        .call(2, "polarion_call", json!({"command": "session.check"}))
+        .await;
+    assert!(
+        error && text.contains("share one Polarion session"),
+        "{text}"
+    );
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn creates_with_follow_ups_have_a_session_of_their_own_over_http() {
+    let server = MockServer::start().await;
+    // Every login gets a session of its own: -1, -2, ...
+    let logins = std::sync::atomic::AtomicUsize::new(0);
+    Mock::given(path(SESSION))
+        .and(body_string_contains("logInWithToken>"))
+        .respond_with(move |_: &wiremock::Request| {
+            let n = logins.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            ResponseTemplate::new(200).set_body_raw(
+                envelope(
+                    &format!(
+                        r#"<soapenv:Header><ns1:sessionID xmlns:ns1="http://ws.polarion.com/session">-{n}</ns1:sessionID></soapenv:Header>"#
+                    ),
+                    "<logInWithTokenResponse/>",
+                ),
+                "text/xml",
+            )
+        })
+        .mount(&server)
+        .await;
+    for (op, response) in [
+        ("beginTransaction>", "<beginTransactionResponse/>"),
+        ("endTransaction>", "<endTransactionResponse/>"),
+        ("endSession>", "<endSessionResponse/>"),
+    ] {
+        Mock::given(path(SESSION))
+            .and(body_string_contains(op))
+            .respond_with(xml(response))
+            .mount(&server)
+            .await;
+    }
+    Mock::given(path("/polarion/ws/services/ProjectWebService"))
+        .and(body_string_contains("getProject>"))
+        .respond_with(xml(&format!(
+            r#"<getProjectResponse><getProjectReturn uri="{URI}Sandbox${{Project}}Sandbox"><id>Sandbox</id></getProjectReturn></getProjectResponse>"#
+        )))
+        .mount(&server)
+        .await;
+    let new = format!("{URI}Sandbox${{WorkItem}}SB-9");
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("createWorkItem>"))
+        .respond_with(xml(&format!(
+            "<createWorkItemResponse><createWorkItemReturn>{new}</createWorkItemReturn></createWorkItemResponse>"
+        )))
+        .mount(&server)
+        .await;
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("addCategory>"))
+        .respond_with(xml(
+            "<addCategoryResponse><addCategoryReturn>true</addCategoryReturn></addCategoryResponse>",
+        ))
+        .mount(&server)
+        .await;
+    let mcp = start(
+        Some(&server),
+        &[
+            ("POLARION_PROJECT", "Sandbox"),
+            ("POLARION_WRITE_PROJECTS", "Sandbox"),
+            ("POLARION_MCP_REQUIRE_GUIDES", "none"),
+        ],
+    );
+    let (text, error) = mcp
+        .call(
+            1,
+            "create_work_item",
+            json!({"type": "task", "title": "Brakes", "categories": ["software"]}),
+        )
+        .await;
+    assert!(!error, "{text}");
+    assert!(text.contains("SB-9"), "{text}");
+    let requests: Vec<(String, String)> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|r| {
+            let body = String::from_utf8_lossy(&r.body).into_owned();
+            let session = body
+                .split_once("sessionID")
+                .and_then(|(_, rest)| rest.split_once('>'))
+                .and_then(|(_, rest)| rest.split_once('<'))
+                .map(|(id, _)| id.to_owned())
+                .unwrap_or_default();
+            let rest = body.split_once("<soapenv:Body><")?.1.to_owned();
+            let element = rest.split([' ', '>', '/']).next()?.to_owned();
+            Some((session, element.rsplit(':').next()?.to_owned()))
+        })
+        .collect();
+    let fork: Vec<&str> = requests
+        .iter()
+        .filter(|(s, _)| s == "-2")
+        .map(|(_, o)| o.as_str())
+        .collect();
+    assert_eq!(
+        fork,
+        [
+            "beginTransaction",
+            "createWorkItem",
+            "addCategory",
+            "endTransaction",
+            "endSession"
+        ],
+        "{requests:?}"
+    );
+    // The shared session only read the project.
+    assert!(
+        requests.iter().all(|(s, o)| s != "-1" || o == "getProject"),
+        "{requests:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -539,7 +787,7 @@ fn the_startup_line_names_the_write_targets() {
     let _ = child.kill();
     let _ = child.wait();
     assert!(
-        line.contains("(writes restricted to work item Sandbox/SB-1, document Sandbox/Specs/SRS)"),
+        line.contains("(writes restricted to work item Sandbox/SB-1, document Sandbox/Specs/SRS; "),
         "{line}"
     );
 }

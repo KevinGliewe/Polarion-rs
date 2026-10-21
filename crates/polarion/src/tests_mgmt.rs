@@ -5,11 +5,11 @@ use polarion_soap::types as soap;
 
 use crate::client::{CreateKind, Polarion, not_found};
 use crate::convert::{option_id, soap_custom_fields, soap_test_record, soap_text};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::model::{Attachment, EnumOption, FieldDefinition, TestRecord, TestRun, TestSteps, Text};
 use crate::query::{Fields, Query};
 use crate::uri::{self, ItemRef};
-use crate::write::TestRunUpdate;
+use crate::write::{NewTestRun, TestRunUpdate};
 
 fn runs(list: Vec<soap::TestRun>) -> Vec<TestRun> {
     list.into_iter()
@@ -290,29 +290,64 @@ impl<'a> TestRuns<'a> {
     // --------------------------------------------------------------- writes
 
     /// Create a test run from a template; returns its URI.
-    pub async fn create(&self, project: &str, id: &str, template: &str) -> Result<String> {
+    ///
+    /// With `fields` ([`NewTestRun`]), the create and the `updateTestRun` that writes them run as
+    /// one transaction in a Polarion session of its own (all or nothing).
+    pub async fn create(&self, new: &NewTestRun) -> Result<String> {
+        let operation = if new.title.is_some() {
+            "createTestRunWithTitle"
+        } else {
+            "createTestRun"
+        };
+        if new.fields.title.is_some() {
+            return Err(Error::Invalid(
+                "a new test run's title is `title`, not `fields.title`".into(),
+            ));
+        }
+        // Before the budget is taken: a refused create takes nothing.
+        let keys = new
+            .fields
+            .custom_fields
+            .keys()
+            .map(String::as_str)
+            .chain(new.fields.status.as_ref().map(|_| "status"));
+        self.polarion.check_field_keys(operation, keys)?;
+        if let Some(defect) = &new.fields.summary_defect
+            && self.polarion.writes_restricted()
+        {
+            self.polarion
+                .check_write_target("updateTestRun", &defect.uri)?;
+        }
         self.polarion
-            .check_create("createTestRun", project, CreateKind::TestRun)?;
-        Ok(self
-            .service()
-            .create_test_run(project, id, template)
-            .await?)
-    }
-
-    /// Create a test run with a title (`None`: the template's); returns its URI.
-    pub async fn create_with_title(
-        &self,
-        project: &str,
-        id: &str,
-        title: Option<&str>,
-        template: &str,
-    ) -> Result<String> {
+            .check_create(operation, &new.project, CreateKind::TestRun)?;
+        let new = new.clone();
+        let writes = 1 + usize::from(!new.fields.is_empty());
         self.polarion
-            .check_create("createTestRunWithTitle", project, CreateKind::TestRun)?;
-        Ok(self
-            .service()
-            .create_test_run_with_title(project, id, title, template)
-            .await?)
+            .atomic(operation, writes, move |p| async move {
+                // The guard ran above: the request is sent as it is.
+                let s = p.soap().test_management();
+                let uri = match &new.title {
+                    Some(title) => {
+                        s.create_test_run_with_title(
+                            &new.project,
+                            &new.id,
+                            Some(title),
+                            &new.template,
+                        )
+                        .await?
+                    }
+                    None => {
+                        s.create_test_run(&new.project, &new.id, &new.template)
+                            .await?
+                    }
+                };
+                if !new.fields.is_empty() {
+                    p.grant_created(CreateKind::TestRun, &uri)?;
+                    p.tests().update(&uri, &new.fields).await?;
+                }
+                Ok(uri)
+            })
+            .await
     }
 
     pub async fn update(&self, run_uri: &str, update: &TestRunUpdate) -> Result<()> {

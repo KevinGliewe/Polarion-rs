@@ -33,7 +33,8 @@ flowchart LR
   the `sessionID` header, posts it to `ws/services/<Service>`, and turns a `soapenv:Fault` into `Error::Fault`.
   Non-SOAP error pages (proxies, gateways) become `Error::Status`.
 - **One client, all services:** `Client` is cheap to clone, and clones share one `Inner`: the HTTP client with its
-  cookie store, and the session.
+  cookie store, and the session. `ClientBuilder` is `Clone` too, and every `build()` makes a new `Inner`: a client
+  with its own HTTP client, cookies and session.
 
 ## The session
 
@@ -63,7 +64,9 @@ sequenceDiagram
     C-->>B: send() with the session
 ```
 
-`Client::logout` ends the session (`endSession`). The CLI calls it after each run, the MCP server when it stops.
+`Client::logout` ends the session (`endSession`). The CLI calls it after each run, the MCP server when it stops. It
+always clears the local session and the transaction flag (`clear_session`), also when `endSession` fails, and then
+returns `endSession`'s error.
 
 ## Renewal after expiry
 
@@ -77,7 +80,9 @@ flowchart TD
     ro -- yes --> refused(["Error::ReadOnly, nothing sent"])
     ro -- no --> wf{"not a read, and<br/>filter_allows refuses it?"}
     wf -- yes --> filtered(["Error::WriteFiltered, nothing sent"])
-    wf -- no --> need{"needs a session<br/>and has none?"}
+    wf -- no --> to{"transaction-only, not a read,<br/>not beginTransaction and<br/>no transaction open?"}
+    to -- yes --> notx(["Error::NoTransaction, nothing sent"])
+    to -- no --> need{"needs a session<br/>and has none?"}
     need -- yes --> ensure["ensure_session()"]
     need -- no --> snap
     ensure --> snap["note generation<br/>and in_transaction"]
@@ -92,6 +97,7 @@ flowchart TD
     gen -- yes --> tx{"in_transaction<br/>when the call started?"}
     tx -- yes --> expired(["Error::SessionExpired"])
     tx -- no --> relog["log_in(), unless<br/>another call already did"]
+    relog -- "transaction-only client,<br/>logged in before" --> expired
     relog --> again{"a read, or a write that failed<br/>with a Fault and that<br/>filter_allows lets through again?"}
     again -- no --> orig
     again -- yes --> send2["send() once more"]
@@ -131,6 +137,14 @@ is an `Arc<dyn Fn(&str, &str) -> bool + Send + Sync>`; `Client::has_write_filter
 `polarion` library installs one in restricted mode (`restricted::Filter`, see
 [Library](library.md#the-write-guard)), so that writes made through `Polarion::soap()` are checked too.
 
+## Transaction-only clients
+
+`ClientBuilder::transaction_only(true)` makes a client for one transaction. `log_in` refuses every login after the
+first one (`generation > 0`) with `Error::SessionExpired`, a renewal included: a new session would not hold the
+transaction. `call` refuses every write except `beginTransaction` with `Error::NoTransaction` while no transaction is
+open, after the write filter and before anything is sent. `Client::transaction_open` returns the local
+`in_transaction` flag and sends nothing.
+
 ## Untyped values
 
 Custom field values, field diffs and similar elements have no fixed type in the WSDL. They are `AnyValue`, decoded
@@ -151,7 +165,8 @@ struct's fields, which the generator adds for that purpose.
 |---|---|
 | `Fault { code, message, detail }` | the server answered with a SOAP fault |
 | `Status { status, body }` | an HTTP error without a SOAP body (or with one but not `200`) |
-| `SessionExpired` | the session expired inside an explicit transaction |
+| `SessionExpired` | the session expired inside an explicit transaction; a transaction-only client would log in again |
+| `NoTransaction { operation }` | a transaction-only client refused a write outside a transaction; nothing was sent |
 | `ReadOnly { operation }` | a read-only client refused a non-read operation |
 | `WriteFiltered { operation }` | the write filter refused a non-read operation; nothing was sent |
 | `Login` | the login response had no `sessionID` header |

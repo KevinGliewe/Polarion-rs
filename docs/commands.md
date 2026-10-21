@@ -136,6 +136,18 @@ accept what people and agents write and resolve against the `Context`:
 | `Data` | base64; on the command line also `@FILE` | bytes |
 | `TextArg` | the text itself (JSON never reads files); on the command line also `@FILE`, `@-` (standard input), `@@...` (a literal `@...`); files in UTF-8 or UTF-16 with a byte order mark. The `#[cmd]` macro lets such an option take values that start with `-` and adds the file forms to its help only | `String` (e.g. Markdown) |
 | `QueryArgs` | query, project, sort, limit, all, fields, custom, baseline, revision (flattened into the query commands) | `polarion::Query` |
+| `LinkArg` | `ROLE=ITEM`, `ROLE=ITEM@REVISION` or `{role, item, revision?, suspect?}` (split at the first `=`, the revision after the last `@`) | `polarion::NewLink` via `resolve(cx)` |
+| `HyperlinkArg` | `ROLE=URL` or `{role, url}` (a role with `:` or `/` is refused: a URL given without its role) | hyperlinks and external links |
+| `OslcLinkArg` | `ROLE=LABEL=URL` or `{role, label, url}` | `polarion::NewOslcLink` |
+| `ConstraintArg` | `CONSTRAINT=DATE` or `{constraint, date}` | `polarion::NewPlanningConstraint` |
+| `RevisionArg` | `REVISION`, `REPOSITORY=REVISION` or `{repository?, revision}` | `polarion::NewLinkedRevision` |
+| `PlanArg` | a plan URI, `ID` (default project) or `PROJECT/ID` | the plan's URI via `resolve(cx)` (an id is looked up) |
+
+A list argument is comma-separated on the command line (`--categories a,b`), so a comma inside a URL must be
+percent-encoded there. Field groups shared by a create and an update are flattened `#[cmd_args]` structs:
+`TestRunFields` (`tests.create`, `tests.update`) and `PlanFields` (`plans.create`, `plans.update`); the create
+commands send them after the create, in the same transaction (see [Library](library.md#writes-of-several-requests)).
+A commit that got no answer is the error code `commitUncertain`.
 | `JsonObject`, `JsonValue` | JSON whose shape is known only at run time | typed against Polarion's field definitions in [`values.rs`](../crates/polarion-commands/src/values.rs) |
 
 Results are library types, or the small types in [`output.rs`](../crates/polarion-commands/src/output.rs):

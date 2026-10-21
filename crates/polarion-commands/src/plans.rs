@@ -1,7 +1,7 @@
 //! `plans.*`: planning.
 
-use polarion::PlanUpdate;
-use polarion_commands_derive::cmd;
+use polarion::{NewPlan, PlanUpdate};
+use polarion_commands_derive::{cmd, cmd_args};
 
 use crate::{Context, Done, ItemArg, JsonObject, PLAN_COLUMNS, QueryArgs, Result, RichText, Run};
 
@@ -125,7 +125,61 @@ impl Run for WasStarted {
     }
 }
 
-/// Create a plan from a template; returns its URI.
+/// The fields of a plan other than its name, shared by `create` and `update`.
+#[cmd_args]
+pub struct PlanFields {
+    /// Status id
+    pub status: Option<String>,
+    /// Description
+    pub description: Option<RichText>,
+    /// Start date
+    pub start_date: Option<String>,
+    /// Due date
+    pub due_date: Option<String>,
+    /// Capacity
+    pub capacity: Option<f32>,
+    /// Default estimate
+    pub default_estimate: Option<f32>,
+    /// Estimation field
+    pub estimation_field: Option<String>,
+    /// Prioritization field
+    pub prioritization_field: Option<String>,
+    /// Color
+    pub color: Option<String>,
+    /// Sort order
+    pub sort_order: Option<i32>,
+    /// Custom field values (typed from JSON; use {"enum": id} for enums)
+    pub custom_fields: Option<JsonObject>,
+}
+
+impl PlanFields {
+    /// The update these fields make, with `name`.
+    fn into_update(self, name: Option<String>) -> Result<PlanUpdate> {
+        Ok(PlanUpdate {
+            name,
+            status: self.status,
+            description: self.description.map(polarion::Text::from),
+            start_date: self.start_date,
+            due_date: self.due_date,
+            capacity: self.capacity,
+            default_estimate: self.default_estimate,
+            estimation_field: self.estimation_field,
+            prioritization_field: self.prioritization_field,
+            color: self.color,
+            sort_order: self.sort_order,
+            custom_fields: crate::values::custom_values(
+                &self.custom_fields.unwrap_or_default().0,
+                &[],
+            )?
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v?)))
+            .collect(),
+        })
+    }
+}
+
+/// Create a plan from a template; returns its URI. Fields a workflow may require are written in
+/// the same transaction, right after the create.
 #[cmd(write, view = scalar)]
 pub struct Create {
     /// Plan id
@@ -139,24 +193,25 @@ pub struct Create {
     pub project: Option<String>,
     /// Parent plan id
     pub parent: Option<String>,
+    #[flatten]
+    pub fields: PlanFields,
 }
 
 impl Run for Create {
     type Output = String;
 
     async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let parent = self.parent;
-        Ok(cx
-            .polarion
-            .plans()
-            .create(
-                &cx.project(self.project.as_deref())?,
-                &self.id,
-                &self.name,
-                parent.as_deref(),
-                &self.template,
+        let new = NewPlan {
+            parent: self.parent,
+            fields: self.fields.into_update(None)?,
+            ..NewPlan::new(
+                cx.project(self.project.as_deref())?,
+                self.id,
+                self.name,
+                self.template,
             )
-            .await?)
+        };
+        Ok(cx.polarion.plans().create(&new).await?)
     }
 }
 
@@ -200,54 +255,15 @@ pub struct Update {
     pub plan: String,
     /// Name
     pub name: Option<String>,
-    /// Status id
-    pub status: Option<String>,
-    /// Description
-    pub description: Option<RichText>,
-    /// Start date
-    pub start_date: Option<String>,
-    /// Due date
-    pub due_date: Option<String>,
-    /// Capacity
-    pub capacity: Option<f32>,
-    /// Default estimate
-    pub default_estimate: Option<f32>,
-    /// Estimation field
-    pub estimation_field: Option<String>,
-    /// Prioritization field
-    pub prioritization_field: Option<String>,
-    /// Color
-    pub color: Option<String>,
-    /// Sort order
-    pub sort_order: Option<i32>,
-    /// Custom field values (typed from JSON; use {"enum": id} for enums)
-    pub custom_fields: Option<JsonObject>,
+    #[flatten]
+    pub fields: PlanFields,
 }
 
 impl Run for Update {
     type Output = Done;
 
     async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let update = PlanUpdate {
-            name: self.name,
-            status: self.status,
-            description: self.description.map(polarion::Text::from),
-            start_date: self.start_date,
-            due_date: self.due_date,
-            capacity: self.capacity,
-            default_estimate: self.default_estimate,
-            estimation_field: self.estimation_field,
-            prioritization_field: self.prioritization_field,
-            color: self.color,
-            sort_order: self.sort_order,
-            custom_fields: crate::values::custom_values(
-                &self.custom_fields.unwrap_or_default().0,
-                &[],
-            )?
-            .into_iter()
-            .filter_map(|(k, v)| Some((k, v?)))
-            .collect(),
-        };
+        let update = self.fields.into_update(self.name)?;
         cx.polarion.plans().update(&self.plan, &update).await?;
         Ok(Done)
     }

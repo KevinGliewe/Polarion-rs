@@ -53,6 +53,7 @@ impl std::fmt::Debug for Auth {
 /// have been applied, so its error is returned. Inside an
 /// explicit transaction (`beginTransaction`) nothing is repeated: the transaction
 /// is gone with the session, so the call fails with [`Error::SessionExpired`].
+/// A [`ClientBuilder::transaction_only`] client never logs in a second time.
 #[derive(Debug, Clone)]
 pub struct Client {
     inner: Arc<Inner>,
@@ -80,6 +81,8 @@ struct Inner {
     auth: Auth,
     read_only: bool,
     write_filter: Option<Filter>,
+    /// See [`ClientBuilder::transaction_only`].
+    transaction_only: bool,
     session: Mutex<Option<String>>,
     /// Serializes logins, so concurrent calls never open more than one session.
     login_lock: tokio::sync::Mutex<()>,
@@ -107,6 +110,7 @@ impl Client {
             root_certificates: Vec::new(),
             read_only: false,
             write_filter: None,
+            transaction_only: false,
         }
     }
 
@@ -124,6 +128,12 @@ impl Client {
         self.inner.write_filter.is_some()
     }
 
+    /// Whether an explicit transaction (`beginTransaction`) is open in the current session, as far
+    /// as this client knows; nothing is sent. It is reset when the session ends or expires.
+    pub fn transaction_open(&self) -> bool {
+        self.inner.in_transaction.load(Ordering::SeqCst)
+    }
+
     /// The current session id, if logged in.
     pub fn session_id(&self) -> Option<String> {
         self.inner.session.lock().expect("session lock").clone()
@@ -138,6 +148,10 @@ impl Client {
     /// Log in (callers hold `login_lock`; session operations never take it).
     async fn log_in(&self) -> Result<()> {
         self.clear_session();
+        if self.inner.transaction_only && self.inner.generation.load(Ordering::SeqCst) > 0 {
+            // The session, and the transaction in it, is gone; a new one would hold neither.
+            return Err(Error::SessionExpired);
+        }
         match &self.inner.auth {
             Auth::Token(token) => {
                 self.session()
@@ -155,14 +169,16 @@ impl Client {
         Ok(())
     }
 
-    /// End the session on the server.
+    /// End the session on the server. The local session (and transaction flag) is cleared even
+    /// when `endSession` fails; its error is returned.
     pub async fn logout(&self) -> Result<()> {
         let _login = self.inner.login_lock.lock().await;
-        if self.session_id().is_some() {
-            self.session().end_session().await?;
-            self.clear_session();
-        }
-        Ok(())
+        let ended = match self.session_id() {
+            Some(_) => self.session().end_session().await.map(drop),
+            None => Ok(()),
+        };
+        self.clear_session();
+        ended
     }
 
     fn clear_session(&self) {
@@ -224,6 +240,14 @@ impl Client {
             }
             if !self.filter_allows(operation, &body) {
                 return Err(Error::WriteFiltered {
+                    operation: format!("{service}.{operation}"),
+                });
+            }
+            if self.inner.transaction_only
+                && !self.transaction_open()
+                && !(service == SESSION_SERVICE && operation == "beginTransaction")
+            {
+                return Err(Error::NoTransaction {
                     operation: format!("{service}.{operation}"),
                 });
             }
@@ -401,8 +425,8 @@ fn parse_fault(fault: Node<'_, '_>) -> Error {
     }
 }
 
-/// Builder for [`Client`].
-#[derive(Debug)]
+/// Builder for [`Client`]. A clone builds a client of its own, with its own session and cookies.
+#[derive(Debug, Clone)]
 pub struct ClientBuilder {
     base_url: String,
     auth: Auth,
@@ -411,6 +435,7 @@ pub struct ClientBuilder {
     root_certificates: Vec<reqwest::Certificate>,
     read_only: bool,
     write_filter: Option<Filter>,
+    transaction_only: bool,
 }
 
 impl ClientBuilder {
@@ -454,6 +479,15 @@ impl ClientBuilder {
         self
     }
 
+    /// Make a client for one transaction: it logs in at most once, so a second login (a session
+    /// renewal included) fails with [`Error::SessionExpired`], and every write except
+    /// `beginTransaction` is refused with [`Error::NoTransaction`] while no transaction is open
+    /// (after the write filter, before anything is sent).
+    pub fn transaction_only(mut self, transaction_only: bool) -> Self {
+        self.transaction_only = transaction_only;
+        self
+    }
+
     pub fn build(self) -> Result<Client> {
         let services = normalize_base_url(&self.base_url)?;
         let mut http = reqwest::Client::builder()
@@ -471,6 +505,7 @@ impl ClientBuilder {
                 auth: self.auth,
                 read_only: self.read_only,
                 write_filter: self.write_filter,
+                transaction_only: self.transaction_only,
                 session: Mutex::new(None),
                 login_lock: tokio::sync::Mutex::new(()),
                 generation: AtomicU64::new(0),
