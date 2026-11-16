@@ -58,7 +58,9 @@ flowchart TB
 - **Markdown** ([`markdown.rs`](../crates/polarion/src/markdown.rs), feature `markdown`; `mermaid` renders
   diagrams, `highlight` highlights code): `description_markdown`, `set_description_markdown` and
   `append_description_markdown` on `WorkItems`, with `MarkdownReadOptions`, `MarkdownWriteOptions` and the result
-  `MarkdownUpdate`. A top-level file of its own, so the commands' coverage test sees its methods. The writes call
+  `MarkdownUpdate`; `description_markdown_export` returns the Markdown with the images it shows (`MarkdownExport`),
+  and `MarkdownWriteOptions::images` (`LocalImage`: source, file name, bytes) attaches images. The library reads
+  and writes no file: the commands do ([`files.rs`](../crates/polarion-commands/src/files.rs)). A top-level file of its own, so the commands' coverage test sees its methods. The writes call
   `WorkItems::writable` before anything else, render every new diagram before the first upload, upload before
   `updateWorkItem`, and delete only the diagram attachments the old description showed (see
   [Markdown](markdown.md)). The reads and the rendering come first (`write_markdown`); then two steps through

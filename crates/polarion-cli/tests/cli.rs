@@ -1055,3 +1055,142 @@ async fn fields_a_workflow_requires_are_written_with_the_create() {
         ]
     );
 }
+
+// ---- Markdown files with images
+
+/// The first bytes of a PNG file, and some more.
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\nimage";
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_markdown_file_is_written_with_its_images() {
+    let dir = TempDir::new("markdown-file");
+    std::fs::create_dir_all(dir.0.join("img")).unwrap();
+    std::fs::write(dir.0.join("img/a.png"), PNG).unwrap();
+    let file = dir.0.join("desc.md");
+    std::fs::write(&file, "Shot: ![s](img/a.png)\n").unwrap();
+    let file = file.to_str().unwrap();
+    let write = [("POLARION_WRITE_PROJECTS", "Sandbox")];
+
+    // The image is attached, and the description shows the attachment.
+    let server = server().await;
+    read(&server, 1, &work_item(None, &[])).await;
+    read(&server, 2, &work_item(None, &[("1-a.png", "a.png")])).await;
+    mock(
+        &server,
+        &["createAttachment>", "fileName>a.png<"],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+    mock(
+        &server,
+        &["updateWorkItem>", "workitemimg:1-a.png"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+    let run = polarion(
+        Some(&server),
+        &write,
+        &[
+            "items",
+            "set-description-markdown",
+            "Sandbox/SB-1",
+            "--file",
+            file,
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        "updated: true\nimages:\n  -\n    url: img/a.png\n    attachment: 1-a.png\n    uploaded: true\n"
+    );
+    let created = &bodies(&server, "createAttachment").await[0];
+    use base64::Engine as _;
+    let data = base64::engine::general_purpose::STANDARD.encode(PNG);
+    assert!(created.contains(&data), "{created}");
+
+    // Refused before anything is sent: both sources of the Markdown, none, and an image that
+    // is missing or not in the folder of the file.
+    std::fs::write(dir.0.join("missing.md"), "![](img/none.png)").unwrap();
+    std::fs::write(dir.0.join("img/up.md"), "![](../img/a.png)").unwrap();
+    let missing = dir.0.join("missing.md");
+    let up = dir.0.join("img/up.md");
+    let untouched = MockServer::start().await;
+    for (args, why) in [
+        (vec!["--file", file, "--markdown", "text"], "not both"),
+        (vec![], "give the Markdown"),
+        (vec!["--file", missing.to_str().unwrap()], "none.png"),
+        (
+            vec!["--file", up.to_str().unwrap()],
+            "folder of the Markdown file",
+        ),
+    ] {
+        for command in ["set-description-markdown", "append-description-markdown"] {
+            let args = [&["--json", "items", command, "Sandbox/SB-1"][..], &args[..]].concat();
+            let run = polarion(Some(&untouched), &write, &args).await;
+            assert_eq!(run.code, 1, "{args:?}: {}", run.stderr);
+            let error: Value = serde_json::from_str(run.stderr.trim()).unwrap();
+            assert_eq!(error["error"]["code"], "invalid", "{error}");
+            let message = error["error"]["message"].as_str().unwrap();
+            assert!(message.contains(why), "{message}");
+        }
+    }
+    assert!(
+        untouched.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_description_is_exported_to_a_folder() {
+    use base64::Engine as _;
+    let dir = TempDir::new("export");
+    let out = dir.0.join("out");
+    let server = server().await;
+    let html = r#"Text <img src="workitemimg:1-a.png" title="a.png" style="max-width: 650px;"/>"#;
+    mock(
+        &server,
+        &["getWorkItemByIdsWithFields>", "workitemId>SB-1<"],
+        &work_item(Some(("text/html", html)), &[("1-a.png", "a.png")]),
+    )
+    .await;
+    mock(
+        &server,
+        &["getAttachment>", "attachmentId>1-a.png<"],
+        &format!(
+            "<getAttachmentResponse><getAttachmentReturn>{}</getAttachmentReturn></getAttachmentResponse>",
+            base64::engine::general_purpose::STANDARD.encode(PNG)
+        ),
+    )
+    .await;
+
+    // Reading needs no write scope.
+    let run = polarion(
+        Some(&server),
+        &[],
+        &[
+            "--json",
+            "items",
+            "export-description",
+            "Sandbox/SB-1",
+            "--dir",
+            out.to_str().unwrap(),
+        ],
+    )
+    .await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    let markdown = out.join("SB-1.md");
+    let image = out.join("SB-1").join("1-a.png");
+    assert_eq!(
+        run.json(),
+        json!({
+            "markdown": markdown.display().to_string(),
+            "images": [image.display().to_string()],
+        })
+    );
+    assert_eq!(
+        std::fs::read_to_string(&markdown).unwrap(),
+        "Text ![](SB-1/1-a.png \"a.png\")"
+    );
+    assert_eq!(std::fs::read(&image).unwrap(), PNG);
+}

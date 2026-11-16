@@ -48,6 +48,38 @@ pub fn diagram_refs(html: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// The sources of the images Markdown shows, in document order, each once: Markdown images and
+/// `<img>` tags in raw HTML, as [`crate::ImageAttachments`] names them. Images the conversion
+/// does not write (a dangerous source, nesting too deep) are not among them.
+pub fn image_urls(markdown: &str) -> Vec<String> {
+    let options = crate::ToHtmlOptions {
+        work_items: crate::WorkItemIds::Off,
+        highlight: false,
+    };
+    let html = crate::to_html(markdown, &options);
+    let mut urls: Vec<String> = Vec::new();
+    for url in crate::html::img_srcs(&html) {
+        if !url.is_empty() && !urls.contains(&url) {
+            urls.push(url);
+        }
+    }
+    urls
+}
+
+/// The images of HTML that show an attachment, in order, each source once: the source (as
+/// [`crate::ImagePaths`] names it) and the attachment's id ([`attachment_refs`]).
+pub fn image_refs(html: &str) -> Vec<(String, String)> {
+    let mut refs: Vec<(String, String)> = Vec::new();
+    for src in crate::html::img_srcs(html) {
+        if let Some(id) = attachment_id(&src)
+            && !refs.iter().any(|(s, _)| *s == src)
+        {
+            refs.push((src, id));
+        }
+    }
+    refs
+}
+
 /// The file name of an attachment id: Polarion's ids are `<counter>-<file name>`.
 pub fn attachment_file_name(id: &str) -> &str {
     match id.split_once('-') {
@@ -104,6 +136,31 @@ mod tests {
             [
                 "1-mermaid-0123456789abcdef.svg",
                 "mermaid-fedcba9876543210.svg"
+            ]
+        );
+    }
+
+    #[test]
+    fn images_of_markdown_and_html() {
+        let markdown = concat!(
+            "![a](img/a.png) and ![](<b c.png> \"t\") ![again](img/a.png)\n\n",
+            "<img src=\"d&amp;e.png\" style=\"width: 10px;\">\n\n",
+            "```\n![no](code.png)\n```\n\n![x](javascript:alert(1))\n",
+        );
+        assert_eq!(image_urls(markdown), ["img/a.png", "b c.png", "d&e.png"]);
+        let html = concat!(
+            r#"<img src="workitemimg:1-a.png"/><img src=" workitemimg:1-a.png "/>"#,
+            r#"<img src="/polarion/wi-attachment/P/P-1/2-b%20c.png"><img src="https://x/y.png">"#,
+            r#"<a href="workitemimg:3-doc.pdf">doc</a>"#,
+        );
+        assert_eq!(
+            image_refs(html),
+            [
+                ("workitemimg:1-a.png".to_owned(), "1-a.png".to_owned()),
+                (
+                    "/polarion/wi-attachment/P/P-1/2-b%20c.png".to_owned(),
+                    "2-b c.png".to_owned()
+                ),
             ]
         );
     }

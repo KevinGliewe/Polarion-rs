@@ -172,6 +172,18 @@ fn command_results_match_their_schemas() {
             // Written as a code block.
             diagram("mermaid-00000000ffffffff.svg", None, false),
         ],
+        images: vec![
+            polarion::ImageAttachment {
+                url: "img/a.png".into(),
+                attachment: "4-a.png".into(),
+                uploaded: true,
+            },
+            polarion::ImageAttachment {
+                url: "P-1/5-b.png".into(),
+                attachment: "5-b.png".into(),
+                uploaded: false,
+            },
+        ],
         deleted: vec!["3-mermaid-1111111111111111.svg".into()],
         warnings: vec!["mermaid diagram (graph) is written as a code block: ...".into()],
     });

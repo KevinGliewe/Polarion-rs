@@ -18,6 +18,8 @@ enum Shape {
     Vec,
     /// `TextArg`: the text itself, or on the command line `@FILE`.
     Text,
+    /// `Option<TextArg>`: on the command line as `Text`, in JSON as `Option`.
+    OptionText,
     Other,
 }
 
@@ -36,8 +38,13 @@ fn shape(ty: &Type) -> Shape {
             let inner_bool = matches!(&last.arguments, PathArguments::AngleBracketed(args)
                 if matches!(args.args.first(), Some(GenericArgument::Type(Type::Path(p)))
                     if p.path.is_ident("bool")));
+            let inner_text = matches!(&last.arguments, PathArguments::AngleBracketed(args)
+                if matches!(args.args.first(), Some(GenericArgument::Type(Type::Path(p)))
+                    if p.path.segments.last().is_some_and(|s| s.ident == "TextArg")));
             if inner_bool {
                 Shape::OptionBool
+            } else if inner_text {
+                Shape::OptionText
             } else {
                 Shape::Option
             }
@@ -202,7 +209,7 @@ fn field(field: &mut Field) -> syn::Result<()> {
                     quote!(#[cfg_attr(feature = "cli", arg(long, value_delimiter = ','))])
                 }
                 // Markdown often starts with `-` (a list, a rule): it is the value, not an option.
-                Shape::Text => {
+                Shape::Text | Shape::OptionText => {
                     let doc = doc_lines(&field.attrs).join(" ");
                     let help = format!("{doc} {TEXT_NOTE}").trim_start().to_owned();
                     quote! {
@@ -221,7 +228,7 @@ fn field(field: &mut Field) -> syn::Result<()> {
             Shape::Vec => {
                 push(quote!(#[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]))?
             }
-            Shape::Option | Shape::OptionBool => {
+            Shape::Option | Shape::OptionBool | Shape::OptionText => {
                 push(
                     quote!(#[serde(default, skip_serializing_if = "::core::option::Option::is_none")]),
                 )?;

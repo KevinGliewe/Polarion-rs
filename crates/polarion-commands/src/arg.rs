@@ -842,7 +842,7 @@ impl FromStr for TextArg {
 }
 
 /// Text from a file: UTF-8 (a byte order mark dropped) or UTF-16 with a byte order mark.
-fn decode(bytes: Vec<u8>) -> std::result::Result<String, &'static str> {
+pub(crate) fn decode(bytes: Vec<u8>) -> std::result::Result<String, &'static str> {
     fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> std::result::Result<String, &'static str> {
         if !bytes.len().is_multiple_of(2) {
             return Err("is not valid UTF-16");
@@ -866,6 +866,33 @@ fn decode(bytes: Vec<u8>) -> std::result::Result<String, &'static str> {
 }
 
 inline_schema!(TextArg, "TextArg", {"type": "string"});
+
+// ---- paths
+
+/// The path of a file or folder on the machine the command runs on. Whether it may be used is
+/// up to the [`crate::LocalFiles`] of the context: any path on the command line, only the
+/// exchange folder over MCP.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PathArg(pub String);
+
+impl PathArg {
+    pub fn path(&self) -> &std::path::Path {
+        std::path::Path::new(&self.0)
+    }
+}
+
+impl FromStr for PathArg {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        if s.is_empty() {
+            return Err("a path must not be empty".into());
+        }
+        Ok(PathArg(s.to_owned()))
+    }
+}
+
+inline_schema!(PathArg, "PathArg", {"type": "string", "minLength": 1});
 
 // ---- field selections
 

@@ -1466,3 +1466,290 @@ fn the_futures_are_send() {
     send(&items.set_description_markdown(&item, "x", &options));
     send(&items.append_description_markdown(&item, "x", &options));
 }
+
+// ------------------------------------------------------------------ images
+
+fn local(url: &str, file_name: &str, data: &str) -> polarion::LocalImage {
+    polarion::LocalImage {
+        url: url.to_owned(),
+        file_name: file_name.to_owned(),
+        data: data.as_bytes().to_vec(),
+    }
+}
+
+fn image(url: &str, attachment: &str, uploaded: bool) -> polarion::ImageAttachment {
+    polarion::ImageAttachment {
+        url: url.to_owned(),
+        attachment: attachment.to_owned(),
+        uploaded,
+    }
+}
+
+#[tokio::test]
+async fn a_new_image_is_uploaded_and_shown() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    read(&server, 1, work_item(&item, None, &[])).await;
+    read(&server, 2, work_item(&item, None, &[("1-a.png", "a.png")])).await;
+    expect(
+        &server,
+        TRACKER,
+        &["createAttachment>"],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+    expect(
+        &server,
+        TRACKER,
+        &["updateWorkItem>"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+
+    let options = MarkdownWriteOptions {
+        images: vec![local("img/a.png", "a.png", "PNG1")],
+        ..set_options()
+    };
+    // The same image twice, and one that is not given: only the given one is rewritten.
+    let markdown = "Shot: ![s](img/a.png) ![](img/a.png) ![](other.png)";
+    let update = writer(&server)
+        .items()
+        .set_description_markdown(&item, markdown, &options)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        update,
+        MarkdownUpdate {
+            updated: true,
+            images: vec![image("img/a.png", "1-a.png", true)],
+            ..MarkdownUpdate::default()
+        }
+    );
+    assert_eq!(
+        operations(&server).await,
+        [
+            "getWorkItemByIdsWithFields",
+            "createAttachment",
+            "getWorkItemByIdsWithFields",
+            "updateWorkItem"
+        ]
+    );
+    let created = bodies(&server, "createAttachment").await;
+    assert_eq!(created.len(), 1);
+    assert_eq!(element(&created[0], "trackeri:fileName"), "a.png");
+    assert_eq!(element(&created[0], "trackeri:title"), "a.png");
+    assert_eq!(
+        BASE64
+            .decode(element(&created[0], "trackeri:data"))
+            .unwrap(),
+        b"PNG1"
+    );
+    assert_eq!(
+        written(&server, &item).await,
+        concat!(
+            r#"Shot: <img src="workitemimg:1-a.png" alt="s" style="max-width: 650px;"/> "#,
+            r#"<img src="workitemimg:1-a.png" style="max-width: 650px;"/> "#,
+            r#"<img src="other.png" style="max-width: 650px;"/>"#,
+        )
+    );
+}
+
+#[tokio::test]
+async fn an_attachment_with_the_same_content_is_reused() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    read(
+        &server,
+        1,
+        work_item(&item, None, &[("4-b.png", "b.png"), ("3-a.png", "a.png")]),
+    )
+    .await;
+    // Asked first, and nothing after it: its id is the file name (an exported image).
+    attachment(&server, "3-a.png", content("PNG1")).await;
+    expect(
+        &server,
+        TRACKER,
+        &["updateWorkItem>"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+
+    let options = MarkdownWriteOptions {
+        images: vec![local("SB-1/3-a.png", "3-a.png", "PNG1")],
+        ..set_options()
+    };
+    let update = writer(&server)
+        .items()
+        .set_description_markdown(&item, "![](SB-1/3-a.png)", &options)
+        .await
+        .unwrap();
+
+    assert_eq!(update.images, [image("SB-1/3-a.png", "3-a.png", false)]);
+    assert_eq!(
+        operations(&server).await,
+        [
+            "getWorkItemByIdsWithFields",
+            "getAttachment",
+            "updateWorkItem"
+        ]
+    );
+    assert_eq!(
+        written(&server, &item).await,
+        r#"<img src="workitemimg:3-a.png" style="max-width: 650px;"/>"#
+    );
+}
+
+#[tokio::test]
+async fn a_changed_image_is_uploaded_and_no_image_attachment_is_deleted() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    let old = r#"<img src="workitemimg:3-a.png" style="max-width: 650px;"/>"#;
+    read(
+        &server,
+        1,
+        work_item(&item, Some(("text/html", old)), &[("3-a.png", "a.png")]),
+    )
+    .await;
+    attachment(&server, "3-a.png", content("PNG1")).await;
+    read(
+        &server,
+        2,
+        work_item(&item, None, &[("3-a.png", "a.png"), ("5-a.png", "a.png")]),
+    )
+    .await;
+    expect(
+        &server,
+        TRACKER,
+        &["createAttachment>"],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+    expect(
+        &server,
+        TRACKER,
+        &["updateWorkItem>"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+
+    let options = MarkdownWriteOptions {
+        images: vec![local("SB-1/3-a.png", "3-a.png", "PNG2")],
+        ..set_options()
+    };
+    let update = writer(&server)
+        .items()
+        .set_description_markdown(&item, "![](SB-1/3-a.png)", &options)
+        .await
+        .unwrap();
+
+    // Uploaded under the file name of the attachment, not its id; the old one stays.
+    assert_eq!(update.images, [image("SB-1/3-a.png", "5-a.png", true)]);
+    assert!(update.deleted.is_empty());
+    let created = bodies(&server, "createAttachment").await;
+    assert_eq!(element(&created[0], "trackeri:fileName"), "a.png");
+    assert!(bodies(&server, "deleteAttachment").await.is_empty());
+    assert_eq!(
+        written(&server, &item).await,
+        r#"<img src="workitemimg:5-a.png" style="max-width: 650px;"/>"#
+    );
+}
+
+#[tokio::test]
+async fn two_different_images_with_one_file_name_are_refused_before_any_write() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    read(&server, 1, work_item(&item, None, &[])).await;
+
+    let options = MarkdownWriteOptions {
+        images: vec![
+            local("a/x.png", "x.png", "PNG1"),
+            local("b/x.png", "x.png", "PNG2"),
+        ],
+        ..set_options()
+    };
+    let result = writer(&server)
+        .items()
+        .set_description_markdown(&item, "![](a/x.png) ![](b/x.png)", &options)
+        .await;
+    assert!(
+        matches!(&result, Err(Error::Invalid(m)) if m.contains("x.png")),
+        "{result:?}"
+    );
+    assert_eq!(operations(&server).await, ["getWorkItemByIdsWithFields"]);
+
+    // A read-only client sends nothing at all.
+    let before = server.received_requests().await.unwrap().len();
+    refused(
+        reader(&server)
+            .items()
+            .set_description_markdown(&item, "![](a/x.png)", &options)
+            .await,
+        Some("Sandbox"),
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), before);
+}
+
+#[tokio::test]
+async fn a_description_is_exported_with_its_images() {
+    let server = session_server().await;
+    let item = sandbox("SB-1");
+    let html = concat!(
+        r#"Text <img src="workitemimg:1-a%20b.png" title="a b.png" style="max-width: 650px;"/> "#,
+        r#"<img src="workitemimg:1-a%20b.png" style="width: 10px;"> "#,
+        r#"<img src="workitemimg:3-c.png" style="max-width: 650px;"/> "#,
+        r#"<img src="workitemimg:9-gone.png" style="max-width: 650px;"/> "#,
+        r#"<img src="https://example.com/x.png" style="max-width: 650px;"/>"#,
+    );
+    read(
+        &server,
+        1,
+        work_item(
+            &item,
+            Some(("text/html", html)),
+            &[("1-a b.png", "a b.png"), ("3-c.png", "c.png")],
+        ),
+    )
+    .await;
+    attachment(&server, "1-a b.png", content("PNG1")).await;
+    attachment(&server, "3-c.png", fault("boom")).await;
+
+    let export = reader(&server)
+        .items()
+        .description_markdown_export(&item, &MarkdownReadOptions::default(), "SB-1")
+        .await
+        .unwrap();
+
+    assert_eq!(export.id.as_deref(), Some("SB-1"));
+    assert_eq!(
+        export.images,
+        [polarion::ExportedImage {
+            path: "SB-1/1-a_b.png".into(),
+            attachment: "1-a b.png".into(),
+            data: b"PNG1".to_vec(),
+        }]
+    );
+    assert_eq!(export.warnings.len(), 1, "{:?}", export.warnings);
+    assert!(
+        export.warnings[0].contains("3-c.png"),
+        "{:?}",
+        export.warnings
+    );
+    assert_eq!(
+        export.markdown,
+        concat!(
+            "Text ![](SB-1/1-a_b.png \"a b.png\") ",
+            "<img src=\"SB-1/1-a_b.png\" style=\"width: 10px;\"/> ",
+            "![](workitemimg:3-c.png) ![](workitemimg:9-gone.png) ![](https://example.com/x.png)",
+        )
+    );
+    assert_eq!(
+        md::image_urls(&export.markdown),
+        [
+            "SB-1/1-a_b.png",
+            "workitemimg:3-c.png",
+            "workitemimg:9-gone.png",
+            "https://example.com/x.png"
+        ]
+    );
+}

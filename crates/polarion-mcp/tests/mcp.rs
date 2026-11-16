@@ -2843,3 +2843,171 @@ async fn without_the_guide_tool_no_guide_is_required() {
     let stderr = refused(&["--config".into(), typo.display().to_string()], &[]);
     assert!(stderr.contains("unknown variant `reads`"), "{stderr}");
 }
+
+// ---- Markdown files with images
+
+/// `Sandbox/<id>` as `getWorkItemByIdsWithFields` returns it.
+fn described(id: &str, description: &str, attachments: &[(&str, &str)]) -> String {
+    let mut fields = format!("<id>{id}</id>");
+    if !description.is_empty() {
+        fields += &format!(
+            "<description><type>text/html</type><content>{}</content></description>",
+            description
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+        );
+    }
+    if !attachments.is_empty() {
+        fields += "<attachments>";
+        for (attachment, file_name) in attachments {
+            fields += &format!(
+                "<Attachment><fileName>{file_name}</fileName><id>{attachment}</id></Attachment>"
+            );
+        }
+        fields += "</attachments>";
+    }
+    format!(
+        r#"<getWorkItemByIdsWithFieldsResponse><getWorkItemByIdsWithFieldsReturn uri="{URI}Sandbox${{WorkItem}}{id}">{fields}</getWorkItemByIdsWithFieldsReturn></getWorkItemByIdsWithFieldsResponse>"#
+    )
+}
+
+/// Answer the `n`-th read of `Sandbox/<id>` (counting from 1) with `body`.
+async fn read_nth(server: &MockServer, id: &str, n: u8, body: &str) {
+    Mock::given(path(TRACKER))
+        .and(body_string_contains("getWorkItemByIdsWithFields>"))
+        .and(body_string_contains(format!("workitemId>{id}<")))
+        .respond_with(xml(body))
+        .up_to_n_times(1)
+        .with_priority(n)
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+fn set_from_file(file: &str) -> Value {
+    call(
+        "set_work_item_description_markdown",
+        json!({"item": "Sandbox/SB-1", "file": file}),
+    )
+}
+
+fn export_to(dir: &str) -> Value {
+    call(
+        "polarion_call",
+        json!({"command": "items.export-description", "args": {"item": "Sandbox/SB-2", "dir": dir}}),
+    )
+}
+
+/// Commands that take a path work inside the exchange folder, and only there.
+#[tokio::test(flavor = "multi_thread")]
+async fn markdown_files_and_exports_stay_in_the_exchange_folder() {
+    let dir = TempDir::new("markdown-files");
+    std::fs::create_dir_all(dir.0.join("img")).unwrap();
+    std::fs::write(dir.0.join("img/a.png"), PNG).unwrap();
+    std::fs::write(dir.0.join("doc.md"), "Shot: ![s](img/a.png)\n").unwrap();
+    let env = [
+        ("POLARION_MCP_FILES", dir.path()),
+        ("POLARION_WRITE_PROJECTS", "Sandbox"),
+    ];
+
+    let server = server().await;
+    // The write: the image is attached, and the description shows the attachment.
+    read_nth(&server, "SB-1", 1, &described("SB-1", "", &[])).await;
+    read_nth(
+        &server,
+        "SB-1",
+        2,
+        &described("SB-1", "", &[("1-a.png", "a.png")]),
+    )
+    .await;
+    mock(
+        &server,
+        &["createAttachment>", "fileName>a.png<", &BASE64.encode(PNG)],
+        "<createAttachmentResponse/>",
+    )
+    .await;
+    mock(
+        &server,
+        &["updateWorkItem>", "workitemimg:1-a.png"],
+        "<updateWorkItemResponse/>",
+    )
+    .await;
+    // The export: the image the description shows is saved next to the Markdown.
+    read_nth(
+        &server,
+        "SB-2",
+        1,
+        &described(
+            "SB-2",
+            r#"Text <img src="workitemimg:1-b.png" style="max-width: 650px;"/>"#,
+            &[("1-b.png", "b.png")],
+        ),
+    )
+    .await;
+    attachment(&server, "1-b.png", PNG).await;
+
+    let r = guided(
+        Some(&server),
+        &env,
+        &["work-items"],
+        &[
+            set_from_file("doc.md"),
+            export_to("out"),
+            // Outside the folder: refused before anything is asked of the server.
+            set_from_file("../doc.md"),
+            export_to("../out"),
+        ],
+    )
+    .await;
+
+    let (text, error) = tool_text(&r[1]);
+    assert!(!error, "{text}");
+    let update: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(
+        update,
+        json!({"updated": true, "images": [{"url": "img/a.png", "attachment": "1-a.png", "uploaded": true}]})
+    );
+
+    let (text, error) = tool_text(&r[2]);
+    assert!(!error, "{text}");
+    let export: Value = serde_json::from_str(&text).unwrap();
+    assert!(
+        export["markdown"].as_str().unwrap().ends_with("SB-2.md"),
+        "{export}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.0.join("out/SB-2.md")).unwrap(),
+        "Text ![](SB-2/1-b.png)"
+    );
+    assert_eq!(std::fs::read(dir.0.join("out/SB-2/1-b.png")).unwrap(), PNG);
+
+    for response in &r[3..=4] {
+        let (text, error) = tool_text(response);
+        assert!(error && text.contains("outside the folder"), "{text}");
+    }
+    assert!(!dir.0.join("../out").exists());
+}
+
+/// Without an exchange folder the server reads and writes no file.
+#[tokio::test(flavor = "multi_thread")]
+async fn paths_are_refused_without_an_exchange_folder() {
+    let server = MockServer::start().await;
+    let r = guided(
+        Some(&server),
+        &[("POLARION_WRITE_PROJECTS", "Sandbox")],
+        &["work-items"],
+        &[set_from_file("doc.md")],
+    )
+    .await;
+    let (text, error) = tool_text(&r[1]);
+    assert!(
+        error && text.contains("local files are not available"),
+        "{text}"
+    );
+    assert!(
+        server.received_requests().await.unwrap().is_empty(),
+        "nothing may be sent, not even a login"
+    );
+}

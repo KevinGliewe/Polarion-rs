@@ -98,6 +98,11 @@ flowchart TD
     sel --> refuse["disabled commands: refused by<br/>polarion_call and polarion_describe,<br/>not listed by polarion_commands"]
 ```
 
+- **Local files:** commands that take a path (`file` of the Markdown writes, `dir` of
+  `items.export-description`) use the `LocalFiles` of their `Context`
+  ([`files.rs`](../crates/polarion-commands/src/files.rs)): `Refused` unless the front end sets it. The CLI sets
+  `Unrestricted`; the MCP server sets `Within(exchange folder)` when `POLARION_MCP_FILES` is set, so paths are
+  relative to that folder and cannot leave it.
 - **Tool names:** each command gets at most one tool. The 25 everyday reads in `CURATED` and the 19 everyday
   writes in `CURATED_WRITES` keep their names (`get_work_item`, `create_work_item`), also under `all`; every
   other command is `area_command` (`items_add_hyperlink`). A selector matches a command by either name. Both

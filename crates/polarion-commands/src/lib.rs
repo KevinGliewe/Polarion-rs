@@ -26,6 +26,7 @@ mod arg;
 mod command;
 mod config;
 mod error;
+mod files;
 mod output;
 mod values;
 mod view;
@@ -51,11 +52,12 @@ use serde_json::Value;
 
 pub use arg::{
     ConstraintArg, Data, DocumentArg, FieldSelection, HyperlinkArg, ItemArg, JsonObject, JsonValue,
-    LinkArg, OslcLinkArg, PlanArg, QueryArgs, RevisionArg, RichText, TextArg,
+    LinkArg, OslcLinkArg, PathArg, PlanArg, QueryArgs, RevisionArg, RichText, TextArg,
 };
 pub use command::{CommandInfo, Context, Entry, Run, output_schema_of, parse_as, schema_of};
 pub use config::{Config, WriteTarget, split_list, split_targets};
 pub use error::{CommandError, Result};
+pub use files::LocalFiles;
 pub use output::{Changed, Done, Download};
 pub use values::infer;
 pub use view::*;
@@ -92,6 +94,7 @@ registry! {
         LocalizedTitle,
         LocalizedDescription,
         DescriptionMarkdown,
+        ExportDescription,
         CommentResolved,
         LinkedResources,
         Create,

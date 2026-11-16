@@ -448,6 +448,80 @@ pub(crate) fn sanitize_raw_html(html: &str) -> Cow<'_, str> {
     }
 }
 
+/// The `src` of an `<img>` tag as written in raw HTML: character references decoded, without the
+/// control characters and spaces at its edges.
+fn src_key(value: &str) -> String {
+    decode_entities(value)
+        .trim_matches(|c: char| c <= ' ')
+        .to_owned()
+}
+
+/// The first `src` attribute of an `<img>` start tag.
+fn img_src<'t, 'a>(tag: &'t Tag<'a>) -> Option<&'t Attr<'a>> {
+    if tag.closing || !tag.is("img") {
+        return None;
+    }
+    tag.attrs
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("src") && a.value.is_some())
+}
+
+/// The sources of the `<img>` tags in HTML ([`tokens`]), in order, repeats included: character
+/// references decoded, without the control characters and spaces at their edges.
+pub(crate) fn img_srcs(html: &str) -> Vec<String> {
+    tokens(html)
+        .filter_map(|token| match token {
+            Token::Tag(tag) => img_src(&tag).and_then(|a| a.value).map(src_key),
+            _ => None,
+        })
+        .collect()
+}
+
+/// HTML with the source of each `<img>` tag for which `new` returns one replaced (given the
+/// source as [`img_srcs`] returns it). The attribute is written as `src="…"`; everything else
+/// stays byte-identical.
+pub(crate) fn rewrite_img_src<'h>(
+    html: &'h str,
+    new: &dyn Fn(&str) -> Option<String>,
+) -> Cow<'h, str> {
+    let mut out: Option<String> = None;
+    let mut done = 0;
+    let mut tokens = tokens(html);
+    loop {
+        let pos = tokens.pos;
+        let Some(token) = tokens.next() else {
+            break;
+        };
+        let Token::Tag(tag) = &token else {
+            continue;
+        };
+        let Some(attr) = img_src(tag) else {
+            continue;
+        };
+        let Some(src) = new(&src_key(attr.value.unwrap_or(""))) else {
+            continue;
+        };
+        let written = &tag.src[attr.span.clone()];
+        let lead = written.len()
+            - written
+                .trim_start_matches(|c: char| c == '/' || (c.is_ascii() && is_space(c as u8)))
+                .len();
+        let out = out.get_or_insert_with(|| String::with_capacity(html.len() + 16));
+        out.push_str(&html[done..pos + attr.span.start + lead]);
+        out.push_str("src=\"");
+        push_attr(out, &src);
+        out.push('"');
+        done = pos + attr.span.end;
+    }
+    match out {
+        None => Cow::Borrowed(html),
+        Some(mut out) => {
+            out.push_str(&html[done..]);
+            Cow::Owned(out)
+        }
+    }
+}
+
 /// What text written into a tag ends with, for what may follow it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TagEnd {

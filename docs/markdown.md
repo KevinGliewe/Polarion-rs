@@ -7,10 +7,12 @@ read and write them as Markdown:
   diagrams to SVG and back.
 - [`polarion/src/markdown.rs`](../crates/polarion/src/markdown.rs) (feature `markdown`) adds the requests:
   `WorkItems::description_markdown`, `set_description_markdown` and `append_description_markdown`, which keep each
-  mermaid diagram as an SVG attachment of the work item.
+  mermaid diagram as an SVG attachment of the work item, and `description_markdown_export`, which also returns the
+  images a description shows.
 
-The commands `items.description-markdown`, `items.set-description-markdown` and
-`items.append-description-markdown` (and the MCP tool `get_work_item_description_markdown`) call these methods.
+The commands `items.description-markdown`, `items.set-description-markdown`,
+`items.append-description-markdown` and `items.export-description` (and the MCP tool
+`get_work_item_description_markdown`) call these methods.
 
 ## Markdown to HTML
 
@@ -244,6 +246,61 @@ A work item given by URI alone is read with `getWorkItemByUriWithFields` instead
 nothing, a `text/plain` description is converted first, and the new HTML follows the old as a new paragraph. The
 description is read, extended and written back, so a change someone makes in between is lost.
 
+## Images from files
+
+`MarkdownWriteOptions::images` names images of the Markdown (`LocalImage`: the source as
+`polarion_markdown::image_urls` returns it, a file name, the bytes). Each is shown from an attachment of the work
+item: `to_html_with_images` writes `src="workitemimg:ID"` for a Markdown image and for an `<img>` in raw HTML
+alike. Images not named there are written as they are.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as command (files.rs)
+    participant W as WorkItems::write_markdown
+    participant T as TrackerWebService
+
+    C->>C: local_images: image_urls(markdown), read each relative path
+    C->>W: set_description_markdown(item, markdown, options with images)
+    W->>T: getWorkItemByIdsWithFields [id, description, attachments]
+    loop each image (same_content)
+        W->>T: getAttachment of the attachments with the same length
+        alt one has the same bytes
+            W->>W: reuse its id
+        else
+            W->>W: upload under upload_name
+        end
+    end
+    W->>T: createAttachment (diagrams and new images, one transaction when several)
+    W->>T: getWorkItemByIdsWithFields [attachments]
+    W->>T: updateWorkItem (to_html_with_images)
+```
+
+- **Reuse:** an attachment is reused when its bytes are the image's. Only attachments of the same length are
+  fetched; the one whose id is the image's file name is asked first (an exported image), then those with its file
+  name. A SOAP fault means "cannot be compared", and the image is uploaded.
+- **Upload:** under the image's file name, titled with it. When the file name is the id of a listed attachment (an
+  exported image that was changed), the attachment's file name is used, so `3-shot.png` is uploaded as `shot.png`.
+- **Refused before any write:** two images that would be attached under one file name with different bytes.
+- **Never deleted:** image attachments cannot be told from attachments someone uploaded by hand. Pruning stays
+  limited to diagram attachments.
+- **Which images:** the commands pass the images whose source is a relative path, read from the folder of the
+  Markdown file (`local_images` in [`files.rs`](../crates/polarion-commands/src/files.rs)): `--file` on
+  `items set-description-markdown` and `items append-description-markdown`.
+
+## Exporting a description
+
+`WorkItems::description_markdown_export(item, options, image_dir)` reads the description as
+`description_markdown` does and also fetches the images it shows: every `<img>` of an attachment of this work item
+(`workitemimg:ID`, or a `/wi-attachment/` URL of this work item) that is listed and did not become a mermaid
+block. `to_markdown_with_images` writes each as `<image_dir>/<file name>`, the file name being the attachment id
+with everything but `A-Z a-z 0-9 . _ -` replaced by `_`. An image the server answers with a fault for keeps its
+source and is named in the warnings; on a server without `getAttachment` the remaining images are not asked for.
+
+`items export-description ITEM --dir DIR` writes `DIR/ID.md` and `DIR/ID/<file name>`. Written back with `--file`,
+the images are found again by their content, so nothing is uploaded. The description is still written when its
+HTML differs from what the Markdown converts to (attributes of Polarion's editor such as `data-lastmodified`).
+
 ## Reading a description
 
 ```mermaid
@@ -277,6 +334,11 @@ keeps its links.
 
 - Link and image URLs are checked: a link to a `javascript:`, `vbscript:`, `file:` or `data:` URL (other than a
   PNG, GIF, JPEG or WebP image) is written as its text, and such an image as its alt text.
+- Files are read and written by the commands only, through the `LocalFiles` of their context: none by default,
+  any path on the command line, only the exchange folder over MCP (links leading out of it are refused). An image
+  of a Markdown file must be a relative path without `..`, a PNG, JPEG, GIF, WebP or SVG file by name and content,
+  and at most 20 MB; otherwise the command fails before it sends anything. Exported files are named by the
+  work item id and the attachment ids with unsafe characters replaced, never by a path the server chose.
 - Raw HTML in Markdown passes a sanitizer. Event handler (`on…`) and `srcdoc` attributes are removed, and so are
   attributes with a dangerous URL, styles with `expression(`, `javascript:` and the like, and SVG animations that
   set such values. `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<base>`, `<link>`, `<meta>` and the

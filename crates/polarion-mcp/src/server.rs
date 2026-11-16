@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use polarion::Polarion;
 use polarion_commands::{
-    AREAS, CommandError, Config, Context, Entry, View, WriteTarget, catalog, find,
+    AREAS, CommandError, Config, Context, Entry, LocalFiles, View, WriteTarget, catalog, find,
 };
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, Implementation,
@@ -496,7 +496,8 @@ impl PolarionMcp {
         let files = match &self.0.exchange {
             Some(exchange) => format!(
                 " Attachment downloads and PDF exports can be saved with `save_as`, and uploads read \
-                 with `data-file`, in the exchange folder {}{}.",
+                 with `data-file`, in the exchange folder {}{}. Paths (`file` of the Markdown \
+                 writes, `dir` of `items.export-description`) are relative to it.",
                 exchange.dir().display(),
                 if self.0.transport == Transport::Http {
                     " (on the server)"
@@ -689,7 +690,12 @@ impl PolarionMcp {
             code: e.code,
             message: e.message.clone(),
         })?;
-        let cx = Context::new(polarion, self.0.config.project.as_deref());
+        // Commands that take a path (`file`, `dir`) work in the exchange folder, if there is one.
+        let files = match &self.0.exchange {
+            Some(exchange) => LocalFiles::Within(exchange.dir()),
+            None => LocalFiles::Refused,
+        };
+        let cx = Context::new(polarion, self.0.config.project.as_deref()).with_files(files);
         let busy = CPU_BOUND.contains(&command.name());
         let output = match tokio::runtime::Handle::try_current() {
             // The thread is busy for a while: the runtime moves its other tasks to another one.

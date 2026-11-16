@@ -8,12 +8,12 @@
 //! Reading fetches the SVGs the description shows and turns them back into
 //! ```` ```mermaid ```` blocks: each SVG carries its source.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use polarion_markdown::mermaid::{self, Diagram, MermaidError};
 use polarion_markdown::{
-    self as md, DiagramAttachments, DiagramSources, RawHtml, ToHtmlOptions, ToMarkdownOptions,
-    WorkItemIds,
+    self as md, DiagramAttachments, DiagramSources, ImageAttachments, ImagePaths, RawHtml,
+    ToHtmlOptions, ToMarkdownOptions, WorkItemIds,
 };
 use serde::Serialize;
 
@@ -59,6 +59,19 @@ pub struct MarkdownWriteOptions {
     /// Write a diagram that cannot be rendered as a code block, with a warning, instead of
     /// failing (default: off).
     pub allow_unrendered: bool,
+    /// Images of the Markdown to show from attachments of the work item (default: none): each is
+    /// attached unless the work item already has an attachment with the same content.
+    pub images: Vec<LocalImage>,
+}
+
+/// An image of the Markdown and its content (see [`MarkdownWriteOptions::images`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalImage {
+    /// The image's source as [`polarion_markdown::image_urls`] returns it for the Markdown.
+    pub url: String,
+    /// The file name to attach it under.
+    pub file_name: String,
+    pub data: Vec<u8>,
 }
 
 impl Default for MarkdownWriteOptions {
@@ -68,6 +81,7 @@ impl Default for MarkdownWriteOptions {
             highlight: true,
             keep_orphans: false,
             allow_unrendered: false,
+            images: Vec::new(),
         }
     }
 }
@@ -83,6 +97,9 @@ pub struct MarkdownUpdate {
     /// The mermaid diagrams of the Markdown, in document order, each once.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub diagrams: Vec<DiagramAttachment>,
+    /// The images shown from attachments ([`MarkdownWriteOptions::images`]), in the order given.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ImageAttachment>,
     /// Ids of the diagram attachments deleted because the description no longer shows them.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub deleted: Vec<String>,
@@ -107,6 +124,44 @@ pub struct DiagramAttachment {
     pub uploaded: bool,
 }
 
+/// An image of written Markdown, and the attachment that shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase")]
+pub struct ImageAttachment {
+    /// The image's source in the Markdown.
+    pub url: String,
+    /// The id of the attachment the description shows.
+    pub attachment: String,
+    /// Uploaded by this call; `false`: an attachment with the same content was reused.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub uploaded: bool,
+}
+
+/// A description as Markdown with the images it shows ([`WorkItems::description_markdown_export`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MarkdownExport {
+    /// The work item's id, when the reference or the server gave one.
+    pub id: Option<String>,
+    /// The Markdown; the exported images have their `path` as source.
+    pub markdown: String,
+    /// The image attachments the description shows, each once.
+    pub images: Vec<ExportedImage>,
+    /// Images that could not be fetched: they keep their `workitemimg:` source.
+    pub warnings: Vec<String>,
+}
+
+/// An image attachment a description shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedImage {
+    /// The source the Markdown names it by: the image folder, `/`, and a file name made of the
+    /// attachment id (only `A-Z a-z 0-9 . _ -`, anything else as `_`).
+    pub path: String,
+    /// The attachment's id.
+    pub attachment: String,
+    pub data: Vec<u8>,
+}
+
 impl<'a> WorkItems<'a> {
     /// The description as Markdown.
     ///
@@ -125,8 +180,114 @@ impl<'a> WorkItems<'a> {
     ) -> Result<String> {
         let fetched = self.get_fields(item, &description_fields()).await?;
         let html = description_html(&fetched);
+        let sources = self.diagram_sources(item, &html, &fetched).await?;
+        let options = ToMarkdownOptions {
+            raw_html: options.raw_html,
+            work_items: links(options.work_items.as_ref(), item, &fetched),
+        };
+        Ok(md::to_markdown_with_diagrams(&html, &options, &sources))
+    }
+
+    /// [`WorkItems::description_markdown`] together with the images the description shows.
+    ///
+    /// Every image of an attachment of this work item (a `workitemimg:` image or a
+    /// `/wi-attachment/` URL of this work item) is fetched with `getAttachment` and written in
+    /// the Markdown as `<image_dir>/<file name>` (see [`ExportedImage::path`]); with an empty
+    /// `image_dir`, as the file name alone. Diagrams that become ```` ```mermaid ```` blocks are
+    /// not among the images. An image the server answers with a SOAP fault for keeps its source
+    /// and is named in the warnings; when the fault says the server does not know the operation
+    /// (before Polarion 3.20.1), the remaining images are not asked for.
+    ///
+    /// Writing the Markdown back with these images as [`MarkdownWriteOptions::images`] shows the
+    /// same attachments without uploading them again.
+    pub async fn description_markdown_export(
+        &self,
+        item: &ItemRef,
+        options: &MarkdownReadOptions,
+        image_dir: &str,
+    ) -> Result<MarkdownExport> {
+        let fetched = self.get_fields(item, &description_fields()).await?;
+        let html = description_html(&fetched);
+        let sources = self.diagram_sources(item, &html, &fetched).await?;
         let listed = attachment_ids(&fetched.attachments);
-        let shown: Vec<String> = own_diagram_refs(&html, item, &fetched)
+        let own_url = own_attachment_url(item, &fetched);
+
+        let mut paths = ImagePaths::new();
+        let mut images: Vec<ExportedImage> = Vec::new();
+        let mut warnings = Vec::new();
+        // Attachments asked for that the server did not return.
+        let mut failed: BTreeSet<String> = BTreeSet::new();
+        let mut unknown = false;
+        for (src, id) in md::image_refs(&html) {
+            let own = src.to_ascii_lowercase().starts_with("workitemimg:")
+                || own_url
+                    .as_ref()
+                    .is_some_and(|url| src.contains(url.as_str()));
+            if !own || !listed.contains(&id) || sources.contains_key(&id) || failed.contains(&id) {
+                continue;
+            }
+            if let Some(image) = images.iter().find(|i| i.attachment == id) {
+                paths.insert(src, image.path.clone());
+                continue;
+            }
+            if unknown {
+                continue;
+            }
+            match self.attachment(item, &id).await {
+                Ok(data) => {
+                    let name = safe_file_name(&id, images.iter().map(|i| file_of(&i.path)));
+                    let path = if image_dir.is_empty() {
+                        name
+                    } else {
+                        format!("{image_dir}/{name}")
+                    };
+                    paths.insert(src, path.clone());
+                    images.push(ExportedImage {
+                        path,
+                        attachment: id,
+                        data,
+                    });
+                }
+                Err(Error::Soap(polarion_soap::Error::Fault { message, .. })) => {
+                    if unknown_operation(&message) {
+                        unknown = true;
+                        warnings.push(format!(
+                            "the server cannot return attachments (getAttachment needs Polarion \
+                             3.20.1 or later): the image {id} and any after it keep their \
+                             `workitemimg:` source"
+                        ));
+                    } else {
+                        warnings.push(format!(
+                            "the image {id} could not be fetched and keeps its source: {message}"
+                        ));
+                    }
+                    failed.insert(id);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        let options = ToMarkdownOptions {
+            raw_html: options.raw_html,
+            work_items: links(options.work_items.as_ref(), item, &fetched),
+        };
+        Ok(MarkdownExport {
+            id: item.id.clone().or_else(|| fetched.id.clone()),
+            markdown: md::to_markdown_with_images(&html, &options, &sources, &paths),
+            images,
+            warnings,
+        })
+    }
+
+    /// The sources of the diagram attachments of the work item the description shows, by
+    /// attachment id, read from their SVGs.
+    async fn diagram_sources(
+        &self,
+        item: &ItemRef,
+        html: &str,
+        fetched: &WorkItem,
+    ) -> Result<DiagramSources> {
+        let listed = attachment_ids(&fetched.attachments);
+        let shown: Vec<String> = own_diagram_refs(html, item, fetched)
             .into_iter()
             .filter(|id| listed.contains(id))
             .collect();
@@ -151,11 +312,49 @@ impl<'a> WorkItems<'a> {
                 Err(e) => return Err(e),
             }
         }
-        let options = ToMarkdownOptions {
-            raw_html: options.raw_html,
-            work_items: links(options.work_items.as_ref(), item, &fetched),
-        };
-        Ok(md::to_markdown_with_diagrams(&html, &options, &sources))
+        Ok(sources)
+    }
+
+    /// The attachment of the work item that has the content of an image, if any: among the
+    /// listed attachments of the same length, the one whose id is the file name of the image
+    /// first, then those with its file name, then the others. A SOAP fault means it cannot be
+    /// compared.
+    async fn same_content(
+        &self,
+        item: &ItemRef,
+        listed: &[Attachment],
+        image: &LocalImage,
+    ) -> Result<Option<String>> {
+        let length = i64::try_from(image.data.len()).ok();
+        let mut candidates: Vec<(u8, &str)> = listed
+            .iter()
+            .filter(|a| a.length.is_none() || a.length == length)
+            .filter_map(|a| {
+                let id = a.id.as_deref()?;
+                let rank = if id == image.file_name {
+                    0
+                } else if named(a, &image.file_name) {
+                    1
+                } else {
+                    2
+                };
+                Some((rank, id))
+            })
+            .collect();
+        candidates.sort_by_key(|(rank, _)| *rank);
+        for (_, id) in candidates {
+            match self.attachment(item, id).await {
+                Ok(data) if data == image.data => return Ok(Some(id.to_owned())),
+                Ok(_) => {}
+                Err(Error::Soap(polarion_soap::Error::Fault { message, .. })) => {
+                    if unknown_operation(&message) {
+                        break;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(None)
     }
 
     /// Replace the description with Markdown, converted to Polarion's rich text (HTML).
@@ -191,6 +390,13 @@ impl<'a> WorkItems<'a> {
     /// call that fails in the second step leaves the uploaded diagrams behind, not shown; a later
     /// write of the same diagrams shows them instead of uploading them again. A delete that fails
     /// stays a warning, as said above.
+    ///
+    /// Images ([`MarkdownWriteOptions::images`]): each image of the Markdown named there is shown
+    /// from an attachment of the work item. An attachment that already has the content of the
+    /// image (same length, then compared with `getAttachment`) is reused; the others are
+    /// uploaded with the diagrams, under the file name of the image (titled with it). Two
+    /// images with the same file name and different content are refused before anything is
+    /// written. Image attachments are never deleted, whatever the old description showed.
     ///
     /// Rendering is CPU-bound and blocks the calling thread until it is done: milliseconds for a
     /// typical diagram, seconds for a large one, and the first render of a process also loads
@@ -244,15 +450,45 @@ impl<'a> WorkItems<'a> {
 
         // Every diagram without an attachment is rendered before the first write.
         let mut warnings = Vec::new();
-        let mut uploads: Vec<(String, String)> = Vec::new();
+        let mut uploads: Vec<Upload> = Vec::new();
         for diagram in &diagrams {
             if attachments.contains_key(&diagram.file_name) {
                 continue;
             }
             match mermaid::render_svg(&diagram.source) {
-                Ok(svg) => uploads.push((diagram.file_name.clone(), svg)),
+                Ok(svg) => uploads.push(Upload {
+                    file_name: diagram.file_name.clone(),
+                    title: DIAGRAM_TITLE.to_owned(),
+                    data: svg.into_bytes(),
+                }),
                 Err(e) => warnings.push(unrendered(&diagram.source, &e, options.allow_unrendered)?),
             }
+        }
+
+        // The images: the attachment that has the content of each, else the name to upload it
+        // under. All of it is read and checked before the first write.
+        let mut images = ImageAttachments::new();
+        let mut new_images: BTreeMap<String, String> = BTreeMap::new();
+        for image in &options.images {
+            if let Some(id) = self.same_content(item, &fetched.attachments, image).await? {
+                images.insert(image.url.clone(), id);
+                continue;
+            }
+            let file_name = upload_name(image, &fetched.attachments);
+            match uploads.iter().find(|u| u.file_name == file_name) {
+                Some(upload) if upload.data == image.data => {}
+                Some(_) => {
+                    return Err(Error::Invalid(format!(
+                        "two different images would be attached as {file_name}: rename one of them"
+                    )));
+                }
+                None => uploads.push(Upload {
+                    file_name: file_name.clone(),
+                    title: file_name.clone(),
+                    data: image.data.clone(),
+                }),
+            }
+            new_images.insert(image.url.clone(), file_name);
         }
 
         let mut plan = Plan {
@@ -269,17 +505,18 @@ impl<'a> WorkItems<'a> {
             listed: attachment_ids(&fetched.attachments),
             uploads,
             attachments,
+            images,
         };
-        let uploaded: BTreeSet<String> = plan.uploads.iter().map(|(n, _)| n.clone()).collect();
+        let uploaded: BTreeSet<String> = plan.uploads.iter().map(|u| u.file_name.clone()).collect();
         if !plan.uploads.is_empty() {
             let uploads = std::mem::take(&mut plan.uploads);
             let target = item.clone();
             self.polarion
                 .atomic("createAttachment", uploads.len(), move |p| async move {
                     let items = p.items();
-                    for (file_name, svg) in &uploads {
+                    for upload in &uploads {
                         items
-                            .add_attachment(&target, file_name, DIAGRAM_TITLE, svg.as_bytes())
+                            .add_attachment(&target, &upload.file_name, &upload.title, &upload.data)
                             .await?;
                     }
                     Ok(())
@@ -291,15 +528,39 @@ impl<'a> WorkItems<'a> {
                 .get_fields(item, &Fields::new(["attachments"]))
                 .await?
                 .attachments;
+            let mut ids: BTreeMap<&String, String> = BTreeMap::new();
             for file_name in &uploaded {
-                let id = newest(listed.iter().filter(|a| named(a, file_name))).ok_or_else(|| {
-                    Error::Invalid(format!(
-                        "the diagram {file_name} was uploaded to {item} but is not among its attachments"
-                    ))
-                })?;
-                plan.attachments.insert(file_name.clone(), id);
+                let id =
+                    newest(listed.iter().filter(|a| named(a, file_name))).ok_or_else(|| {
+                        Error::Invalid(format!(
+                            "{file_name} was uploaded to {item} but is not among its attachments"
+                        ))
+                    })?;
+                ids.insert(file_name, id);
+            }
+            for diagram in &diagrams {
+                if let Some(id) = ids.get(&diagram.file_name) {
+                    plan.attachments
+                        .insert(diagram.file_name.clone(), id.clone());
+                }
+            }
+            for (url, file_name) in &new_images {
+                if let Some(id) = ids.get(file_name) {
+                    plan.images.insert(url.clone(), id.clone());
+                }
             }
         }
+        let images: Vec<ImageAttachment> = options
+            .images
+            .iter()
+            .filter_map(|image| {
+                Some(ImageAttachment {
+                    url: image.url.clone(),
+                    attachment: plan.images.get(&image.url)?.clone(),
+                    uploaded: new_images.contains_key(&image.url),
+                })
+            })
+            .collect();
         let (content, updated) = plan.content(&plan.attachments);
         let writes = usize::from(updated) + plan.orphans(&content).len();
         let done = self
@@ -321,6 +582,7 @@ impl<'a> WorkItems<'a> {
         Ok(MarkdownUpdate {
             updated: done.updated,
             diagrams,
+            images,
             deleted: done.deleted,
             warnings,
         })
@@ -342,11 +604,21 @@ struct Plan {
     shown_before: BTreeSet<String>,
     /// The attachment ids the work item had.
     listed: BTreeSet<String>,
-    /// Rendered diagrams to upload: file name and SVG.
-    uploads: Vec<(String, String)>,
+    /// Rendered diagrams and new images to upload.
+    uploads: Vec<Upload>,
     /// The diagrams that have an attachment (the uploaded ones once they are): file name and
     /// attachment id.
     attachments: DiagramAttachments,
+    /// The images that have an attachment (the uploaded ones once they are): source in the
+    /// Markdown and attachment id.
+    images: ImageAttachments,
+}
+
+/// An attachment to create.
+struct Upload {
+    file_name: String,
+    title: String,
+    data: Vec<u8>,
 }
 
 /// What [`Plan::execute`] did.
@@ -360,7 +632,12 @@ struct Done {
 impl Plan {
     /// The new description with these diagram attachments, and whether it differs from the old.
     fn content(&self, attachments: &DiagramAttachments) -> (String, bool) {
-        let html = md::to_html_with_diagrams(&self.markdown, &self.html_options, attachments);
+        let html = md::to_html_with_images(
+            &self.markdown,
+            &self.html_options,
+            attachments,
+            &self.images,
+        );
         let content = if self.append {
             md::append_html(&self.old, &html)
         } else {
@@ -480,10 +757,7 @@ fn prefix(id: &str) -> Option<&str> {
 /// (`<counter>-mermaid-<hash>.svg`), so they appear in the HTML as they are.
 fn own_diagram_refs(html: &str, item: &ItemRef, fetched: &WorkItem) -> BTreeSet<String> {
     let lower = html.to_ascii_lowercase();
-    let own_url = match (&item.project, item.id.as_ref().or(fetched.id.as_ref())) {
-        (Some(project), Some(id)) => Some(format!("/wi-attachment/{project}/{id}/")),
-        _ => None,
-    };
+    let own_url = own_attachment_url(item, fetched);
     md::diagram_refs(html)
         .into_iter()
         .filter(|id| {
@@ -493,6 +767,59 @@ fn own_diagram_refs(html: &str, item: &ItemRef, fetched: &WorkItem) -> BTreeSet<
                     .is_some_and(|url| html.contains(&format!("{url}{id}")))
         })
         .collect()
+}
+
+/// The start of the `/wi-attachment/` URLs of the attachments of this work item.
+fn own_attachment_url(item: &ItemRef, fetched: &WorkItem) -> Option<String> {
+    match (&item.project, item.id.as_ref().or(fetched.id.as_ref())) {
+        (Some(project), Some(id)) => Some(format!("/wi-attachment/{project}/{id}/")),
+        _ => None,
+    }
+}
+
+/// The file name to attach a new image under: its own, or, when that is the id of a listed
+/// attachment (an exported image that was changed), the file name of that attachment.
+fn upload_name(image: &LocalImage, listed: &[Attachment]) -> String {
+    listed
+        .iter()
+        .find(|a| a.id.as_deref() == Some(image.file_name.as_str()))
+        .map(|a| {
+            a.file_name
+                .clone()
+                .unwrap_or_else(|| md::attachment_file_name(&image.file_name).to_owned())
+        })
+        .unwrap_or_else(|| image.file_name.clone())
+}
+
+/// The last segment of the path of an exported image.
+fn file_of(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// A file name for an attachment id: `A-Z a-z 0-9 . _ -` kept, anything else as `_`; never empty,
+/// `.` or `..`, and none of `taken` (a number is put in front then).
+fn safe_file_name<'t>(id: &str, taken: impl Iterator<Item = &'t str>) -> String {
+    let mut name: String = id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if name.chars().all(|c| c == '.') {
+        name = "image".to_owned();
+    }
+    let taken: BTreeSet<&str> = taken.collect();
+    if !taken.contains(name.as_str()) {
+        return name;
+    }
+    (2..)
+        .map(|n| format!("{n}_{name}"))
+        .find(|candidate| !taken.contains(candidate.as_str()))
+        .unwrap_or(name)
 }
 
 /// Whether a SOAP fault says that the server does not know the operation.
@@ -745,6 +1072,18 @@ mod tests {
                     uploaded: false,
                 },
             ],
+            images: vec![
+                ImageAttachment {
+                    url: "img/a.png".into(),
+                    attachment: "4-a.png".into(),
+                    uploaded: true,
+                },
+                ImageAttachment {
+                    url: "P-1/5-b.png".into(),
+                    attachment: "5-b.png".into(),
+                    uploaded: false,
+                },
+            ],
             deleted: vec!["3-mermaid-1111111111111111.svg".into()],
             warnings: vec!["w".into()],
         };
@@ -757,9 +1096,47 @@ mod tests {
                     {"fileName": "mermaid-fedcba9876543210.svg", "attachment": "2-mermaid-fedcba9876543210.svg"},
                     {"fileName": "mermaid-00000000ffffffff.svg"},
                 ],
+                "images": [
+                    {"url": "img/a.png", "attachment": "4-a.png", "uploaded": true},
+                    {"url": "P-1/5-b.png", "attachment": "5-b.png"},
+                ],
                 "deleted": ["3-mermaid-1111111111111111.svg"],
                 "warnings": ["w"],
             })
+        );
+    }
+
+    #[test]
+    fn exported_images_get_safe_file_names() {
+        let none = || std::iter::empty::<&str>();
+        assert_eq!(safe_file_name("1-a.png", none()), "1-a.png");
+        assert_eq!(safe_file_name("2-ä b/c\\d.png", none()), "2-__b_c_d.png");
+        assert_eq!(safe_file_name("..", none()), "image");
+        assert_eq!(safe_file_name("", none()), "image");
+        assert_eq!(
+            safe_file_name("1-a b.png", ["1-a_b.png", "2_1-a_b.png"].into_iter()),
+            "3_1-a_b.png"
+        );
+        assert_eq!(file_of("P-1/1-a.png"), "1-a.png");
+        assert_eq!(file_of("1-a.png"), "1-a.png");
+    }
+
+    #[test]
+    fn a_changed_export_is_uploaded_under_the_attachments_file_name() {
+        let listed = [
+            attachment("3-shot.png", Some("shot.png")),
+            attachment("4-x.png", None),
+        ];
+        let image = |file_name: &str| LocalImage {
+            url: file_name.into(),
+            file_name: file_name.into(),
+            data: vec![1],
+        };
+        assert_eq!(upload_name(&image("3-shot.png"), &listed), "shot.png");
+        assert_eq!(upload_name(&image("4-x.png"), &listed), "x.png");
+        assert_eq!(
+            upload_name(&image("2024-plan.png"), &listed),
+            "2024-plan.png"
         );
     }
 }

@@ -78,7 +78,7 @@ fn every_command_parses_and_round_trips() {
         });
         assert_eq!(again.name(), name);
     }
-    assert_eq!(names.len(), 253);
+    assert_eq!(names.len(), 254);
 }
 
 #[test]
@@ -90,8 +90,17 @@ fn markdown_is_text_in_json() {
     let set = find("items.set-description-markdown").unwrap();
     assert!(set.write && matches!(set.view, View::Object));
     let schema = set.input_schema();
-    assert_eq!(schema["required"], json!(["item", "markdown"]));
-    assert_eq!(schema["properties"]["markdown"]["type"], "string");
+    // The Markdown is `markdown` (the text) or `file` (a file, with its images): the command
+    // checks that it got one of them.
+    assert_eq!(schema["required"], json!(["item"]));
+    assert_eq!(
+        schema["properties"]["file"]["type"],
+        json!(["string", "null"])
+    );
+    assert_eq!(
+        schema["properties"]["markdown"]["type"],
+        json!(["string", "null"])
+    );
     // `@FILE` is for the command line: in JSON it is the text itself.
     let command = set
         .parse(json!({"item": "P-1", "markdown": "@desc.md", "id-prefixes": "MP, *"}))
@@ -100,8 +109,21 @@ fn markdown_is_text_in_json() {
         serde_json::to_value(&command).unwrap()["args"],
         json!({"item": "P-1", "markdown": "@desc.md", "id-prefixes": ["MP", "*"]})
     );
+    // A path stays a path: the command reads the file, through the context it runs in.
+    let command = set
+        .parse(json!({"item": "P-1", "file": "doc/P-1.md"}))
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&command).unwrap()["args"],
+        json!({"item": "P-1", "file": "doc/P-1.md"})
+    );
     let append = find("items.append-description-markdown").unwrap();
     assert!(append.write);
+    assert_eq!(append.input_schema()["required"], json!(["item"]));
+
+    let export = find("items.export-description").unwrap();
+    assert!(!export.write && matches!(export.view, View::Object));
+    assert_eq!(export.input_schema()["required"], json!(["item", "dir"]));
     assert!(
         append.input_schema()["properties"]
             .get("keep-orphans")

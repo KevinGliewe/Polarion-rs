@@ -10,7 +10,9 @@ use std::process::ExitCode;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Parser as _;
-use polarion_commands::{AnyCommand, CommandError, Context, Entry, View, catalog, find};
+use polarion_commands::{
+    AnyCommand, CommandError, Context, Entry, LocalFiles, View, catalog, find,
+};
 use serde_json::{Value, json};
 
 use crate::cli::{Opts, Top};
@@ -37,7 +39,9 @@ async fn main() -> ExitCode {
     let args = serde_json::to_value(&command).expect("commands serialize")["args"].take();
     let result = match config.connect() {
         Ok(polarion) => {
-            let cx = Context::new(&polarion, config.project.as_deref());
+            // The paths on a command line are the user's own.
+            let cx = Context::new(&polarion, config.project.as_deref())
+                .with_files(LocalFiles::Unrestricted);
             let result = command.run(&cx).await;
             // Every login opens a session on the server (which may hold a license); end it.
             let _ = polarion.logout().await;

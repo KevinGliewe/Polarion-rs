@@ -167,6 +167,7 @@ Each run ends its server session.
 | Rich text | a string, or `{"type": "text/html", "content": "..."}` |
 | Text (`--markdown`) | the text (it may start with `-`, as a list does), `@FILE`, `@-` (standard input), or `@@...` (text that starts with `@`) |
 | Binary | base64 or `@FILE` |
+| Paths (`--file`, `--dir`) | a file or folder; relative paths are relative to the working directory |
 
 - Files and standard input are read as UTF-8, or as UTF-16 with a byte order mark.
 - Binary results and Markdown go to `--out FILE`.
@@ -177,6 +178,18 @@ Each run ends its server session.
 - `items set-description-markdown` and `items append-description-markdown` write it.
 - **Mermaid blocks** become SVG attachments shown as images, and are read back as mermaid blocks. An unchanged
   diagram is not uploaded again.
+- **Images from files:** `--file doc.md` (instead of `--markdown`) reads the Markdown from a file and attaches the
+  images it names by relative paths (`![](img/a.png)`), so the description shows them inline. They must be PNG,
+  JPEG, GIF, WebP or SVG files in the folder of the Markdown file or below it. An image the work item already has
+  an attachment with the same content for is not uploaded again. Image attachments are never deleted.
+- **Export:** `items export-description ITEM --dir out` writes `out/ITEM.md` and the images the description shows
+  as `out/ITEM/<attachment id>`. `items set-description-markdown ITEM --file out/ITEM.md` writes it back.
+
+  ```sh
+  polarion items export-description MP-42 --dir out
+  # edit out/MP-42.md, add or replace images next to it
+  polarion items set-description-markdown MP-42 --file out/MP-42.md
+  ```
 - **Work item ids become links** when they have the work item's own prefix: `MP-7` in the description of `MP-42`,
   but not `UTF-8`. `--id-prefixes MP,OP` names the prefixes, `'*'` allows any, `none` turns links off.
 - **Formatting Markdown cannot express** is read as HTML, so writing the Markdown back keeps it. `--drop-html`
@@ -331,7 +344,7 @@ Every tool definition costs the agent context:
 | default, read-only | about 72 KB (53 KB of it output schemas, 19 KB everything else) |
 | default, writes enabled | about 94 KB |
 | `all` (about 240 tools) | about 288 KB; 121 KB without output schemas |
-| `all`, writes enabled (257 tools) | about 309 KB; 139 KB without output schemas |
+| `all`, writes enabled (258 tools) | about 309 KB; 139 KB without output schemas |
 
 An optional TOML file, given with `--config FILE` or `POLARION_MCP_CONFIG=FILE`, picks what is offered. Every key
 is optional:
@@ -735,7 +748,9 @@ items.transition(&item, "reviewed").await?;   // status changes go through workf
 - **Markdown descriptions:** with the feature `markdown` (plus `mermaid` to render diagrams, `highlight` for
   highlighted code), `items().description_markdown`, `set_description_markdown` and `append_description_markdown`
   read and write descriptions as Markdown through [`polarion-markdown`](#polarion-markdown). The crate is
-  re-exported as `polarion::polarion_markdown`.
+  re-exported as `polarion::polarion_markdown`. `MarkdownWriteOptions::images` attaches images of the Markdown
+  (given as bytes) and shows them inline; `description_markdown_export` returns the Markdown with the images the
+  description shows.
 - **Typed custom fields:** `FieldValue::coerce(&json, &field_definition)` types JSON input (from a CLI or an agent)
   for a custom field, using its definition from `schema()`.
 
@@ -814,6 +829,9 @@ The live write tier, the CLI and MCP tiers and the bootstrap (see [docs/testing.
   A task with a category was created by hand (begin transaction, `createWorkItem`, `addCategory`, commit in one
   session) against a real server whose workflow requires the category. The live suite covers updates of several
   requests in a session of their own.
+- Images of Markdown descriptions: attaching the images of a Markdown file (`--file`,
+  `MarkdownWriteOptions::images`), reusing an attachment with the same content, and
+  `items export-description`.
 - A commit without an answer (`CommitUncertain`), and the cleanup of a session of its own after a cancelled call
   (it finishes in a spawned task) or a runtime shutdown (the server times it out).
 

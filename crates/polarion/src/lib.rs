@@ -126,7 +126,10 @@ pub use error::{Error, Result};
 pub use folders::Folders;
 pub use items::WorkItems;
 #[cfg(feature = "markdown")]
-pub use markdown::{DiagramAttachment, MarkdownReadOptions, MarkdownUpdate, MarkdownWriteOptions};
+pub use markdown::{
+    DiagramAttachment, ExportedImage, ImageAttachment, LocalImage, MarkdownExport,
+    MarkdownReadOptions, MarkdownUpdate, MarkdownWriteOptions,
+};
 pub use model::{
     Approval, Attachment, Baseline, Category, Change, Comment, Document, EnumOption, FieldChange,
     FieldDefinition, FieldValue, Hyperlink, Link, LinkedRevision, Plan, Project, ProjectGroup,

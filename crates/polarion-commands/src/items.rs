@@ -12,8 +12,8 @@ use crate::tests_mgmt::StepRows;
 use crate::{
     ACTION_COLUMNS, CHANGE_COLUMNS, Changed, CommandError, ConstraintArg, Context, Data,
     DocumentArg, Done, Download, FieldSelection, HyperlinkArg, ITEM_COLUMNS, ItemArg, JsonObject,
-    JsonValue, LinkArg, OPTION_COLUMNS, OslcLinkArg, PlanArg, QueryArgs, REF_COLUMNS, Result,
-    RevisionArg, RichText, Run, TextArg, USER_COLUMNS,
+    JsonValue, LinkArg, OPTION_COLUMNS, OslcLinkArg, PathArg, PlanArg, QueryArgs, REF_COLUMNS,
+    Result, RevisionArg, RichText, Run, TextArg, USER_COLUMNS,
 };
 
 /// Get a work item with all fields (or only `fields`/`custom`)
@@ -670,6 +670,119 @@ impl Run for DescriptionMarkdown {
     }
 }
 
+/// Save a work item's description as a Markdown file, with the images it shows next to it.
+///
+/// Writes `<dir>/<ID>.md` and the image attachments the description shows as
+/// `<dir>/<ID>/<attachment id>` (characters other than letters, digits, `.`, `_` and `-` as
+/// `_`); the Markdown names them by these relative paths. Existing files are replaced. Mermaid
+/// diagrams become code blocks, not files. `set-description-markdown --file <dir>/<ID>.md`
+/// writes the file back: unchanged images are recognized and not uploaded again. An image the
+/// server does not return keeps its `workitemimg:` source and is named in `warnings`.
+#[cmd(view = object)]
+pub struct ExportDescription {
+    /// Work item: ID (in the default project), PROJECT/ID, or URI
+    #[positional]
+    pub item: ItemArg,
+    /// The folder to write to (created if missing)
+    pub dir: PathArg,
+    /// Drop formatting Markdown cannot express (colors, fonts, merged cells, ...) instead of keeping it as inline HTML
+    pub drop_html: bool,
+    /// Id prefixes whose work item links are read as plain ids, e.g. `MP` (default: the work item's own; `*`: any; `none`: no link)
+    pub id_prefixes: Vec<String>,
+}
+
+/// The files `export-description` wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportedDescription {
+    /// The Markdown file.
+    pub markdown: String,
+    /// The image files, in the order the description shows them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+    /// Images that were not saved.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+impl Run for ExportDescription {
+    type Output = ExportedDescription;
+
+    async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
+        let options = MarkdownReadOptions {
+            raw_html: if self.drop_html {
+                RawHtml::Drop
+            } else {
+                RawHtml::Keep
+            },
+            work_items: work_item_ids(&self.id_prefixes)?,
+        };
+        let item = self.item.resolve(cx)?;
+        // Before the server is asked: a folder that cannot be written to fails the command.
+        cx.files.check(self.dir.path())?;
+        // The folder of the images is named after the work item, as the Markdown file is.
+        let name = export_name(item.id.as_deref());
+        let export = cx
+            .polarion
+            .items()
+            .description_markdown_export(&item, &options, &name)
+            .await?;
+        let dir = self.dir.path();
+        let shown = |path: &std::path::Path| path.display().to_string();
+        let mut images = Vec::with_capacity(export.images.len());
+        for image in &export.images {
+            // Segment by segment: the separators of the platform.
+            let path = image.path.split('/').fold(dir.to_owned(), |p, s| p.join(s));
+            cx.files.write(&path, &image.data)?;
+            images.push(shown(&path));
+        }
+        let markdown = dir.join(format!("{name}.md"));
+        cx.files.write(&markdown, export.markdown.as_bytes())?;
+        Ok(ExportedDescription {
+            markdown: shown(&markdown),
+            images,
+            warnings: export.warnings,
+        })
+    }
+}
+
+/// The name of an exported description: the work item's id when it is a plain file name (letters,
+/// digits, `.`, `_`, `-`; a reference by URI has none), else `description`.
+fn export_name(id: Option<&str>) -> String {
+    id.filter(|id| {
+        !id.is_empty()
+            && !id.starts_with('.')
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    })
+    .unwrap_or("description")
+    .to_owned()
+}
+
+/// The Markdown of a write and the images it shows from local files: the text of `markdown`
+/// (no images), or the content of `file` with the images it names by relative paths.
+fn markdown_input(
+    cx: &Context<'_>,
+    markdown: Option<TextArg>,
+    file: Option<&PathArg>,
+) -> Result<(String, Vec<polarion::LocalImage>)> {
+    match (markdown, file) {
+        (Some(TextArg(text)), None) => Ok((text, Vec::new())),
+        (None, Some(file)) => {
+            let text = crate::files::read_text(&cx.files, file.path())?;
+            let images = crate::files::local_images(&cx.files, file.path(), &text)?;
+            Ok((text, images))
+        }
+        (Some(_), Some(_)) => Err(CommandError::invalid(
+            "give either `markdown` or `file`, not both",
+        )),
+        (None, None) => Err(CommandError::invalid(
+            "give the Markdown: `markdown` (the text) or `file` (a Markdown file)",
+        )),
+    }
+}
+
 /// `id-prefixes` as the library's option: none, the work item's own prefix (`None`); `*`, any
 /// id; `none`, no id. Anything else must be a prefix the conversion recognizes (`MP`, `MY_PROJ`):
 /// an uppercase letter, then uppercase letters, digits or `_`.
@@ -986,6 +1099,11 @@ impl Run for Update {
 
 /// Replace the description with Markdown (mermaid diagrams become SVG attachments).
 ///
+/// With `file`, the Markdown is read from that file, and the images it names by relative paths
+/// (`![](img/a.png)`, PNG, JPEG, GIF, WebP or SVG, in the file's folder or below it) are attached
+/// to the work item and shown inline; an image the work item already has an attachment with the
+/// same content for is not uploaded again. Image attachments are never deleted.
+///
 /// Each mermaid code block is rendered to SVG, attached as `mermaid-<hash>.svg` and shown as an
 /// image; a diagram that already has its attachment is not uploaded again. A diagram that cannot
 /// be rendered fails the command before anything is written, unless `allow-unrendered` is set.
@@ -997,7 +1115,9 @@ pub struct SetDescriptionMarkdown {
     #[positional]
     pub item: ItemArg,
     /// The new description: the Markdown text itself
-    pub markdown: TextArg,
+    pub markdown: Option<TextArg>,
+    /// A Markdown file to read the new description from instead; its relative images are attached
+    pub file: Option<PathArg>,
     /// Keep the diagram attachments the old description showed and the new one does not
     pub keep_orphans: bool,
     /// Write a mermaid diagram that cannot be rendered as a code block, with a warning, instead of failing
@@ -1010,11 +1130,15 @@ impl Run for SetDescriptionMarkdown {
     type Output = polarion::MarkdownUpdate;
 
     async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let options = write_options(&self.id_prefixes, self.keep_orphans, self.allow_unrendered)?;
+        let mut options =
+            write_options(&self.id_prefixes, self.keep_orphans, self.allow_unrendered)?;
+        let item = self.item.resolve(cx)?;
+        let (markdown, images) = markdown_input(cx, self.markdown, self.file.as_ref())?;
+        options.images = images;
         Ok(cx
             .polarion
             .items()
-            .set_description_markdown(&self.item.resolve(cx)?, &self.markdown.0, &options)
+            .set_description_markdown(&item, &markdown, &options)
             .await?)
     }
 }
@@ -1023,14 +1147,17 @@ impl Run for SetDescriptionMarkdown {
 ///
 /// As `set-description-markdown`, except that no attachment is deleted. A `text/plain`
 /// description is converted to HTML first. The description is read, extended and written back:
-/// a change someone makes in between is lost.
+/// a change someone makes in between is lost. `file` reads the Markdown from a file and attaches
+/// its relative images, as for `set-description-markdown`.
 #[cmd(write, view = object)]
 pub struct AppendDescriptionMarkdown {
     /// Work item: ID (in the default project), PROJECT/ID, or URI
     #[positional]
     pub item: ItemArg,
     /// The Markdown to append: the text itself
-    pub markdown: TextArg,
+    pub markdown: Option<TextArg>,
+    /// A Markdown file to read the text from instead; its relative images are attached
+    pub file: Option<PathArg>,
     /// Write a mermaid diagram that cannot be rendered as a code block, with a warning, instead of failing
     pub allow_unrendered: bool,
     /// Id prefixes whose ids become work item links, e.g. `MP` (default: the work item's own; `*`: any; `none`: no link)
@@ -1041,11 +1168,14 @@ impl Run for AppendDescriptionMarkdown {
     type Output = polarion::MarkdownUpdate;
 
     async fn run(self, cx: &Context<'_>) -> Result<Self::Output> {
-        let options = write_options(&self.id_prefixes, false, self.allow_unrendered)?;
+        let mut options = write_options(&self.id_prefixes, false, self.allow_unrendered)?;
+        let item = self.item.resolve(cx)?;
+        let (markdown, images) = markdown_input(cx, self.markdown, self.file.as_ref())?;
+        options.images = images;
         Ok(cx
             .polarion
             .items()
-            .append_description_markdown(&self.item.resolve(cx)?, &self.markdown.0, &options)
+            .append_description_markdown(&item, &markdown, &options)
             .await?)
     }
 }
@@ -2167,7 +2297,49 @@ mod tests {
                 highlight: true,
                 keep_orphans: true,
                 allow_unrendered: true,
+                images: Vec::new(),
             }
         );
+    }
+
+    #[test]
+    fn the_markdown_of_a_write_is_text_or_a_file() {
+        let polarion =
+            polarion::Polarion::builder("http://localhost:9", polarion::Auth::Token("t".into()))
+                .build()
+                .unwrap();
+        let cx = Context::new(&polarion, None);
+        let text = || Some(TextArg("# T".into()));
+        let file = PathArg("d.md".into());
+        assert_eq!(
+            markdown_input(&cx, text(), None).unwrap(),
+            ("# T".to_owned(), Vec::new())
+        );
+        for (markdown, file, why) in [
+            (text(), Some(&file), "not both"),
+            (None, None, "give the Markdown"),
+            // A context has no local files unless it is given some.
+            (None, Some(&file), "not available"),
+        ] {
+            let e = markdown_input(&cx, markdown, file).unwrap_err();
+            assert_eq!(e.code, "invalid");
+            assert!(e.message.contains(why), "{}", e.message);
+        }
+    }
+
+    #[test]
+    fn exports_are_named_after_plain_ids() {
+        assert_eq!(export_name(Some("MP-12")), "MP-12");
+        assert_eq!(export_name(Some("a_b.c")), "a_b.c");
+        for id in [
+            None,
+            Some(""),
+            Some(".."),
+            Some("a/b"),
+            Some("a\\b"),
+            Some("ä"),
+        ] {
+            assert_eq!(export_name(id), "description", "{id:?}");
+        }
     }
 }

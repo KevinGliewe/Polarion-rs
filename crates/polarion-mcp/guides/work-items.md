@@ -110,6 +110,12 @@ The description is Polarion rich text (HTML). Read and write it as Markdown inst
 - Formatting Markdown cannot express (colors, fonts, alignment, merged cells) is read as inline HTML; keep it
   when you write the text back, and the formatting stays. `drop-html` leaves it out when reading.
 - Writing the same text again changes nothing.
+- With an exchange folder, `file` (instead of `markdown`) reads the Markdown from a file in that folder and
+  attaches the images it names by relative paths (`![](img/a.png)`: PNG, JPEG, GIF, WebP or SVG, in the file's
+  folder or below it), so they are shown inline. An image the work item already has an attachment with the same
+  content for is not uploaded again; image attachments are never deleted.
+- `items.export-description` (`item`, `dir`) saves the description as `<dir>/<ID>.md` in the exchange folder,
+  with the images it shows as `<dir>/<ID>/<attachment id>`; `file` writes that Markdown back.
 - Use `update_work_item` with `description` only for exact HTML.
 
 ## Deleting and moving
