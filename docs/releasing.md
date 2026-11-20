@@ -66,8 +66,8 @@ it creates no release and publishes nothing.
 ## Actions
 
 The actions in `release.yml`, `docker.yml` and `scheduled.yml` are pinned to commits, with the version as a comment
-(`dtolnay/rust-toolchain` has no versions: a commit of its `master`, with `toolchain: stable`);
-`.github/dependabot.yml` opens one pull request a month that moves the pins. `ci.yml`, which sees no secrets,
+(`dtolnay/rust-toolchain` has no versions: a commit of its `master`, with `toolchain: stable`, moved by hand);
+`.github/dependabot.yml` opens one pull request a month that moves the other pins. `ci.yml`, which sees no secrets,
 names its actions by version tag, also when `release.yml` calls it. A release build restores the build
 cache and never writes it (`save-if: false`); the `publish` job uses none.
 
