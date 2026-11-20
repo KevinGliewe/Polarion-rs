@@ -399,8 +399,8 @@ impl<'a> WorkItems<'a> {
     /// written. Image attachments are never deleted, whatever the old description showed.
     ///
     /// Rendering is CPU-bound and blocks the calling thread until it is done: milliseconds for a
-    /// typical diagram, seconds for a large one, and the first render of a process also loads
-    /// the system fonts (see [`polarion_markdown::mermaid::render_svg`]).
+    /// typical diagram, up to a second for a large one (see
+    /// [`polarion_markdown::mermaid::render_svg`]).
     pub async fn set_description_markdown(
         &self,
         item: &ItemRef,

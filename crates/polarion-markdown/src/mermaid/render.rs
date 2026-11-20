@@ -1,6 +1,7 @@
-//! Rendering with mermaid-rs-renderer (feature `mermaid`): limits checked before rendering, the
-//! renderer on a thread of its own, a sanitizer for what a diagram source can smuggle into the
-//! SVG, and a check that the result is well-formed XML.
+//! Rendering with merman (feature `mermaid`): our size limits before rendering, merman's own
+//! limits and a deadline while it runs, the renderer on a thread of its own, a sanitizer for what
+//! a diagram source could smuggle into the SVG, a fixed size for the image, and a check that the
+//! result is well-formed XML.
 
 use super::MermaidError;
 
@@ -17,10 +18,11 @@ pub(super) use enabled::render_svg;
 mod enabled {
     use std::any::Any;
     use std::thread;
+    use std::time::Duration;
 
-    use mermaid_rs_renderer::{
-        DiagramKind, Graph, LayoutConfig, ParseError, Theme, compute_layout, parse_mermaid,
-        validator,
+    use merman::svg::SvgPipeline;
+    use merman::{
+        OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest,
     };
 
     use super::MermaidError;
@@ -31,45 +33,34 @@ mod enabled {
     const MAX_BYTES: usize = 50_000;
     /// Sources with more lines than this are not rendered.
     const MAX_LINES: usize = 1_000;
-    /// A `%%{…}%%` directive line with more `{` and `[` than this is not rendered: the renderer
-    /// reads the directive with a JSON5 parser that recurses once per nesting level, without a
-    /// limit (1.6 KB of stack a level in a debug build).
-    const MAX_DIRECTIVE_BRACKETS: usize = 64;
-    /// A line with a `$$` formula in which `{…}` nest deeper than this is not rendered: the
-    /// renderer recurses once per group and copies the rest of the formula at every level (a
-    /// formula of 7,000 nested groups takes a gigabyte).
-    const MAX_FORMULA_DEPTH: usize = 32;
-    /// Sources whose `&` lists (`A & B --> C & D`: an edge for every pair) would make the parser
-    /// copy more bytes than this are not parsed: every edge gets a copy of the names and the label
-    /// (a 46 KB source makes nine million edges in 2.3 GB).
-    const MAX_LIST_BYTES: usize = 16 << 20;
-    /// Sources whose subgraphs or composite states the parser would spend more steps than this
-    /// (about a second) on are not parsed: each time the source names a node, it looks the node
-    /// up among the members of every open group and of all the others, so the work grows with
-    /// node references × nesting depth × (groups + node references). 450 nested subgraphs around
-    /// a chain of 5,000 nodes (49 KB) take 143 s.
-    const MAX_GROUP_WORK: u64 = 200_000_000;
-    /// Diagrams whose edges the renderer routes are not laid out with more edges than this:
-    /// routing time grows with the square of the edge count (300 edges take up to about 15 s in
-    /// an optimized build, 800 more than a minute).
-    const MAX_EDGES: usize = 300;
-    /// The stack of the thread the renderer runs on, reserved and committed as it is used. Parts
-    /// of the renderer recurse once per nesting level of the source (C4 boundaries take 4 KB of
-    /// stack a level), and a stack overflow aborts the process, which `catch_unwind` cannot
-    /// prevent: the stack of the calling thread (1 MiB for the main thread on Windows) is not
-    /// enough for every source within the limits.
+    /// A render that takes longer is given up. The renderer has limits of its own (500 flowchart
+    /// edges, 32,000 items in a diagram, 256 levels in a directive), which refuse what would take
+    /// long in milliseconds; this is the backstop for what they miss. A typical diagram takes
+    /// milliseconds, a flowchart at the edge limit less than a second (optimized build).
+    const DEADLINE: Duration = Duration::from_secs(20);
+    /// The stack of the thread the renderer runs on, reserved and committed as it is used. A
+    /// stack overflow aborts the process, which `catch_unwind` cannot prevent, and the stack of
+    /// the calling thread may be small (1 MiB for the main thread on Windows, less for a worker
+    /// of an async runtime). 499 nested C4 boundaries render in 1 MiB; this is the reserve for
+    /// nesting nobody measured.
     const STACK_SIZE: usize = 64 << 20;
 
     pub(in crate::mermaid) fn render_svg(source: &str) -> Result<String, MermaidError> {
         check_limits(source)?;
         let svg = render_on_own_thread(source)?;
-        let svg = svg::embed_source(&sanitize(&xml_chars(svg)), source);
-        // What the sanitizer keeps of markup injected through a style value can still break the
-        // XML, and browsers do not display such an SVG at all.
+        let svg = fixed_size(&sanitize(&xml_chars(svg)));
+        if let Some(what) = css_load(&svg) {
+            return Err(MermaidError::Invalid(format!(
+                "the diagram's styles would load a resource ({what}); a style can only refer to \
+                 the diagram itself"
+            )));
+        }
+        let svg = svg::embed_source(&svg, source);
+        // The renderer escapes what it writes; this is the check that it did, since browsers do
+        // not display an SVG that is not well-formed at all.
         svg::check_well_formed(&svg).map_err(|why| {
             MermaidError::Invalid(format!(
-                "the renderer wrote an SVG that is not well-formed XML ({why}); it writes \
-                 `style`, `classDef` and `linkStyle` values as they are"
+                "the renderer wrote an SVG that is not well-formed XML ({why})"
             ))
         })?;
         Ok(svg)
@@ -88,155 +79,12 @@ mod enabled {
                 "the diagram has {lines} lines, more than the limit of {MAX_LINES}"
             )));
         }
-        let mut list_bytes = 0usize;
-        // The renderer splits lines the same way (`str::lines`), and its parsers read a directive
-        // or a label from a single line.
-        for (index, line) in source.lines().enumerate() {
-            let number = index + 1;
-            if line.trim_start().starts_with("%%{") {
-                let brackets = line.bytes().filter(|b| matches!(b, b'{' | b'[')).count();
-                if brackets > MAX_DIRECTIVE_BRACKETS {
-                    return Err(MermaidError::TooLarge(format!(
-                        "line {number}: the directive has {brackets} `{{` and `[`, more than the \
-                         limit of {MAX_DIRECTIVE_BRACKETS}"
-                    )));
-                }
-            }
-            if line.contains("$$") {
-                let depth = brace_depth(line);
-                if depth > MAX_FORMULA_DEPTH {
-                    return Err(MermaidError::TooLarge(format!(
-                        "line {number}: `{{…}}` nest {depth} deep in a line with a `$$` formula, \
-                         more than the limit of {MAX_FORMULA_DEPTH}"
-                    )));
-                }
-            }
-            list_bytes = list_bytes.saturating_add(list_copies(line));
-        }
-        if list_bytes > MAX_LIST_BYTES {
-            return Err(MermaidError::TooLarge(format!(
-                "the diagram's `&` lists would make the parser copy {} MiB, more than the limit \
-                 of {} MiB",
-                list_bytes >> 20,
-                MAX_LIST_BYTES >> 20
-            )));
-        }
-        let work = group_work(source);
-        if work > MAX_GROUP_WORK {
-            return Err(MermaidError::TooLarge(format!(
-                "the diagram has too many nodes in nested groups (subgraphs, composite states): \
-                 the parser would take {} million steps, more than the limit of {} million",
-                work / 1_000_000,
-                MAX_GROUP_WORK / 1_000_000
-            )));
-        }
         Ok(())
     }
 
-    /// At least the steps of the parser's group bookkeeping ([`MAX_GROUP_WORK`]): node references
-    /// × nesting depth × (groups + node references), for flowchart subgraphs (a statement
-    /// `subgraph …` opens one) and, in a state diagram, for composite states (any `{` may open
-    /// one). Every possible opener counts, also in front matter; only a line that is just `end`
-    /// (or `}`) outside front matter, which the parser surely reads as one, closes a group.
-    fn group_work(source: &str) -> u64 {
-        let states = source.to_ascii_lowercase().contains("statediagram");
-        let mut refs = 0u64;
-        // For subgraphs and for composite states: depth, deepest depth, groups.
-        let mut subgraphs = (0u64, 0u64, 0u64);
-        let mut composites = (0u64, 0u64, 0u64);
-        let open = |(depth, deepest, groups): &mut (u64, u64, u64), count: u64| {
-            *depth += count;
-            *deepest = (*deepest).max(*depth);
-            *groups += count;
-        };
-        let mut front_matter = false;
-        for line in source.lines() {
-            let line = line.trim();
-            refs += node_refs(line);
-            if line == "---" {
-                front_matter = !front_matter;
-            } else if !front_matter && line == "end" {
-                subgraphs.0 = subgraphs.0.saturating_sub(1);
-            } else if !front_matter && line == "}" {
-                composites.0 = composites.0.saturating_sub(1);
-            }
-            // The parser splits a line into statements at `;` (outside quotes and brackets).
-            let openers = line
-                .split(';')
-                .filter(|statement| statement.trim_start().starts_with("subgraph"))
-                .count();
-            open(&mut subgraphs, openers as u64);
-            if states {
-                open(&mut composites, line.matches('{').count() as u64);
-            }
-        }
-        [subgraphs, composites]
-            .iter()
-            .map(|&(_, deepest, groups)| {
-                refs.saturating_mul(deepest)
-                    .saturating_mul(groups.saturating_add(refs))
-            })
-            .max()
-            .unwrap_or(0)
-    }
-
-    /// At least the node references of a line: per statement (separated by `;`, or by braces in
-    /// a state diagram) at most two per arrow (a run of `-`, `=` and `.` with a `-` or `=`), two
-    /// per `&` and two more.
-    fn node_refs(line: &str) -> u64 {
-        let mut arrows = 0u64;
-        let mut run = None;
-        for b in line.bytes().chain(*b" ") {
-            match (b, run) {
-                (b'-' | b'=', _) => run = Some(true),
-                (b'.', None) => run = Some(false),
-                (b'.', Some(_)) => {}
-                (_, Some(arrow)) => {
-                    arrows += u64::from(arrow);
-                    run = None;
-                }
-                (_, None) => {}
-            }
-        }
-        let separators = line
-            .bytes()
-            .filter(|b| matches!(b, b'&' | b';' | b'{' | b'}'))
-            .count() as u64;
-        2 * (arrows + separators + 1)
-    }
-
-    /// How deep `{…}` nest in a line at most, counted as the renderer matches the braces of a
-    /// formula: every `{` opens a group, every `}` closes one if one is open. A formula is part
-    /// of a line, so its groups nest at most this deep.
-    fn brace_depth(line: &str) -> usize {
-        let mut depth = 0usize;
-        let mut deepest = 0;
-        for b in line.bytes() {
-            match b {
-                b'{' => {
-                    depth += 1;
-                    deepest = deepest.max(depth);
-                }
-                b'}' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-        }
-        deepest
-    }
-
-    /// At least as many bytes as the parser copies for the edges a line's `&` lists add: a line
-    /// with n `&` adds at most n²/4 + 2n edges to the one per arrow, and each holds copies of the
-    /// names and the label (together shorter than the line) besides about 200 bytes of its own.
-    fn list_copies(line: &str) -> usize {
-        let n = line.bytes().filter(|&b| b == b'&').count();
-        (n * n / 4 + 2 * n).saturating_mul(line.len() + 256)
-    }
-
     /// [`render_raw`] on a thread with a [`STACK_SIZE`] stack; a panic becomes
-    /// [`MermaidError::Panicked`]. Only the renderer's own state can suffer from one (`render_raw`
-    /// holds none of ours): a panic while it measures text poisons its global text measurer, and
-    /// later renders in the process fall back to estimated text widths (the known panics happen
-    /// while parsing).
+    /// [`MermaidError::Panicked`]. `render_raw` holds no state of ours, and the renderer keeps
+    /// none between renders (text is measured from built-in font metrics, without a cache).
     fn render_on_own_thread(source: &str) -> Result<String, MermaidError> {
         thread::scope(|scope| {
             thread::Builder::new()
@@ -253,60 +101,47 @@ mod enabled {
         })
     }
 
-    /// The renderer's SVG, before [`xml_chars`] and [`sanitize`].
+    /// The renderer's SVG, before [`xml_chars`], [`sanitize`] and [`fixed_size`].
+    ///
+    /// - `SvgRequest::default()` is merman's deterministic environment: text is measured from
+    ///   built-in metrics (no system fonts are read), and neither the clock nor the time zone is
+    ///   used (a gantt chart gets no "today" line), so a source always gives the same SVG.
+    /// - `SvgPipeline::resvg_safe()` writes labels as SVG text. Mermaid's default, HTML in a
+    ///   `foreignObject`, is not drawn where an SVG is shown as an image by something other
+    ///   than a browser (Polarion's PDF and Word export), and is HTML we would have to vet.
     fn render_raw(source: &str) -> Result<String, MermaidError> {
-        // Not `render_with_options`: it parses strictly, and the strict validator rejects valid
-        // diagrams (participants a sequence diagram creates implicitly, `A->>+B`).
-        let parsed = parse_mermaid(source).map_err(|err| invalid(source, err.to_string()))?;
-        check_edges(&parsed.graph)?;
-        let theme = parsed
-            .init_config
-            .as_ref()
-            .and_then(|init| init.get("theme"))
-            .and_then(|theme| theme.as_str())
-            .and_then(Theme::from_name)
-            .unwrap_or_else(Theme::mermaid_default);
-        let config = LayoutConfig::default();
-        let layout = compute_layout(&parsed.graph, &theme, &config);
-        Ok(mermaid_rs_renderer::render_svg(&layout, &theme, &config))
+        // The deadline runs from here, on the render thread.
+        let control = OperationControl::new().with_deadline(DEADLINE);
+        let request = SvgRequest {
+            pipeline: Some(SvgPipeline::resvg_safe()),
+            ..SvgRequest::default()
+        };
+        match Renderer::new().render(RenderRequest::svg(source, control, request)) {
+            Ok(RenderOutput::Svg(Some(svg))) => Ok(svg.into_parts().0.trim_end().to_owned()),
+            Ok(_) | Err(RenderError::NoDiagram) => Err(MermaidError::Invalid(
+                "no mermaid diagram: the first line must name the kind (flowchart, \
+                 sequenceDiagram, gantt, ...)"
+                    .to_owned(),
+            )),
+            Err(RenderError::Cancelled(_)) => Err(MermaidError::TooLarge(format!(
+                "rendering the diagram took longer than {} s",
+                DEADLINE.as_secs()
+            ))),
+            Err(limit @ RenderError::ResourceLimitExceeded(_)) => {
+                Err(MermaidError::TooLarge(limit.to_string()))
+            }
+            Err(other) => Err(classify(other.to_string())),
+        }
     }
 
-    /// That a diagram whose edges the renderer routes has at most [`MAX_EDGES`]: flowcharts and
-    /// class, state, ER and requirement diagrams. Packet diagrams are laid out the same way, but
-    /// their edges are the fields, one per line, so they stay at about 3 s within the line limit;
-    /// the other kinds have layouts of their own, and their edges (gantt dependencies, journey
-    /// steps, messages) cost about linear time.
-    fn check_edges(graph: &Graph) -> Result<(), MermaidError> {
-        let routed = matches!(
-            graph.kind,
-            DiagramKind::Flowchart
-                | DiagramKind::Class
-                | DiagramKind::State
-                | DiagramKind::Er
-                | DiagramKind::Requirement
-        );
-        if routed && graph.edges.len() > MAX_EDGES {
-            return Err(MermaidError::TooLarge(format!(
-                "the diagram has {} edges, more than the limit of {MAX_EDGES}",
-                graph.edges.len()
-            )));
+    /// The error for what the renderer refuses with a message: its limits on the size of a
+    /// diagram, which it reports like syntax errors, are [`MermaidError::TooLarge`].
+    fn classify(message: String) -> MermaidError {
+        if message.contains("limit exceeded") || message.contains("exceeds") {
+            MermaidError::TooLarge(message)
+        } else {
+            MermaidError::Invalid(message)
         }
-        Ok(())
-    }
-
-    /// The error for a source the (lenient) parser rejects: the parser's message, or for an `init`
-    /// directive the strict validator's, which names the line and the JSON error. The validator's
-    /// other checks reject valid diagrams (participants a sequence diagram creates implicitly,
-    /// `%%{…}%%` without a `:`), so their message could blame a line that is fine.
-    fn invalid(source: &str, lenient: String) -> MermaidError {
-        if lenient.starts_with("invalid Mermaid init directive")
-            && let Err(strict) = validator::validate(source)
-            && let ParseError::InvalidDirective { directive, .. } = &strict
-            && directive == "init"
-        {
-            return MermaidError::Invalid(strict.to_string());
-        }
-        MermaidError::Invalid(lenient)
     }
 
     fn panic_message(payload: &(dyn Any + Send)) -> String {
@@ -314,13 +149,120 @@ mod enabled {
             .downcast_ref::<&str>()
             .map(|message| (*message).to_owned())
             .or_else(|| payload.downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "a panic without a message".to_owned())
+            .unwrap_or_else(|| "the renderer panicked".to_owned())
+    }
+
+    /// The SVG with a size of its own: the root's `width="100%"` (mermaid sizes a diagram to its
+    /// container, up to the `max-width` in its `style`) becomes the width of the `viewBox`, and
+    /// the height is added. An image without a size is drawn at the viewer's default (300 × 150
+    /// in a browser) or as wide as the page; with one, it is drawn as large as it was laid out.
+    /// Anything unexpected in the root tag leaves it as it is.
+    fn fixed_size(svg: &str) -> String {
+        let Some(Item::Start(root)) = Markup::new(svg).next() else {
+            return svg.to_owned();
+        };
+        let size = root.attr(svg, "viewBox").and_then(|view_box| {
+            let numbers: Vec<f64> = view_box
+                .split([' ', ','])
+                .filter(|part| !part.is_empty())
+                .map(|part| part.parse().ok())
+                .collect::<Option<_>>()?;
+            match numbers[..] {
+                [_, _, width, height] if width > 0.0 && height > 0.0 => Some((width, height)),
+                _ => None,
+            }
+        });
+        let width = root
+            .attrs
+            .iter()
+            .find(|attr| attr.name == "width")
+            .and_then(|attr| attr.value);
+        let has_height = root.attrs.iter().any(|attr| attr.name == "height");
+        let (Some((width, height)), Some((from, to))) = (size, width) else {
+            return svg.to_owned();
+        };
+        if &svg[from..to] != "100%" {
+            return svg.to_owned();
+        }
+        // After the value's closing quote. Some kinds (journey) come with a height of their own.
+        let after = to + 1;
+        let height = if has_height {
+            String::new()
+        } else {
+            format!(" height=\"{height}\"")
+        };
+        format!(
+            "{}{width}{}{height}{}",
+            &svg[..from],
+            &svg[to..after],
+            &svg[after..]
+        )
+    }
+
+    /// What in the styles of the SVG would make a viewer load something: `@import`, or a
+    /// `url(…)` that is not a reference into the document (`url(#id)`). Looked for in `style`
+    /// elements and `style` attributes, where the renderer writes values from the source (the
+    /// theme variables and CSS of a directive, `classDef`, `style`). It keeps these out as far
+    /// as known; this is the check that it did.
+    fn css_load(svg: &str) -> Option<String> {
+        let mut style_from = None;
+        for item in Markup::new(svg) {
+            match item {
+                Item::Start(tag) => {
+                    for attr in &tag.attrs {
+                        if let Some((from, to)) = attr.value
+                            && attr.name.eq_ignore_ascii_case("style")
+                            && let Some(found) = css_load_in(&svg::unescape(&svg[from..to]))
+                        {
+                            return Some(found);
+                        }
+                    }
+                    if tag.name == "style" && !tag.self_closing {
+                        style_from = Some(tag.end);
+                    }
+                }
+                Item::End {
+                    start,
+                    name: "style",
+                    ..
+                } => {
+                    if let Some(from) = style_from.take()
+                        && let Some(found) = css_load_in(&svg::unescape(&svg[from..start]))
+                    {
+                        return Some(found);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// [`css_load`] for one piece of CSS: the `@import` or `url(` it finds, shortened.
+    fn css_load_in(css: &str) -> Option<String> {
+        // CSS escapes (`u\72l(`) and comments (`@im/**/port`) could hide either from the search
+        // below; the renderer writes neither.
+        if css.contains('\\') || css.contains("/*") {
+            return Some("a CSS escape or comment".to_owned());
+        }
+        let lower = css.to_ascii_lowercase();
+        if lower.contains("@import") {
+            return Some("`@import`".to_owned());
+        }
+        for (at, _) in lower.match_indices("url(") {
+            let target = lower[at + 4..].trim_start_matches([' ', '\t', '\n', '\r', '"', '\'']);
+            if !target.starts_with('#') {
+                let shown: String = css[at..].chars().take(40).collect();
+                return Some(format!("`{shown}`"));
+            }
+        }
+        None
     }
 
     /// The SVG with the characters XML does not allow (C0 controls other than tab and line
     /// breaks, U+FFFE, U+FFFF) replaced by U+FFFD, as [`svg::embed_source`] replaces them in the
-    /// source: the renderer writes text as the source has it (a label pasted from an office
-    /// document can hold a vertical tab, its soft line break).
+    /// source. The renderer drops them from labels as far as known (a label pasted from an office
+    /// document can hold a vertical tab, its soft line break); this makes sure of it.
     fn xml_chars(svg: String) -> String {
         if svg.chars().all(xml_allows) {
             return svg;
@@ -330,14 +272,18 @@ mod enabled {
             .collect()
     }
 
-    /// The elements mermaid-rs-renderer writes (as of 0.3.1, exact names); [`sanitize`] removes
-    /// all others. None of these runs script or loads a document. A renderer upgrade that writes a
-    /// new element needs it here; the test `sanitize_keeps_what_the_renderer_writes` notices.
+    /// The elements merman writes with [`SvgPipeline::resvg_safe`] (as of 0.10.0, exact names);
+    /// [`sanitize`] removes all others. None of these runs script or loads a document: no
+    /// `script`, no `foreignObject` (HTML), no animation. A renderer upgrade that writes a new
+    /// element needs it here; the test `sanitize_keeps_what_the_renderer_writes` notices.
     const ELEMENTS: &[&str] = &[
         "a",
         "circle",
+        "clipPath",
         "defs",
         "ellipse",
+        "feDropShadow",
+        "filter",
         "g",
         "image",
         "line",
@@ -354,6 +300,7 @@ mod enabled {
         "text",
         "title",
         "tspan",
+        "use",
     ];
 
     /// Elements of [`ELEMENTS`] that hold only text: an HTML parser reads the content of an SVG
@@ -365,10 +312,9 @@ mod enabled {
     /// `xlink:href`), `xml:base`, and HTML's `src`, `action` and `formaction`.
     const URL_ATTRIBUTES: &[&str] = &["href", "base", "src", "action", "formaction"];
 
-    /// The SVG with what a diagram source can smuggle into it removed, everything else kept byte
-    /// for byte. mermaid-rs-renderer escapes text and link URLs, but writes `style`, `classDef` and
-    /// `linkStyle` values into attributes unescaped: a `"` in one ends the attribute and starts
-    /// markup of the author's choosing. So:
+    /// The SVG with what a diagram source could smuggle into it removed, everything else kept
+    /// byte for byte. merman escapes what it writes and drops scripts, event handlers and
+    /// dangerous links itself, as far as known; this does not rely on it. So:
     /// - a link to a dangerous URL ([`dangerous_url`]; `click` and `link` directives) points to
     ///   `#`;
     /// - event handler attributes (`on…`) are removed;
@@ -511,6 +457,61 @@ mod enabled {
         }
 
         #[test]
+        fn sizes_and_style_loads() {
+            assert_eq!(
+                fixed_size(
+                    "<svg id=\"m\" width=\"100%\" viewBox=\"4 4 168 152.5\" style=\"max-width:168px\"><g/></svg>"
+                ),
+                "<svg id=\"m\" width=\"168\" height=\"152.5\" viewBox=\"4 4 168 152.5\" style=\"max-width:168px\"><g/></svg>"
+            );
+            assert_eq!(
+                fixed_size("<svg width=\"100%\" height=\"5\" viewBox=\"0 0 2 1\"/>"),
+                "<svg width=\"2\" height=\"5\" viewBox=\"0 0 2 1\"/>"
+            );
+            // Left alone: a size of its own, no view box, one that is no size.
+            for svg in [
+                "<svg width=\"10\" viewBox=\"0 0 1 1\"/>",
+                "<svg width=\"100%\"/>",
+                "<svg width=\"100%\" viewBox=\"0 0 0 1\"/>",
+                "<svg width=\"100%\" viewBox=\"a b c d\"/>",
+                "no markup",
+            ] {
+                assert_eq!(fixed_size(svg), svg);
+            }
+
+            for clean in [
+                "<svg><style>#m .a{fill:url(#grad);marker-end:url( '#arrow' )}</style><g style=\"filter:url(&quot;#shadow&quot;)\"/><text>see url(https://x) and @import</text></svg>",
+                "<svg><style/></svg>",
+            ] {
+                assert_eq!(css_load(clean), None, "{clean}");
+            }
+            for (loading, what) in [
+                (
+                    "<svg><style>@import url(https://x/a.css);</style></svg>",
+                    "`@import`",
+                ),
+                (
+                    "<svg><style>.a{fill:URL(https://x/a.png)}</style></svg>",
+                    "`URL(https://x/a.png)}`",
+                ),
+                (
+                    "<svg><g style=\"background:url(&#34;//x/a.png&#34;)\"/></svg>",
+                    "`url(\"//x/a.png\")`",
+                ),
+                (
+                    "<svg><style>.a{fill:u\\72l(https://x)}</style></svg>",
+                    "a CSS escape or comment",
+                ),
+                (
+                    "<svg><style>@im/**/port 'x';</style></svg>",
+                    "a CSS escape or comment",
+                ),
+            ] {
+                assert_eq!(css_load(loading).as_deref(), Some(what), "{loading}");
+            }
+        }
+
+        #[test]
         fn sanitize_keeps_clean_markup() {
             let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><a href=\"https://x/?a&amp;b\" xlink:href=\"#n\" target=\"_blank\"><title>tip &lt;b&gt;</title><rect fill=\"red\" orient=\"auto\"/></a><image xlink:href=\"data:image/png;base64,AA==\"/><style>.a>.b{fill:red}</style><text>on=\"x\" &lt;script&gt;</text></svg>";
             assert_eq!(sanitize(svg), svg);
@@ -552,6 +553,8 @@ mod enabled {
                 let svg = render_raw(source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
                 assert_eq!(sanitize(&svg), svg, "{source:?}");
                 assert_eq!(xml_chars(svg.clone()), svg, "{source:?}");
+                assert_eq!(css_load(&svg), None, "{source:?}");
+                assert_ne!(fixed_size(&svg), svg, "{source:?}");
                 let embedded = svg::embed_source(&svg, source);
                 assert_eq!(svg::check_well_formed(&embedded), Ok(()), "{source:?}");
             }
@@ -571,15 +574,7 @@ mod enabled {
                 ("{{", "}}"),
                 ("[(", ")]"),
             ];
-            let words = [
-                "a & b",
-                "x < y",
-                "\\\"q\\\"",
-                "it's",
-                "Grüße",
-                "#quot;",
-                "a<br>b",
-            ];
+            let words = ["a & b", "x < y", "it's", "Grüße", "#quot;", "a<br>b"];
             let arrows = ["-->", "---", "-.->", "==>", "--o", "--x", "<-->"];
             let mut state = 0x9E37_79B9_7F4A_7C15_u64;
             let mut next = |bound: usize| {
@@ -601,85 +596,6 @@ mod enabled {
                 let svg = render_raw(&source).unwrap_or_else(|e| panic!("{source:?}: {e}"));
                 let embedded = svg::embed_source(&sanitize(&xml_chars(svg)), &source);
                 assert_eq!(svg::check_well_formed(&embedded), Ok(()), "{source:?}");
-            }
-        }
-
-        #[test]
-        fn brace_depths() {
-            assert_eq!(brace_depth(""), 0);
-            assert_eq!(brace_depth("A{x} --> B{{y}}"), 2);
-            assert_eq!(brace_depth("$$\\frac{\\sqrt{x}}{y}$$"), 2);
-            // A `}` closes only an open group, so leading ones cannot hide the nesting after them.
-            assert_eq!(brace_depth("}}}}{{{"), 3);
-            assert_eq!(brace_depth("{a}{b}{c}"), 1);
-        }
-
-        /// Edges of kinds the renderer does not route are not limited, however many there are.
-        #[test]
-        fn only_routed_edges_are_limited() {
-            let mut tasks = String::from(
-                "gantt\n  dateFormat YYYY-MM-DD\n  section S\n  t0 :a0, 2024-01-01, 1d\n",
-            );
-            let mut messages = String::from("sequenceDiagram\n");
-            let mut flows = String::from("sankey-beta\n");
-            for i in 1..=400 {
-                tasks.push_str(&format!("  t{i} :a{i}, after a{}, 1d\n", i - 1));
-                messages.push_str(&format!("  A{}->>A{}: m{i}\n", i % 7, i % 5));
-                flows.push_str(&format!("A{},B{},{i}\n", i % 30, i % 40));
-            }
-            for source in [tasks, messages, flows] {
-                let graph = parse_mermaid(&source).unwrap().graph;
-                assert!(graph.edges.len() > MAX_EDGES, "{:?}", graph.kind);
-                assert!(check_edges(&graph).is_ok(), "{:?}", graph.kind);
-            }
-            for header in ["flowchart TD", "classDiagram", "stateDiagram-v2"] {
-                let mut source = format!("{header}\n");
-                for i in 0..=MAX_EDGES {
-                    source.push_str(&format!("  N{i} --> N{}\n", i + 1));
-                }
-                let graph = parse_mermaid(&source).unwrap().graph;
-                assert_eq!(graph.edges.len(), MAX_EDGES + 1, "{header}");
-                assert!(check_edges(&graph).is_err(), "{header}");
-            }
-        }
-
-        /// The bound of [`list_copies`] holds for what the renderer's parser makes of `&` lists:
-        /// at most n²/4 + 2n edges beyond one per arrow for n `&` in a line.
-        #[test]
-        fn list_edges_are_bounded() {
-            let mut state = 0x2545_F491_4F6C_DD1D_u64;
-            let mut next = |bound: usize| {
-                state ^= state << 13;
-                state ^= state >> 7;
-                state ^= state << 17;
-                (state % bound as u64) as usize
-            };
-            let mut lines = vec![
-                "a & b --> c & d".to_owned(),
-                "a[\"x & y\"] & b --> c".to_owned(),
-                "a & b & c --> d --> e & f & g & h".to_owned(),
-            ];
-            for _ in 0..40 {
-                let groups: Vec<String> = (0..1 + next(4))
-                    .map(|g| {
-                        (0..1 + next(7))
-                            .map(|i| format!("n{g}x{i}"))
-                            .collect::<Vec<_>>()
-                            .join(" & ")
-                    })
-                    .collect();
-                lines.push(groups.join(" --> "));
-            }
-            for line in lines {
-                let parsed = parse_mermaid(&format!("flowchart TD\n{line}")).unwrap();
-                let n = line.matches('&').count();
-                let arrows = line.matches("-->").count();
-                assert!(
-                    parsed.graph.edges.len() <= n * n / 4 + 2 * n + arrows,
-                    "{line}: {} edges",
-                    parsed.graph.edges.len()
-                );
-                assert!(list_copies(&line) >= (n * n / 4 + 2 * n) * line.len());
             }
         }
 

@@ -324,7 +324,7 @@ pub(super) struct StartTag<'a> {
 
 impl StartTag<'_> {
     /// The unescaped value of the first attribute with this name.
-    fn attr<'s>(&self, s: &'s str, name: &str) -> Option<Cow<'s, str>> {
+    pub(super) fn attr<'s>(&self, s: &'s str, name: &str) -> Option<Cow<'s, str>> {
         self.attrs
             .iter()
             .find(|a| a.name == name)

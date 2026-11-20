@@ -20,13 +20,15 @@ scraper = { version = "0.27", default-features = false, features = ["determinist
 serde_json.workspace = true
 sha2 = { version = "0.11", default-features = false }
 thiserror.workspace = true
-mermaid-rs-renderer = { version = "0.3.1", default-features = false, optional = true }
+# Without `math`: a diagram with a formula is refused. Without `layout-elk`: a diagram that asks for the ELK
+# layout gets the default one.
+merman = { version = "0.10.0", default-features = false, features = ["all-diagrams", "complete-svg"], optional = true }
 syntect = { version = "5.3", default-features = false, features = ["default-syntaxes", "default-themes", "html", "regex-fancy"], optional = true }
 
 [features]
 default = ["mermaid", "highlight"]
 # Render mermaid diagrams to SVG (without it they stay code blocks).
-mermaid = ["dep:mermaid-rs-renderer"]
+mermaid = ["dep:merman"]
 # Syntax highlighting of fenced code that names its language.
 highlight = ["dep:syntect"]
 

@@ -1,7 +1,2 @@
 [alias]
 xtask = "run --quiet --package xtask --"
-
-[env]
-# mermaid-rs-renderer copies system fonts into $XDG_CACHE_HOME (else $HOME/.cache)/mmdr/font-cache;
-# keep the copies of test runs and `cargo run` in target/. A value already set is not overridden.
-XDG_CACHE_HOME = { value = "target/mmdr-cache", relative = true }

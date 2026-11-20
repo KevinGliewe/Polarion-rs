@@ -20,8 +20,9 @@ pub use svg::{embed_source, source_of};
 
 /// Prefix of every hashed source. Change it only when the default theme or the embedding format
 /// changes: every diagram then gets a new file name and is rendered again. The renderer version is
-/// deliberately not part of it (an upgrade does not re-upload every diagram).
-pub const PROFILE: &str = "polarion-markdown/mermaid/1";
+/// deliberately not part of it (an upgrade does not re-upload every diagram). `2`: the renderer
+/// changed from mermaid-rs-renderer to merman, and with it every diagram's look.
+pub const PROFILE: &str = "polarion-markdown/mermaid/2";
 
 /// XML namespace of the `<mermaid>` element holding the source inside the SVG's `<metadata>`.
 pub const NAMESPACE: &str = "urn:polarion-rs:mermaid";
@@ -126,10 +127,12 @@ pub fn is_diagram_file(name: &str) -> bool {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum MermaidError {
-    /// The source is not a diagram the renderer understands.
+    /// The source is not a diagram the renderer understands, or needs something this build
+    /// leaves out (formulas).
     #[error("{0}")]
     Invalid(String),
-    /// The source exceeds the size limits checked before rendering.
+    /// The source exceeds a size limit: ours, checked before rendering, or one of the
+    /// renderer's, or rendering took longer than the deadline.
     #[error("{0}")]
     TooLarge(String),
     /// The renderer panicked (or no thread could be started to render on).
@@ -144,42 +147,36 @@ pub enum MermaidError {
 /// dangerous URLs (`javascript:` ...) neutralized.
 ///
 /// - Needs the `mermaid` feature, else [`MermaidError::Disabled`].
-/// - Refused before anything is parsed ([`MermaidError::TooLarge`]):
-///   - more than 50,000 bytes or 1,000 lines;
-///   - a `%%{…}%%` directive line with more than 64 `{` and `[` (the renderer's JSON5 parser
-///     recurses once per level, without a limit);
-///   - a line with a `$$` formula in which `{…}` nest more than 32 deep (the renderer recurses
-///     once per group and copies the rest of the formula at every level);
-///   - `&` lists (`A & B --> C & D`, an edge for every pair) that would make the parser copy
-///     more than 16 MiB;
-///   - so many nodes in nested subgraphs or composite states that the parser would take more
-///     than about a second: it looks every node up among the members of every group (node
-///     references × nesting depth × (groups + node references) over 200 million).
-/// - Refused after parsing ([`MermaidError::TooLarge`]): flowcharts and class, state, ER and
-///   requirement diagrams with more than 300 edges, which the renderer routes in time that grows
-///   with the square of their number.
-/// - The theme is the one a `%%{init: {"theme": "…"}}%%` directive names (`default`, `base`,
-///   `dark`, `forest`, `neutral`, `modern`), else mermaid's default theme.
-/// - Links to `javascript:`, `vbscript:`, `file:` and `data:` URLs (other than PNG, GIF, JPEG and
-///   WebP images) point to `#`. Event handler attributes, comments and every element
-///   mermaid-rs-renderer does not write itself (`script`, `foreignObject`, HTML, …) are removed:
-///   it writes `style`, `classDef` and `linkStyle` values unescaped, so such a value can end its
-///   attribute and add markup. Characters XML does not allow (C0 controls other than tab and
-///   line breaks, U+FFFE, U+FFFF), which it writes as the source has them, become U+FFFD.
-/// - The result is well-formed XML, else [`MermaidError::Invalid`]: a style value can also break
-///   the markup (a `"`, `<` or `&` too many), and browsers do not display such an SVG.
+/// - The renderer is [merman](https://crates.io/crates/merman), which follows mermaid.js in
+///   syntax, layout and SVG structure. Formulas (`$$…$$`) are not built in and are refused
+///   ([`MermaidError::Invalid`]).
+/// - Refused as too large ([`MermaidError::TooLarge`]): more than 50,000 bytes or 1,000 lines,
+///   checked before anything is parsed; what the renderer's own limits refuse (more than 500
+///   edges in a flowchart, also from `&` lists; more than 32,000 items in a diagram; a
+///   directive nested more than 256 deep); and a render that takes longer than 20 s.
+/// - Labels are SVG text, not HTML in a `foreignObject`, which only a browser draws.
+/// - The image has a size: mermaid sizes a diagram to its container (`width="100%"`), so the
+///   root gets the width and height of its `viewBox`.
+/// - The theme is the one a `%%{init: {"theme": "…"}}%%` directive names, else mermaid's
+///   default theme.
+/// - Nothing in the SVG runs or loads. The renderer drops script, event handlers and dangerous
+///   links and escapes what it writes; this function does not rely on it. Links to
+///   `javascript:`, `vbscript:`, `file:` and `data:` URLs (other than PNG, GIF, JPEG and WebP
+///   images) point to `#`. Event handler attributes, comments and every element the renderer
+///   does not write itself (`script`, `foreignObject`, HTML, animation, …) are removed.
+///   Characters XML does not allow (C0 controls other than tab and line breaks, U+FFFE, U+FFFF)
+///   become U+FFFD. A style that would load a resource (`@import`, a `url(…)` that is not a
+///   reference into the diagram) fails with [`MermaidError::Invalid`].
+/// - The result is well-formed XML, else [`MermaidError::Invalid`]: browsers do not display an
+///   SVG that is not.
 /// - The renderer runs on a thread of its own with a 64 MiB stack (reserved, committed as used):
-///   parts of it recurse once per nesting level of the source, and a stack overflow would abort
-///   the process. Its panic becomes [`MermaidError::Panicked`]; the panic hook still prints it.
-/// - Text is measured with a system font, behind a mutex all renders of the process share. The
-///   first render of a process loads the system fonts (up to seconds) unless the renderer finds
-///   the font in its cache, `$XDG_CACHE_HOME/mmdr/font-cache` (else
-///   `$HOME/.cache/mmdr/font-cache`), where it copies the font on a first render. With neither
-///   variable set (usual for Windows programs started outside Git Bash or WSL) there is no
-///   cache, and every process loads the system fonts again. The SVG depends on the installed
-///   fonts.
+///   a stack overflow would abort the process. Its panic becomes [`MermaidError::Panicked`];
+///   the panic hook still prints it.
+/// - A source always gives the same SVG: text is measured from built-in metrics (the fonts of
+///   the machine are not read), and neither the clock nor the time zone is used, so a gantt
+///   chart gets no "today" line.
 /// - Rendering is CPU-bound and synchronous: a typical diagram takes milliseconds, a flowchart
-///   near the edge limit up to about 15 s (optimized build).
+///   at the edge limit less than a second (optimized build).
 pub fn render_svg(source: &str) -> Result<String, MermaidError> {
     render::render_svg(source)
 }

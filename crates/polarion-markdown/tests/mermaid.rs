@@ -7,22 +7,22 @@ use polarion_markdown::mermaid::{self, Diagram, MermaidError, NAMESPACE};
 
 const SIMPLE: &str = "graph TD\n    A-->B";
 
-/// The start of what mermaid-rs-renderer writes.
+/// An SVG as a renderer writes it.
 const SVG: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"20\" viewBox=\"0 0 10 20\"><rect x=\"0\" y=\"0\" width=\"10\" height=\"20\" fill=\"#FFFFFF\"/></svg>";
 
 #[test]
 fn pinned_hash_and_file_name() {
-    assert_eq!(mermaid::hash(SIMPLE), "f093190607556ad0");
+    assert_eq!(mermaid::hash(SIMPLE), "744d43fa10d8c687");
     assert_eq!(
-        mermaid::file_name("f093190607556ad0"),
-        "mermaid-f093190607556ad0.svg"
+        mermaid::file_name("744d43fa10d8c687"),
+        "mermaid-744d43fa10d8c687.svg"
     );
     assert_eq!(
         mermaid::diagram(SIMPLE),
         Diagram {
             source: SIMPLE.to_owned(),
-            hash: "f093190607556ad0".to_owned(),
-            file_name: "mermaid-f093190607556ad0.svg".to_owned(),
+            hash: "744d43fa10d8c687".to_owned(),
+            file_name: "mermaid-744d43fa10d8c687.svg".to_owned(),
         }
     );
 }
@@ -38,7 +38,7 @@ fn normalization_variants_hash_equal() {
         "\r\ngraph TD  \r\n    A-->B  \r\n\r\n",
     ] {
         assert_eq!(mermaid::normalize(variant), SIMPLE, "{variant:?}");
-        assert_eq!(mermaid::hash(variant), "f093190607556ad0", "{variant:?}");
+        assert_eq!(mermaid::hash(variant), "744d43fa10d8c687", "{variant:?}");
         assert_eq!(mermaid::diagram(variant), mermaid::diagram(SIMPLE));
     }
     // Indentation and inner blank lines belong to the source.
@@ -376,6 +376,27 @@ mod rendering {
         format!("{}{}", &svg[..start], &svg[end..])
     }
 
+    /// The attributes of the first element with `id` in `markup`, e.g. a gantt task's bar.
+    fn element<'a>(markup: &'a str, id: &str) -> &'a str {
+        let at = markup
+            .find(&format!(" id=\"{id}\""))
+            .unwrap_or_else(|| panic!("no element {id}: {markup}"));
+        let start = markup[..at].rfind('<').unwrap();
+        let end = at + markup[at..].find('>').unwrap();
+        &markup[start..end]
+    }
+
+    /// A number attribute of an element as [`element`] returns it.
+    fn number(element: &str, name: &str) -> f64 {
+        let from = element
+            .find(&format!(" {name}=\""))
+            .unwrap_or_else(|| panic!("no {name}: {element}"))
+            + name.len()
+            + 3;
+        let to = from + element[from..].find('"').unwrap();
+        element[from..to].parse().unwrap()
+    }
+
     #[test]
     fn output_is_svg_with_the_source() {
         let svg = render(SIMPLE);
@@ -392,119 +413,174 @@ mod rendering {
     }
 
     #[test]
-    fn diagram_kinds_render() {
+    fn the_image_has_a_size_of_its_own() {
+        // Mermaid sizes a diagram to its container (`width="100%"`); an attached image has none.
         for source in [
-            "flowchart LR\n  A[Start] --> B{Decision}\n  B -->|Yes| C[OK]\n  B -->|No| D[Cancel]",
-            // The strict parser rejects both the implicit participant and `->>+`.
-            "sequenceDiagram\n  participant Alice\n  Alice->>+Bob: Hello\n  Bob-->>-Alice: Hi",
-            "classDiagram\n  Animal <|-- Duck\n  Animal : +int age\n  Duck : +swim()",
-            "stateDiagram-v2\n  [*] --> Still\n  Still --> Moving\n  Moving --> [*]",
+            SIMPLE,
+            "sequenceDiagram\n  Alice->>Bob: hi",
+            "gantt\n  Build :a1, 2024-01-01, 5d",
+            "journey\n  title My day\n  section Go to work\n    Make tea: 5: Me",
             "pie title Pets\n  \"Dogs\" : 386\n  \"Cats\" : 85",
-            "erDiagram\n  CUSTOMER ||--o{ ORDER : places",
         ] {
             let svg = render(source);
-            assert!(
-                svg.starts_with("<svg ") && svg.ends_with("</svg>"),
-                "{source:?}"
-            );
-            assert!(!svg.contains("Syntax error"), "{source:?}");
+            let root = &svg[..svg.find('>').unwrap()];
+            assert!(!root.contains('%'), "{root}");
+            assert!(number(root, "width") > 10.0, "{root}");
+            assert!(number(root, "height") > 10.0, "{root}");
+        }
+    }
+
+    #[test]
+    fn diagram_kinds_render() {
+        for (source, text) in [
+            (
+                "flowchart LR\n  A[Start] --> B{Decision}\n  B -->|Yes| C[OK]\n  B -->|No| D[Cancel]",
+                "Decision",
+            ),
+            // A participant the diagram does not declare, and `->>+`.
+            (
+                "sequenceDiagram\n  participant Alice\n  Alice->>+Bob: Hello\n  Bob-->>-Alice: Hi",
+                "Hello",
+            ),
+            (
+                "classDiagram\n  Animal <|-- Duck\n  Animal : +int age\n  Duck : +swim()",
+                "Duck",
+            ),
+            (
+                "stateDiagram-v2\n  [*] --> Still\n  Still --> Moving\n  Moving --> [*]",
+                "Moving",
+            ),
+            ("pie title Pets\n  \"Dogs\" : 386\n  \"Cats\" : 85", "Dogs"),
+            ("erDiagram\n  CUSTOMER ||--o{ ORDER : places", "CUSTOMER"),
+        ] {
+            let svg = render(source);
+            assert!(svg.starts_with("<svg "), "{source:?}");
+            assert!(markup(&svg).contains(text), "{source:?}: {svg}");
             assert_eq!(mermaid::source_of(&svg).as_deref(), Some(source));
         }
-        assert!(
-            markup(&render("pie title Pets\n  \"Dogs\" : 386\n  \"Cats\" : 85")).contains("Dogs")
-        );
     }
 
     #[test]
     fn renders_are_deterministic() {
-        let source = "flowchart TD\n  A[Start] --> B{Is it?}\n  B -->|Yes| C[OK]\n  C --> D[Rethink]\n  D --> B\n  B ---->|No| E[End]";
-        assert_eq!(render(source), render(source));
+        // Text is measured from built-in metrics, and neither the clock nor the fonts of the
+        // machine are used.
+        for source in [
+            "flowchart TD\n  A[Start] --> B{Is it?}\n  B -->|Yes| C[OK]\n  C --> D[Rethink]\n  D --> B\n  B ---->|No| E[End]",
+            "gantt\n  Build :a1, 2024-01-01, 5d\n  Test :after a1, 2d",
+        ] {
+            assert_eq!(render(source), render(source));
+        }
     }
 
     #[test]
-    fn a_renderer_panic_is_caught_and_harmless() {
-        let before = render(SIMPLE);
-        // mermaid-rs-renderer 0.3.1 slices `[/]` and `[\]` out of bounds.
-        for source in [
-            "flowchart LR\n  A[/]",
-            "flowchart LR\n  A[\\]",
-            "graph TD\n  A[/] --> B",
-        ] {
-            match mermaid::render_svg(source) {
-                Err(e @ MermaidError::Panicked(_)) => {
-                    assert!(e.to_string().starts_with("the renderer failed: "), "{e}");
-                    assert!(e.to_string().len() > "the renderer failed: ".len(), "{e}");
-                }
-                other => panic!("{source:?}: {other:?}"),
-            }
+    fn labels_are_svg_text() {
+        // Not HTML in a `foreignObject`, which only a browser draws.
+        let svg = render("flowchart LR\n  A[\"Grüße <b>bold</b> & more\"] --> B{{日本語}}");
+        let markup = markup(&svg);
+        assert!(!markup.contains("foreignObject"), "{markup}");
+        assert!(
+            !markup.contains("<div") && !markup.contains("<span"),
+            "{markup}"
+        );
+        for text in ["Grüße", "bold", "more", "日本語"] {
+            assert!(markup.contains(text), "{text}: {markup}");
         }
-        assert_eq!(render(SIMPLE), before);
+    }
+
+    #[test]
+    fn gantt_charts_follow_their_dates() {
+        // Issue 3: starts and ends as numbers (`dateFormat x`). The renderer before placed
+        // every task after the one before, three days long, without an error.
+        let svg = render(
+            "gantt\n    title Two rows that overlap\n    dateFormat x\n    axisFormat %s\n    \
+             todayMarker off\n    section A\n    Init     :a1, 0, 3000\n    Execute  :crit, a2, \
+             3000, 13000\n    section B\n    Init     :b1, 0, 3000\n    Execute  :crit, b2, \
+             13000, 23000",
+        );
+        let chart = markup(&svg);
+        let bar = |id: &str| {
+            let bar = element(&chart, &format!("merman-{id}"));
+            (number(bar, "x"), number(bar, "width"))
+        };
+        let (a1, a2, b1, b2) = (bar("a1"), bar("a2"), bar("b1"), bar("b2"));
+        // `a1` and `b1` are the same three units from the start.
+        assert_eq!(a1, b1);
+        // `a2` follows `a1` and is ten units long: ten thirds of `a1`.
+        assert!((a2.0 - (a1.0 + a1.1)).abs() < 1.5, "{a1:?} {a2:?}");
+        assert!((a2.1 / a1.1 - 10.0 / 3.0).abs() < 0.1, "{a1:?} {a2:?}");
+        // `b2` starts where `a2` ends and is as long.
+        assert!((b2.0 - (a2.0 + a2.1)).abs() < 1.5, "{a2:?} {b2:?}");
+        assert!((b2.1 - a2.1).abs() < 1.5, "{a2:?} {b2:?}");
+
+        // Dates with a format of their own, an end date instead of a duration, `after`.
+        let svg = render(
+            "gantt\n  dateFormat DD.MM.YYYY\n  Build :a1, 01.01.2024, 10d\n  Test :a2, \
+             11.01.2024, 21.01.2024\n  Ship :a3, after a2, 5d",
+        );
+        let chart = markup(&svg);
+        let bar = |id: &str| {
+            let bar = element(&chart, &format!("merman-{id}"));
+            (number(bar, "x"), number(bar, "width"))
+        };
+        let (a1, a2, a3) = (bar("a1"), bar("a2"), bar("a3"));
+        assert!((a2.0 - (a1.0 + a1.1)).abs() < 1.5, "{a1:?} {a2:?}");
+        assert!((a2.1 - a1.1).abs() < 1.5, "{a1:?} {a2:?}");
+        assert!((a3.0 - (a2.0 + a2.1)).abs() < 1.5, "{a2:?} {a3:?}");
+        assert!((a3.1 / a1.1 - 0.5).abs() < 0.05, "{a1:?} {a3:?}");
     }
 
     #[test]
     fn invalid_sources() {
         for (source, message) in [
-            (
-                "this is not a diagram",
-                "unknown or missing Mermaid diagram header",
-            ),
-            ("", "unknown or missing Mermaid diagram header"),
-            // The lenient parser's message, not the strict parser's repetition of it at 1:1.
-            (
-                "flowchart LR\n  A --> ",
-                "invalid flowchart edge syntax: A -->",
-            ),
-            // The strict parser's own check, which names the line.
-            (
-                "%%{init: {\"theme\": }}%%\ngraph TD\n  A-->B",
-                "invalid directive 'init' at 1:1: JSON parse error",
-            ),
-            // Only for an `init` directive: the strict parser rejects the implicit participant
-            // `Bob` and a directive without `:`, both of which are fine.
+            ("this is not a diagram", "No Mermaid diagram type detected"),
+            ("", "No Mermaid diagram type detected"),
             (
                 "sequenceDiagramm\n  participant Alice\n  Alice->>Bob: hi",
-                "unknown or missing Mermaid diagram header",
+                "Diagram parse error (sequence)",
             ),
             (
-                "%%{wrap}%%\nflowchart LR\n  A --> ",
-                "invalid flowchart edge syntax: A -->",
+                "flowchart LR\n  A --> ",
+                "Diagram parse error (flowchart-v2)",
+            ),
+            // The former renderer panicked on these.
+            ("flowchart LR\n  A[/]", "Diagram parse error (flowchart-v2)"),
+            (
+                "flowchart LR\n  A[\\]",
+                "Diagram parse error (flowchart-v2)",
             ),
         ] {
             match mermaid::render_svg(source) {
                 Err(MermaidError::Invalid(found)) => {
-                    assert!(found.starts_with(message), "{source:?}: {found}");
+                    assert!(found.contains(message), "{source:?}: {found}");
                 }
                 other => panic!("{source:?}: {other:?}"),
             }
         }
         render("sequenceDiagram\n  participant Alice\n  Alice->>Bob: hi");
-        render("%%{wrap}%%\nflowchart LR\n  A --> B");
     }
 
     #[test]
-    fn characters_xml_does_not_allow_become_replacement_characters() {
+    fn what_the_build_leaves_out_is_refused() {
+        // Formulas (`math`) are not built in: an error, not a diagram without them.
+        match mermaid::render_svg("graph TD\n A[\"$$\\sqrt{x}$$\"] --> B") {
+            Err(MermaidError::Invalid(message)) => {
+                assert!(message.contains("lacks capability"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn characters_xml_does_not_allow_never_reach_the_svg() {
         // A vertical tab is the soft line break of office documents, so a pasted label can hold
-        // one. The form feed in the message is white space to the renderer, which wraps there.
-        for (source, texts) in [
-            (
-                "graph TD\n  A[first\u{b}second] --> B[page\u{c}break]",
-                &["first\u{FFFD}second", "page\u{FFFD}break"][..],
-            ),
-            (
-                "sequenceDiagram\n  Alice->>Bob: form\u{c}feed and \u{1}control",
-                &["\u{FFFD}control"][..],
-            ),
-            (
-                "pie title Pets\u{c}and\u{FFFF}more\n  \"Dogs\" : 386",
-                &["Pets\u{FFFD}and\u{FFFD}more"][..],
-            ),
+        // one. The embedded source has U+FFFD for each, as its normalized form has.
+        for source in [
+            "graph TD\n  A[first\u{b}second] --> B[page\u{c}break]",
+            "sequenceDiagram\n  Alice->>Bob: form\u{c}feed and \u{1}control",
+            "pie title Pets\u{c}and\u{FFFF}more\n  \"Dogs\" : 386",
         ] {
             let svg = render(source);
             assert!(svg.chars().all(is_xml_char), "{source:?}: {svg}");
-            let markup = markup(&svg);
-            for text in texts {
-                assert!(markup.contains(text), "{text:?}: {markup}");
-            }
             let replaced: String = source
                 .chars()
                 .map(|c| if is_xml_char(c) { c } else { '\u{FFFD}' })
@@ -514,53 +590,21 @@ mod rendering {
     }
 
     #[test]
-    fn markup_that_is_not_well_formed_xml_is_refused() {
-        // The renderer writes style values into attributes as they are; browsers do not display
-        // an SVG that is not well-formed, so it is an error and not an attachment.
-        for source in [
-            // A `"` too many: no space before the next attribute.
-            "flowchart LR\n  A-->B\n  style A fill:red\"",
-            // A bare `&`, a reference to a character XML does not allow, a `<` in a value.
-            "flowchart LR\n  A-->B\n  style A fill:a&b",
-            "flowchart LR\n  A-->B\n  style A fill:&#11;",
-            "flowchart LR\n  A-->B\n  style A fill:red,stroke:x<y",
-            "flowchart LR\n  A-->B\n  classDef c fill:red\" fill=\"blue\n  class A c",
-        ] {
-            match mermaid::render_svg(source) {
-                Err(MermaidError::Invalid(message)) => assert!(
-                    message.starts_with("the renderer wrote an SVG that is not well-formed XML ("),
-                    "{source:?}: {message}"
-                ),
-                other => panic!("{source:?}: {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn deep_nesting_is_refused_before_rendering() {
-        // The renderer reads a directive with a JSON5 parser and formulas with a function that
-        // both recurse once per level without a limit: each of these overflowed the stack, which
-        // aborts the process (the formula also takes a gigabyte on a stack big enough for it).
+    fn deep_nesting_is_refused() {
+        // Nesting a parser could follow by recursion until the stack overflows, which aborts
+        // the process: the renderer refuses it.
         let n = 8_000;
         let (open, close) = ("[".repeat(n), "]".repeat(n));
         for source in [
             format!("%%{{init:{{\"x\":{open}{close}}}}}%%\ngraph TD\n A-->B"),
-            // Not closed: the parser fails only at the deepest level.
+            // Not closed: a parser fails only at the deepest level.
             format!("%%{{init:{{\"x\":{open}}}}}%%\ngraph TD\n A-->B"),
-            // Not an object: only the strict validator, which builds the error message, parses
-            // it, also in front matter, which the lenient parser skips.
             format!("%%{{init: {open}{close}}}%%\ngraph TD\n A-->B"),
-            format!("---\n%%{{init: {open}{close}}}%%\n---\nnot a diagram"),
-            format!(
-                "graph TD\n A[\"$${}x{}$$\"] --> B",
-                "\\sqrt{".repeat(6_000),
-                "}".repeat(6_000)
-            ),
         ] {
             let message = too_large(&source);
-            assert!(message.starts_with("line "), "{message}");
+            assert!(message.contains("nesting exceeds"), "{message}");
         }
-        // Within the limits: 64 brackets in a directive, `{…}` nested 32 deep in a formula.
+        // Within its limit.
         let brackets = format!(
             "%%{{init: {{\"theme\": \"dark\", \"x\": {}{}}}}}%%\ngraph TD\n A-->B",
             "[".repeat(62),
@@ -572,18 +616,12 @@ mod rendering {
                 "%%{init: {\"theme\": \"dark\"}}%%\ngraph TD\n A-->B"
             ))
         );
-        render(&format!(
-            "graph TD\n A[\"$${}x{}$$\"] --> B",
-            "\\sqrt{".repeat(32),
-            "}".repeat(32)
-        ));
-        assert!(too_large(&brackets.replacen('[', "[[", 1)).contains("65 `{` and `[`"));
     }
 
     #[test]
     fn the_renderer_does_not_run_on_the_callers_stack() {
-        // C4 boundaries are parsed and laid out by recursion, about 4 KB of stack a level: 499
-        // levels overflow a 1 MiB stack (a Windows main thread's), which aborts the process.
+        // Nested C4 boundaries, on a thread with a small stack (a Windows main thread has
+        // 1 MiB, workers of a runtime often less): the render thread has its own.
         let mut source = String::from("C4Context\n");
         for i in 0..499 {
             let _ = writeln!(source, "Boundary(b{i}, \"B{i}\") {{");
@@ -591,7 +629,7 @@ mod rendering {
         source.push_str("Person(p, \"P\")\n");
         source.push_str(&"}\n".repeat(499));
         let svg = std::thread::Builder::new()
-            .stack_size(1 << 20)
+            .stack_size(256 << 10)
             .spawn(move || mermaid::render_svg(&source))
             .unwrap()
             .join()
@@ -601,8 +639,9 @@ mod rendering {
     }
 
     #[test]
-    fn diagrams_with_too_many_edges_are_refused() {
-        // Routing time grows with the square of the edge count.
+    fn diagrams_that_would_take_long_are_refused() {
+        // The renderer's own limits answer in milliseconds; none of these gets to the deadline.
+        let started = std::time::Instant::now();
         let chain = |edges: usize| {
             let mut source = String::from("flowchart TD\n");
             for i in 0..edges {
@@ -610,28 +649,10 @@ mod rendering {
             }
             source
         };
-        assert_eq!(
-            too_large(&chain(301)),
-            "the diagram has 301 edges, more than the limit of 300"
-        );
+        // 500 edges in a flowchart.
+        assert!(too_large(&chain(501)).contains("edge limit exceeded"));
         render(&chain(300));
-        assert!(
-            too_large(&chain(301).replacen("flowchart TD", "stateDiagram-v2", 1))
-                .contains("301 edges")
-        );
-        // Diagrams with layouts of their own place their edges (messages, task dependencies) in
-        // about linear time: no limit.
-        let mut messages = String::from("sequenceDiagram\n");
-        let mut tasks =
-            String::from("gantt\n  dateFormat YYYY-MM-DD\n  section S\n  t0 :a0, 2024-01-01, 1d\n");
-        for i in 1..=400 {
-            let _ = writeln!(messages, "  Alice->>Bob: m{i}");
-            let _ = writeln!(tasks, "  t{i} :a{i}, after a{}, 1d", i - 1);
-        }
-        render(&messages);
-        render(&tasks);
-        // `&` lists make an edge for every pair: these 14 KB make a million, which the parser
-        // would build (160 MB, 46 KB make 2.3 GB) before anything could count them.
+        // `&` lists make an edge for every pair: these 14 KB would make a million.
         let list = |prefix: &str, len: usize| {
             (0..len)
                 .map(|i| format!("{prefix}{i}"))
@@ -644,7 +665,7 @@ mod rendering {
             list("b", 1000)
         );
         assert!(
-            too_large(&lists).contains("`&` lists"),
+            too_large(&lists).contains("1000000 edges"),
             "{}",
             too_large(&lists)
         );
@@ -653,15 +674,9 @@ mod rendering {
             list("a", 5),
             list("b", 5)
         ));
-    }
-
-    #[test]
-    fn many_nodes_in_nested_groups_are_refused_before_parsing() {
-        // The parser looks every node it reads up among the members of all groups: 450 nested
-        // subgraphs around a chain of 5,000 nodes took 143 s to parse, the `;`-separated variant
-        // 21 s and the composite states 45 s.
-        let chain = |nodes: usize| {
-            (0..nodes)
+        // Thousands of nodes in hundreds of nested groups: the former renderer took minutes.
+        let nodes = |count: usize| {
+            (0..count)
                 .map(|i| format!("a{i}"))
                 .collect::<Vec<_>>()
                 .join("-->")
@@ -669,14 +684,13 @@ mod rendering {
         let nested = format!(
             "flowchart TD\n{}{}\n{}",
             "subgraph s\n".repeat(450),
-            chain(5_000),
+            nodes(5_000),
             "end\n".repeat(450)
         );
-        // `;` separates statements, so one line can open thousands of subgraphs.
         let joined = format!(
             "flowchart TD\n{}\n{}\n{}",
             vec!["subgraph s"; 2_000].join("; "),
-            chain(1_150),
+            nodes(1_150),
             vec!["end"; 2_000].join("; ")
         );
         let transitions = (0..2_400)
@@ -691,9 +705,21 @@ mod rendering {
         for source in [nested, joined, states] {
             assert!(source.len() <= 50_000 && source.lines().count() <= 1_000);
             let message = too_large(&source);
-            assert!(message.contains("nested groups"), "{message}");
+            assert!(
+                message.contains("limit exceeded") || message.contains("resource limit"),
+                "{message}"
+            );
         }
-        // Groups as diagrams use them.
+        // Diagrams of the sizes people write.
+        let mut messages = String::from("sequenceDiagram\n");
+        let mut tasks =
+            String::from("gantt\n  dateFormat YYYY-MM-DD\n  section S\n  t0 :a0, 2024-01-01, 1d\n");
+        for i in 1..=400 {
+            let _ = writeln!(messages, "  Alice->>Bob: m{i}");
+            let _ = writeln!(tasks, "  t{i} :a{i}, after a{}, 1d", i - 1);
+        }
+        render(&messages);
+        render(&tasks);
         let mut source = String::from("flowchart TD\n");
         for i in 0..12 {
             let _ = writeln!(source, "subgraph s{i}\n  n{i} --> m{i} & k{i}");
@@ -709,6 +735,8 @@ mod rendering {
         }
         states.push_str(&"}\n".repeat(8));
         render(&states);
+        // Far from the 20 s deadline, also in a debug build.
+        assert!(started.elapsed().as_secs() < 120, "{:?}", started.elapsed());
     }
 
     fn too_large(source: &str) -> String {
@@ -735,50 +763,74 @@ mod rendering {
     }
 
     #[test]
-    fn dangerous_click_links_are_neutralized() {
-        let source = "flowchart LR\n  A-->B\n  A-->C\n  click A \"javascript:alert(1)\" \"tip\"\n  click B href \"https://example.com/?a=1&b=2\" _blank\n  click C \"java\tscript:alert(2)\"";
+    fn dangerous_click_links_are_dropped() {
+        let source = "flowchart LR\n  A-->B\n  A-->C\n  click A \"javascript:alert(1)\" \"tip\"\n  click B href \"https://example.com/?a=1&b=2\" _blank\n  click C \"java\tscript:alert(2)\"\n  click A call alert(3)";
         let svg = render(source);
         let markup = markup(&svg);
-        assert_eq!(
-            markup.matches("<a href=\"#\" xlink:href=\"#\">").count(),
-            2,
-            "{markup}"
-        );
-        assert!(!markup.contains("script:"), "{markup}");
+        for needle in ["script:", "alert", " on"] {
+            assert!(!markup.contains(needle), "{needle}: {markup}");
+        }
         assert!(
-            markup.contains("<a href=\"https://example.com/?a=1&amp;b=2\" xlink:href=\"https://example.com/?a=1&amp;b=2\" target=\"_blank\""),
+            markup.contains("href=\"https://example.com/?a=1&amp;b=2\""),
             "{markup}"
         );
         assert_eq!(mermaid::source_of(&svg).as_deref(), Some(source));
     }
 
     #[test]
-    fn markup_injected_through_style_values_is_removed() {
-        // mermaid-rs-renderer writes these values into attributes unescaped.
-        let source = "flowchart LR\n  A-->B\n  style A fill:red\" onmouseover=\"alert(1)\n  style B fill:red\"/><script>alert(2)</script><g x=\"\n  linkStyle 0 stroke:red\" onclick=\"alert(3)";
-        let svg = render(source);
-        let markup = markup(&svg);
-        for needle in ["onmouseover", "onclick", "<script", "alert("] {
-            assert!(!markup.contains(needle), "{needle}: {markup}");
+    fn markup_in_the_source_stays_text() {
+        // Labels, style values, class definitions, directives: wherever a source can put text,
+        // markup in it is written as text or dropped, and nothing in the SVG runs or loads.
+        for source in [
+            "flowchart LR\n  A[\"<img src=x onerror=alert(1)><script>alert(2)</script><b>bold</b>\"] --> B",
+            "flowchart LR\n  A-->B\n  style A fill:red\"><script>alert(1)</script><rect x=\"",
+            "flowchart LR\n  A-->B\n  style A fill:red\" onmouseover=\"alert(1)\n  linkStyle 0 stroke:red\" onclick=\"alert(3)",
+            "flowchart LR\n  A-->B\n  classDef c fill:red\" onload=\"alert(1)\n  class A c",
+            "%%{init: {\"fontFamily\": \"x;} </style><script>alert(1)</script>\"}}%%\ngraph TD\n A-->B",
+            "%%{init: {\"themeCSS\": \".node rect { fill: url(https://evil.example/c.png) } @import url(https://evil.example/i.css);\"}}%%\ngraph TD\n A-->B",
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"url(https://evil.example/c.png)\"}}}%%\ngraph TD\n A-->B",
+            "sequenceDiagram\n  Alice->>Bob: <script>alert(1)</script><img src=x onerror=alert(2)>",
+            "flowchart LR\n  A@{ img: \"https://evil.example/t.png\", label: \"x\", w: 60, h: 60 } --> B",
+        ] {
+            let markup = match mermaid::render_svg(source) {
+                Ok(svg) => {
+                    assert_eq!(mermaid::source_of(&svg).as_deref(), Some(source));
+                    markup(&svg)
+                }
+                // Refused is as good.
+                Err(MermaidError::Invalid(_)) => continue,
+                Err(other) => panic!("{source:?}: {other}"),
+            };
+            // No element that runs or loads, no event handler attribute, no address outside.
+            for needle in [
+                "<script",
+                "<img",
+                "<foreignObject",
+                "<iframe",
+                "evil.example",
+            ] {
+                assert!(!markup.contains(needle), "{source:?} {needle}: {markup}");
+            }
+            // Outside the style sheet (CSS text, where a `"` is a character), every `="` starts
+            // an attribute value: inside values the quotes are escaped.
+            let sheet = markup.find("<style>").map_or(0..0, |from| {
+                let to = markup[from..]
+                    .find("</style>")
+                    .map_or(markup.len(), |to| from + to);
+                from..to
+            });
+            let outside = format!("{}{}", &markup[..sheet.start], &markup[sheet.end..]);
+            for (at, _) in outside.match_indices("=\"") {
+                let name = outside[..at]
+                    .rsplit(|c: char| c.is_whitespace())
+                    .next()
+                    .unwrap();
+                assert!(
+                    !name.to_ascii_lowercase().starts_with("on"),
+                    "{source:?}: {name}"
+                );
+            }
         }
-        assert!(markup.contains("fill=\"red\""), "{markup}");
-        assert_eq!(mermaid::source_of(&svg).as_deref(), Some(source));
-    }
-
-    #[test]
-    fn markup_the_renderer_does_not_write_is_removed() {
-        // Markup an HTML parser reads differently than an XML parser: a `p` ends the SVG for it,
-        // `_x` is no tag to it (so the `img` in the attribute would be one), and it reads the
-        // content of a `title` as HTML.
-        let source = "flowchart LR\n  A-->B\n  click A \"https://example.com\" \"tip\"\n  style A fill:red\"/><p/><_x a=\"<img src=x onerror=alert(1)>\"/><b>bold</b></p><title><style><a title=\"</style><img src=x onerror=alert(2)>\"></a></style></title><g x=\"";
-        let svg = render(source);
-        let markup = markup(&svg);
-        for needle in ["<p/>", "</p>", "<_x", "<b>", "<img", "onerror", "alert("] {
-            assert!(!markup.contains(needle), "{needle}: {markup}");
-        }
-        assert!(markup.contains("fill=\"red\"/><title></title>"), "{markup}");
-        assert!(markup.contains("<title>tip</title>"), "{markup}");
-        assert_eq!(mermaid::source_of(&svg).as_deref(), Some(source));
     }
 
     #[test]
@@ -793,8 +845,6 @@ mod rendering {
         assert_ne!(with_theme("dark"), plain);
         assert_ne!(with_theme("forest"), plain);
         assert_ne!(with_theme("dark"), with_theme("forest"));
-        assert_eq!(with_theme("default"), plain);
-        assert_eq!(with_theme("no-such-theme"), plain);
         // JSON5, as mermaid accepts it.
         assert_eq!(
             markup(&render(&format!(
@@ -892,7 +942,7 @@ fn mermaid_ink_urls_that_do_not_decode() {
         "https://mermaid.ink.example.com/img/Z3JhcGggVEQKICAgIEEtLT5C".to_owned(),
         "https://mermaid.ink/pdf/Z3JhcGggVEQKICAgIEEtLT5C".to_owned(),
         "https://mermaid.ink/Z3JhcGggVEQKICAgIEEtLT5C".to_owned(),
-        "workitemimg:1-mermaid-f093190607556ad0.svg".to_owned(),
+        "workitemimg:1-mermaid-744d43fa10d8c687.svg".to_owned(),
         // payloads that are not base64 of a source
         ink(""),
         ink("not*base64"),

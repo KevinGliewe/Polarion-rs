@@ -667,7 +667,7 @@ const MARKDOWN: &str = "### Brakes\n\nMust stop the car.\n";
 const HTML: &str = r#"<span style="font-weight: bold; font-size: 14pt; line-height: 1.2;">Brakes</span><br/><br/>Must stop the car."#;
 
 /// The file name of the diagram `graph TD\n    A-->B` (pinned by the conversion's tests).
-const DIAGRAM: &str = "mermaid-f093190607556ad0.svg";
+const DIAGRAM: &str = "mermaid-744d43fa10d8c687.svg";
 
 /// A fresh directory, removed on drop.
 struct TempDir(PathBuf);
@@ -834,14 +834,9 @@ async fn markdown_from_a_file_is_written_only_with_write_projects() {
         "<updateWorkItemResponse/>",
     )
     .await;
-    // The renderer keeps copies of the system fonts in $XDG_CACHE_HOME.
-    let cache = dir.0.join("cache");
     let run = polarion(
         Some(&server),
-        &[
-            ("POLARION_WRITE_PROJECTS", "Sandbox"),
-            ("XDG_CACHE_HOME", cache.to_str().unwrap()),
-        ],
+        &[("POLARION_WRITE_PROJECTS", "Sandbox")],
         &args,
     )
     .await;

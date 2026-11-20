@@ -19,7 +19,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// A diagram and its file name (pinned by the conversion's tests).
 const SIMPLE: &str = "graph TD\n    A-->B";
-const FILE: &str = "mermaid-f093190607556ad0.svg";
+const FILE: &str = "mermaid-744d43fa10d8c687.svg";
 /// File names of other diagrams.
 const OLD: &str = "mermaid-0123456789abcdef.svg";
 const OTHER: &str = "mermaid-1111111111111111.svg";
@@ -904,7 +904,7 @@ async fn a_diagram_that_cannot_be_rendered_fails_before_anything_is_written() {
         Error::Invalid(message) => {
             assert!(
                 message.starts_with(&format!("mermaid diagram ({bad}) could not be rendered: "))
-                    && message.contains("unknown or missing Mermaid diagram header")
+                    && message.contains("No Mermaid diagram type detected")
                     && message.ends_with("; allow-unrendered writes it as a code block"),
                 "{message}"
             );

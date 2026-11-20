@@ -5,7 +5,7 @@ members = ["crates/*", "xtask"]
 [workspace.package]
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.95"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/KevinGliewe/Polarion-rs"
 authors = ["Kevin Gliewe"]
@@ -50,13 +50,8 @@ missing_debug_implementations = "warn"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 
-# mermaid-rs-renderer's layout debug assertions fire on valid diagrams, and fancy-regex (syntect)
-# is unusably slow without optimization. Library users building in debug do not get these.
-[profile.dev.package.mermaid-rs-renderer]
-opt-level = 2
-debug-assertions = false
-overflow-checks = false
-
+# fancy-regex (syntect) is unusably slow without optimization. Library users building in debug do
+# not get these.
 [profile.dev.package.fancy-regex]
 opt-level = 2
 

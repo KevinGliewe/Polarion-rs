@@ -104,7 +104,9 @@ The description is Polarion rich text (HTML). Read and write it as Markdown inst
 - Mermaid code blocks are rendered to SVG, attached as `mermaid-<hash>.svg` and shown as images; an unchanged
   diagram is not uploaded again, and a diagram the new text no longer shows is deleted (unless `keep-orphans`).
   A diagram that cannot be rendered fails the write before anything is written, unless `allow-unrendered` (then it
-  stays a code block). Reading gives the mermaid code blocks back.
+  stays a code block). Reading gives the mermaid code blocks back. The renderer follows mermaid.js (current
+  syntax, all diagram kinds). Not supported: formulas (`$$…$$`) in labels. Refused as too large: more than
+  50,000 bytes or 1,000 lines, more than 500 edges in a flowchart.
 - Ids with the work item's own prefix (`MP-7` in `MP-42`) become work item links; `id-prefixes` names other
   prefixes (`*` any, `none` no links). Write `MP\-7` for plain text.
 - Formatting Markdown cannot express (colors, fonts, alignment, merged cells) is read as inline HTML; keep it

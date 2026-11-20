@@ -59,10 +59,6 @@ committing. `fuzz.rs` runs fixed seeds (about a minute in a debug build): `FUZZ_
 `FUZZ_SEED=<hex>` only the case a failure named. CI also runs `cargo test -p polarion-markdown --no-default-features`
 and `cargo check -p polarion` (the conversion without mermaid and highlighting, the library without markdown).
 
-Diagram rendering copies a system font into a cache directory. `.cargo/config.toml` sets `XDG_CACHE_HOME` to
-`target/mmdr-cache` for the processes cargo starts, unless it is already set. The end-to-end tests that render
-diagrams point it at a temporary directory of their own for the binaries they spawn.
-
 ## Safety rules
 
 - **`cargo test` never contacts a server.** Everything that does is opt-in: the live tests are `#[ignore]`, and the

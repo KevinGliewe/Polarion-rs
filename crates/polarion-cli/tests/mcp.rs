@@ -2165,13 +2165,11 @@ async fn answered_while_rendering(curated: bool) {
     for var in VARS {
         cmd.env_remove(var);
     }
-    let cache = TempDir::new("render-cache");
     cmd.env("POLARION_URL", format!("{}/polarion", server.uri()))
         .env("POLARION_TOKEN", "t")
         .env("POLARION_WRITE_PROJECTS", "P")
         // About rendering: the gate is off.
         .env("POLARION_MCP_REQUIRE_GUIDES", "none")
-        .env("XDG_CACHE_HOME", cache.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());

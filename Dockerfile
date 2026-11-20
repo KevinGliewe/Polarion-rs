@@ -39,10 +39,6 @@ FROM ${RUST_IMAGE} AS build
 
 USER root
 
-# Mermaid diagrams are measured with a system font (polarion-markdown's `render_svg`).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
 RUN cargo build --locked --profile dist -p polarion-cli \
@@ -60,13 +56,12 @@ FROM ${RUNTIME_IMAGE} AS runtime
 USER root
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /home/polarion --uid 10001 polarion
 # Only built after the tests passed.
 COPY --from=test /tests-passed /usr/share/polarion/tests-passed
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/polarion-entrypoint
-ENV XDG_CACHE_HOME=/home/polarion/.cache
 USER polarion
 
 FROM runtime AS cli

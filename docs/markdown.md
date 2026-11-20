@@ -166,21 +166,34 @@ HTML again, and canonical Markdown (as `to_markdown` writes it, see below) comes
 - **Metadata:** the SVG carries its source in
   `<metadata><mermaid xmlns="urn:polarion-rs:mermaid" version="1">SOURCE</mermaid></metadata>`; `source_of` finds
   it, which is how reading restores the block.
-- **Rendering** (`mermaid::render_svg`, feature `mermaid`, mermaid-rs-renderer): size limits are checked before
-  parsing (50,000 bytes, 1,000 lines, nesting in `%%{…}%%` directives and `$$` formulas, `&` lists, nodes in nested
-  subgraphs or composite states). After parsing, flowcharts and class, state, ER and requirement diagrams may have
-  at most 300 edges, because their routing time grows with the square of the edge count. A source over a limit
-  fails with `MermaidError::TooLarge`. The renderer runs on a thread of its own with a 64 MiB stack, and a panic
-  becomes `MermaidError::Panicked` (the panic hook still prints it). In the SVG, `javascript:` and similar links
-  point to `#`. Event handler attributes, comments and every element the renderer does not write itself
-  (`script`, `foreignObject`, HTML, …) are removed. The result must be well-formed XML, else
-  `MermaidError::Invalid`. A `%%{init: {"theme": …}}%%` directive picks the theme. Layouts differ from mermaid.js.
-- **Side effects:** text is measured with a system font, behind a mutex all renders of a process share. The first
-  render of a process loads the system fonts (up to seconds) unless the font is in the renderer's cache,
-  `$XDG_CACHE_HOME/mmdr/font-cache` (else `$HOME/.cache/mmdr/font-cache`). When it has to load them, it copies the
-  font it uses there. With neither variable set there is no cache, and every process loads the system fonts again.
-  The SVG depends on the installed fonts. Rendering is synchronous: milliseconds for a typical diagram, up to about
-  15 s for a flowchart near the edge limit.
+- **Rendering** (`mermaid::render_svg`, feature `mermaid`): the renderer is
+  [merman](https://crates.io/crates/merman), which follows mermaid.js in syntax, layout and SVG structure.
+  - **Limits:** a source of more than 50,000 bytes or 1,000 lines is refused before anything is parsed. The
+    renderer has limits of its own (500 edges in a flowchart, also from `&` lists; 32,000 items in a diagram; 256
+    levels in a directive), and a render that takes longer than 20 s is given up. All of these fail with
+    `MermaidError::TooLarge`.
+  - **Not built in:** formulas (`$$…$$`, merman's `math` feature) are refused with `MermaidError::Invalid`. A
+    diagram that asks for the ELK layout gets the default one.
+  - **Labels** are SVG text (`SvgPipeline::resvg_safe`), not HTML in a `foreignObject`, which only a browser
+    draws.
+  - **Size:** mermaid sizes a diagram to its container (`width="100%"`). An attached image has none, so the root
+    gets the width and height of its `viewBox` (`fixed_size`).
+  - **Nothing runs or loads:** the renderer drops script, event handlers and dangerous links and escapes what it
+    writes. `sanitize` does not rely on it: `javascript:` and similar links point to `#`; event handler
+    attributes, comments and every element the renderer does not write itself (`script`, `foreignObject`, HTML,
+    animation, …) are removed. A style that would load a resource (`@import`, a `url(…)` that is not a reference
+    into the diagram) fails with `MermaidError::Invalid` (`css_load`). The result must be well-formed XML, else
+    `MermaidError::Invalid`.
+  - **Thread:** the renderer runs on a thread of its own with a 64 MiB stack, and a panic becomes
+    `MermaidError::Panicked` (the panic hook still prints it).
+  - **Theme:** a `%%{init: {"theme": …}}%%` directive picks it.
+- **No side effects:** a source always gives the same SVG. Text is measured from built-in metrics (the fonts of
+  the machine are not read, and there is no cache), and neither the clock nor the time zone is used, so a gantt
+  chart gets no "today" line. Rendering is synchronous: milliseconds for a typical diagram, less than a second
+  for a flowchart at the edge limit.
+- **Profile:** `PROFILE` is `polarion-markdown/mermaid/2` since the renderer changed (from mermaid-rs-renderer,
+  which drew gantt charts with numeric or formatted dates wrong). Diagrams written before have other file names:
+  the next write of such a description renders and uploads them again and prunes the old attachments.
 - **Older descriptions:** an image of a `https://mermaid.ink/img/…` or `…/svg/…` URL carries its source in base64,
   either plain text or the live editor's JSON. Reading turns it into a mermaid block too (`decode_mermaid_ink`),
   but not a compressed `pako:` payload.

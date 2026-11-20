@@ -231,14 +231,8 @@ Each run ends its server session.
   leaves it out.
 - A diagram attachment whose delete failed (a warning) is not deleted by later writes either.
 
-<details>
-<summary>Rendering time and the font cache</summary>
-
-Rendering a diagram takes milliseconds, a large one seconds. The first render of a process loads the system fonts,
-unless the font is already in the cache; after loading, it is copied there. The cache is
-`$XDG_CACHE_HOME/mmdr/font-cache`, else `$HOME/.cache/mmdr/font-cache`; with neither set there is no cache.
-
-</details>
+Rendering a diagram takes milliseconds, a large one up to a second. A source always gives the same picture: the
+fonts of the machine, the clock and the time zone are not used.
 
 Details: [docs/markdown.md](docs/markdown.md).
 
@@ -891,12 +885,13 @@ stays HTML (`RawHtml::Keep`, the default) or is dropped (`RawHtml::Drop`).
 
 - **Naming:** `mermaid::diagrams(markdown)` lists them, each named `mermaid-<hash>.svg` after a hash of its
   normalized source, so an unchanged diagram keeps its attachment.
-- **Rendering:** `mermaid::render_svg` renders one locally (mermaid-rs-renderer), with the source embedded in the
-  SVG.
+- **Rendering:** `mermaid::render_svg` renders one locally with [merman](https://crates.io/crates/merman), which
+  follows mermaid.js, with the source embedded in the SVG. Labels are SVG text, the image has a fixed size, and
+  nothing in it runs or loads. Formulas (`$$…$$`) are not supported and are refused.
 - **Round trip:** that embedded source is how `mermaid::source_of` and `to_markdown_with_diagrams` restore the
   block. `to_html_with_diagrams` shows a diagram as an image of its attachment.
-- **Behaviour:** rendering is synchronous, and its text measurement goes through a mutex all renders of a process
-  share. Its panics are caught (and printed by the panic hook). Its layouts differ from mermaid.js.
+- **Behaviour:** rendering is synchronous and has no side effects (no fonts read, no cache). Diagrams over a size
+  limit, or that take longer than 20 s, are refused. Its panics are caught (and printed by the panic hook).
 
 **Helpers** the library's description methods use: `append_html`, `text_to_html`, `diagram_refs`,
 `attachment_file_name`, and `attachment_refs` (every attachment an HTML shows).

@@ -499,7 +499,7 @@ mod mapping {
     /// existing diagram anew, so each is rendered and uploaded again.
     #[test]
     fn diagram_file_names_are_pinned() {
-        let file = "mermaid-f093190607556ad0.svg";
+        let file = "mermaid-744d43fa10d8c687.svg";
         let image = format!(
             r#"<img src="workitemimg:1-{file}" title="{file}" style="max-width: 650px;"/>"#
         );

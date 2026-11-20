@@ -13,7 +13,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-    # Its refs select a Rust toolchain (`@1.89` is the minimum supported version in ci.yml), they are not versions
+    # Its refs select a Rust toolchain (`@1.95` is the minimum supported version in ci.yml), they are not versions
     # of the action. The commit pins of it are moved by hand.
     ignore:
       - dependency-name: dtolnay/rust-toolchain
