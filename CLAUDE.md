@@ -90,6 +90,10 @@ The repository is English only: code, comments, docs and commit messages.
   `.github/workflows/docker.yml` pushes the images `polarion-cli` and `polarion-mcp` (`Dockerfile` targets `cli`,
   `mcp`; scenario profiles in `docker/profiles/<image>/`, selected by `POLARION_PROFILE`, applied by
   `docker/entrypoint.sh`) to Docker Hub; `docker/check-images.sh` checks built images.
+  `release.yml` calls `ci.yml` (`workflow_call`) and publishes only when it passed. Actions in `release.yml`,
+  `docker.yml` and `scheduled.yml` are pinned to commits (`.github/dependabot.yml` moves the pins);
+  `scheduled.yml` checks advisories and licenses monthly (`deny.toml`: a new dependency license must be added to
+  its allow-list).
 - Before pushing: `cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace && cargo test -p polarion-markdown --no-default-features && cargo check -p polarion` (CI also runs the last two: the conversion without mermaid and highlighting, the library without markdown).
 - Live tests: a real server, production included, is written to only by the live suite
   (`crates/polarion/tests/live.rs`, the CLI's and the MCP server's `tests/live.rs`, the bootstrap

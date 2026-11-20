@@ -1,0 +1,38 @@
+name: Feature request
+description: A command, tool, option or conversion that is missing.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Remove server URLs, project IDs and user names from examples.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - polarion (command line)
+        - polarion-mcp (MCP server)
+        - Library crates (polarion, polarion-commands, polarion-soap)
+        - Markdown conversion (polarion-markdown)
+        - Docker images
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: The task or problem, not yet the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed command or behaviour
+      description: For example the command line, the tool call or the Markdown you would like to write.
+  - type: input
+    id: polarion
+    attributes:
+      label: Polarion feature or SOAP operation involved
+      description: If you know it, e.g. `TrackerWebService.getWorkItemById`, or the place in the Polarion UI.

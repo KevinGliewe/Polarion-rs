@@ -7,7 +7,9 @@ flowchart LR
     tag["git push origin v1.2.3"] --> prepare["prepare<br/>tag is semver,<br/>= every crate's version;<br/>release created unless it exists"]
     prepare --> build["build (one job per target)<br/>cargo build --profile dist<br/>polarion, polarion-mcp<br/>--version smoke test"]
     build --> upload["gh release upload --clobber<br/>archive + .sha256"]
+    tag --> test["test<br/>the jobs of ci.yml<br/>for the tagged commit"]
     build --> publish["publish (environment crates-io)<br/>cargo publish per crate,<br/>dependencies first,<br/>versions on crates.io skipped"]
+    test --> publish
 ```
 
 ## Cutting a release
@@ -26,9 +28,12 @@ is created.
 |---|---|---|
 | `prepare` | checks the tag; `gh release create --generate-notes` | an existing release is left as it is (title, notes, assets) |
 | `build` | builds both binaries for the target, runs `--version`, packs them with README and licenses, uploads the archive and its SHA-256 | the target's archive is replaced (`--clobber`); other assets stay |
+| `test` | the jobs of `.github/workflows/ci.yml` (checks, minimum Rust version, tests on Linux, Windows and macOS) | runs again |
 | `publish` | `cargo publish --locked` for each crate in dependency order | crates whose version is on crates.io already are skipped |
 
-`publish` runs only when every build succeeded, so crates.io never gets a version whose binaries failed to build.
+`publish` runs only when every build and `test` succeeded, so crates.io, where a version cannot be replaced, never
+gets one whose binaries failed to build or whose tests fail. The GitHub release and its archives do not wait for
+`test`: when it fails, delete the release and the tag, fix, and tag again.
 
 Targets, each on a native runner (the TLS library `aws-lc-sys` builds C code, so nothing is cross-compiled except
 Intel macOS on Apple silicon):
@@ -55,8 +60,16 @@ The `dist` profile (root `Cargo.toml`) is `release` with thin LTO and stripped s
 
 ## Trying it without a release
 
-Actions > Release > Run workflow builds every target and keeps the archives as workflow artifacts; it creates no
-release and publishes nothing.
+Actions > Release > Run workflow builds every target, runs the checks and keeps the archives as workflow artifacts;
+it creates no release and publishes nothing.
+
+## Actions
+
+The actions in `release.yml`, `docker.yml` and `scheduled.yml` are pinned to commits, with the version as a comment
+(`dtolnay/rust-toolchain` has no versions: a commit of its `master`, with `toolchain: stable`);
+`.github/dependabot.yml` opens one pull request a month that moves the pins. `ci.yml`, which sees no secrets,
+names its actions by version tag, also when `release.yml` calls it. A release build restores the build
+cache and never writes it (`save-if: false`); the `publish` job uses none.
 
 ## Docker images
 

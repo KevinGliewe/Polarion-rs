@@ -1,0 +1,29 @@
+# cargo-deny: `cargo deny check advisories licenses` (.github/workflows/scheduled.yml).
+# Only advisories and licenses are checked; bans and sources are not configured.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+
+[licenses]
+version = 2
+# What the dependency tree needs today. A new license fails the check and is added here after a look at it.
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CDLA-Permissive-2.0",
+]
+
+[licenses.private]
+# xtask is not published and has no license field.
+ignore = true

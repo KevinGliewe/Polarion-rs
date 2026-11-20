@@ -1,0 +1,71 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Remove tokens, passwords, server URLs, project IDs and user names from everything you paste.
+        A way around the write guard, restricted mode or the HTTP token check is a security problem:
+        [report it privately](https://github.com/KevinGliewe/Polarion-rs/security/advisories/new) instead.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - polarion (command line)
+        - polarion-mcp over stdio
+        - polarion-mcp over HTTP
+        - Library crates (polarion, polarion-commands, polarion-soap)
+        - Markdown conversion (polarion-markdown)
+        - Docker images
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `polarion --version` or `polarion-mcp --version`, the crate version, or the image tag.
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Polarion server version
+      description: As shown in Polarion under Help > About. Leave empty when no server is involved.
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04, macOS 15 (arm64), ...
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Command or tool call, and its output
+      description: The command line, MCP tool call or code, with the output or error. Shown as plain text.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: >-
+        What applies: read-only or writes enabled (`POLARION_WRITE_PROJECTS`, `POLARION_WRITE_TARGETS`), the MCP
+        configuration file, the Docker profile. Names of settings are enough; never their secret values.
+      render: text
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed credentials, tokens and details of my server from this report.
+          required: true

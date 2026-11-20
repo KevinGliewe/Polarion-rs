@@ -1,8 +1,11 @@
 # Testing
 
-```sh
-cargo xtask codegen --check && cargo fmt --all --check && cargo clippy --workspace --all-targets && cargo test --workspace
-```
+The checks before a push are one command line, kept in one place: "Before pushing" in [CLAUDE.md](../CLAUDE.md).
+CI (`.github/workflows/ci.yml`) runs them with warnings as errors and `--locked`, plus `cargo doc` and a build with
+the minimum supported Rust version; for `main` and for releases it also runs the tests on Windows and macOS.
+Once a month `.github/workflows/scheduled.yml` checks the dependencies for advisories and licenses
+([`deny.toml`](../deny.toml), `cargo deny check advisories licenses`) and runs the tests with every dependency
+at its newest compatible version.
 
 `cargo test --workspace` never talks to a real Polarion server: everything runs against
 [wiremock](https://docs.rs/wiremock) or in memory. The live suite of the library and the front ends is opt-in

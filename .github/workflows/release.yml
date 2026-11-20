@@ -1,9 +1,11 @@
 name: Release
 
 # A semver tag (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`) creates the GitHub release, or keeps an existing one as it is and
-# only adds to it; builds `polarion` and `polarion-mcp` for every platform below and attaches them; then publishes
-# the crates to crates.io (crate versions already there are skipped, so a re-run finishes a half-done release).
-# Started by hand (Actions > Release > Run workflow), it only builds and keeps the archives as workflow artifacts.
+# only adds to it; builds `polarion` and `polarion-mcp` for every platform below and attaches them; runs the checks
+# of CI (ci.yml) for the tag; then, when all of that passed, publishes the crates to crates.io (crate versions
+# already there are skipped, so a re-run finishes a half-done release).
+# Started by hand (Actions > Release > Run workflow), it only builds, runs the checks and keeps the archives as
+# workflow artifacts.
 on:
   push:
     tags:
@@ -24,14 +26,19 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
       - name: Version from the tag, checked against the crates
         id: version
         run: |
@@ -88,19 +95,25 @@ jobs:
           - { target: x86_64-pc-windows-msvc, os: windows-latest }
           - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     env:
       TARGET: ${{ matrix.target }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      # Restored only: a release build never writes a cache that later runs would trust.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
+          save-if: false
       - name: musl tools
         if: matrix.musl
         run: |
@@ -149,7 +162,7 @@ jobs:
         run: gh release upload "$TAG" ${{ steps.archive.outputs.files }} --clobber
       - name: Keep as workflow artifact
         if: github.event_name != 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.archive.outputs.archive }}
           path: |
@@ -157,15 +170,23 @@ jobs:
             ${{ steps.archive.outputs.archive }}.sha256
           if-no-files-found: error
 
+  # The checks of CI, for the tagged commit (on Linux, Windows and macOS): nothing is published without them.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   publish:
-    needs: [prepare, build]
+    needs: [prepare, build, test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: crates-io
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: stable
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
