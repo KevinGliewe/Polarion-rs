@@ -25,6 +25,13 @@ const VARS: &[&str] = &[
     "POLARION_WRITE_TARGETS",
     "POLARION_MCP_CONFIG",
     "POLARION_MCP_TOOLS",
+    "POLARION_MCP_REQUIRE_GUIDES",
+    "POLARION_MCP_FILES",
+    "POLARION_MCP_HTTP",
+    "POLARION_MCP_AUTH_TOKEN",
+    "POLARION_MCP_ALLOW_UNAUTHENTICATED",
+    "POLARION_MCP_ALLOWED_ORIGINS",
+    "POLARION_MCP_ALLOWED_HOSTS",
 ];
 
 fn envelope(header: &str, body: &str) -> String {
@@ -1193,4 +1200,53 @@ async fn a_description_is_exported_to_a_folder() {
         "Text ![](SB-1/1-a.png \"a.png\")"
     );
     assert_eq!(std::fs::read(&image).unwrap(), PNG);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_is_a_command_of_the_binary() {
+    // Its help comes from the server's crate; its version is the binary's.
+    let run = polarion(None, &[], &["mcp", "--help"]).await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    for expected in [
+        "--http <ADDR>",
+        "--config <FILE>",
+        "POLARION_MCP_AUTH_TOKEN",
+    ] {
+        assert!(run.stdout.contains(expected), "{expected}: {}", run.stdout);
+    }
+    let run = polarion(None, &[], &["mcp", "--version"]).await;
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(
+        run.stdout.trim().ends_with(env!("CARGO_PKG_VERSION")),
+        "{}",
+        run.stdout
+    );
+    // What only applies to a command's result is refused, not ignored.
+    for args in [&["--json", "mcp"][..], &["mcp", "--out", "x"]] {
+        let run = polarion(None, &[], args).await;
+        assert_eq!(run.code, 2, "{args:?}");
+        assert!(run.stderr.contains("do not apply"), "{}", run.stderr);
+        assert_eq!(run.stdout, "", "{args:?}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn boolean_settings_given_empty_are_off_and_unclear_ones_are_refused() {
+    // An empty value is what `-e VAR=` or a profile's `${VAR-}` passes on.
+    for var in ["POLARION_INSECURE", "POLARION_ALLOW_GLOBAL_WRITES"] {
+        let run = polarion(None, &[(var, "")], &["commands", "session"]).await;
+        assert_eq!(run.code, 0, "{var}: {}", run.stderr);
+        // The server: the command line is accepted (what stops it is `--json`, checked after).
+        let run = polarion(None, &[(var, "")], &["mcp", "--json"]).await;
+        assert!(run.stderr.contains("do not apply"), "{var}: {}", run.stderr);
+        for args in [&["commands", "session"][..], &["mcp", "--json"]] {
+            let run = polarion(None, &[(var, "maybe")], args).await;
+            assert_eq!(run.code, 2, "{var} {args:?}");
+            assert!(
+                run.stderr.contains("invalid value 'maybe'"),
+                "{}",
+                run.stderr
+            );
+        }
+    }
 }

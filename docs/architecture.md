@@ -6,7 +6,7 @@
 flowchart TB
     subgraph front["Front ends: no Polarion logic"]
         cli["polarion-cli<br/>the polarion binary"]
-        mcp["polarion-mcp<br/>MCP server, stdio or HTTP"]
+        mcp["polarion-mcp<br/>MCP server, stdio or HTTP<br/>(library, run by polarion mcp)"]
     end
     commands["polarion-commands<br/>one typed command per library method"]
     derive["polarion-commands-derive<br/>cmd, cmd_args, registry! macros"]
@@ -17,6 +17,7 @@ flowchart TB
     server[("Polarion server<br/>/ws/services")]
 
     cli --> commands
+    cli -- "polarion mcp" --> mcp
     mcp --> commands
     derive -. "expands into" .-> commands
     commands --> lib
@@ -27,7 +28,7 @@ flowchart TB
 ```
 
 Every arrow is a Cargo dependency (the front ends also use `polarion` types directly). Dependencies only point
-down. `polarion-markdown` is pure conversion; `polarion` uses it
+down. There is one binary, `polarion`: its command `mcp` hands over to `polarion_mcp::run`. `polarion-markdown` is pure conversion; `polarion` uses it
 behind its `markdown` feature (which `polarion-commands` turns on) for descriptions as Markdown.
 
 | Crate | Hand-written | Generated |
@@ -81,7 +82,7 @@ An agent asks the MCP server (stdio) for work item `MP-42`, with `POLARION_PROJE
 sequenceDiagram
     autonumber
     participant A as MCP client
-    participant S as polarion-mcp<br/>PolarionMcp
+    participant S as polarion mcp<br/>PolarionMcp
     participant C as polarion-commands<br/>items::Get
     participant L as polarion<br/>WorkItems
     participant P as polarion-soap<br/>Client

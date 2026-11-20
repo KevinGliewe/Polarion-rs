@@ -1,10 +1,13 @@
 name: Release
 
-# A semver tag (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`) creates the GitHub release, or keeps an existing one as it is and
-# only adds to it; builds `polarion` and `polarion-mcp` for every platform below and attaches them; runs the checks
-# of CI (ci.yml) for the tag; then, when all of that passed, publishes the crates to crates.io (crate versions
-# already there are skipped, so a re-run finishes a half-done release).
-# Started by hand (Actions > Release > Run workflow), it only builds, runs the checks and keeps the archives as
+# A semver tag (`v1.2.3`, `1.2.3`, `v1.2.3-rc.1`) creates the GitHub release as a draft, or keeps an existing one
+# as it is and only adds to it; builds `polarion` for every platform below and attaches it as a bare executable
+# (`polarion-rs-<target>`, `.exe` on Windows, each with a `.sha256`); runs the checks of CI (ci.yml) for the tag.
+# When all of that passed, `finalize` publishes the draft (as the latest release unless it is a pre-release or older
+# than the latest), and the crates go to crates.io (crate versions already there are skipped, so a re-run finishes a
+# half-done release). The names carry no version, so that
+# https://github.com/<owner>/<repo>/releases/latest/download/polarion-rs-<target> is always the newest binary.
+# Started by hand (Actions > Release > Run workflow), it only builds, runs the checks and keeps the binaries as
 # workflow artifacts.
 on:
   push:
@@ -64,7 +67,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - name: Create the release unless it exists
+      - name: Create the release as a draft unless it exists
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,7 +79,8 @@ jobs:
           fi
           prerelease=()
           [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
-          gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes "${prerelease[@]}"
+          # A draft: `finalize` publishes it once every binary is attached.
+          gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes --draft "${prerelease[@]}"
 
   build:
     needs: prepare
@@ -122,60 +126,99 @@ jobs:
           target_env=$(echo "$TARGET" | tr - _)
           echo "CC_${target_env}=musl-gcc" >> "$GITHUB_ENV"
       - name: Build
-        run: cargo build --locked --profile dist --target "$TARGET" -p polarion-cli -p polarion-mcp
+        run: cargo build --locked --profile dist --target "$TARGET" -p polarion-cli
       - name: Smoke test
         run: |
           dir="target/$TARGET/dist"
           "$dir/polarion" --version
-          "$dir/polarion-mcp" --version
-      - name: Archive
-        id: archive
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
+          "$dir/polarion" mcp --version
+      - name: Asset
+        id: asset
         run: |
-          name="polarion-rs-$VERSION-$TARGET"
-          dir="target/$TARGET/dist"
-          mkdir "$name"
           exe=""
           [[ "$TARGET" == *windows* ]] && exe=".exe"
-          cp "$dir/polarion$exe" "$dir/polarion-mcp$exe" README.md LICENSE-MIT LICENSE-APACHE "$name/"
-          if [ -n "$exe" ]; then
-            archive="$name.zip"
-            7z a -tzip "$archive" "$name" > /dev/null
-          else
-            archive="$name.tar.gz"
-            tar -czf "$archive" "$name"
-          fi
+          # No version in the name: releases/latest/download/<name> stays the same URL.
+          asset="polarion-rs-$TARGET$exe"
+          cp "target/$TARGET/dist/polarion$exe" "$asset"
           if command -v sha256sum > /dev/null; then
-            sha256sum "$archive" > "$archive.sha256"
+            sha256sum "$asset" > "$asset.sha256"
           else
-            shasum -a 256 "$archive" > "$archive.sha256"
+            shasum -a 256 "$asset" > "$asset.sha256"
           fi
-          echo "files=$archive $archive.sha256" >> "$GITHUB_OUTPUT"
-          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "files=$asset $asset.sha256" >> "$GITHUB_OUTPUT"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
       - name: Attach to the release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
-        # --clobber: a re-run replaces this platform's archive instead of failing; nothing else is touched.
-        run: gh release upload "$TAG" ${{ steps.archive.outputs.files }} --clobber
+        # --clobber: a re-run replaces this platform's binary instead of failing; nothing else is touched.
+        run: gh release upload "$TAG" ${{ steps.asset.outputs.files }} --clobber
       - name: Keep as workflow artifact
         if: github.event_name != 'push'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ${{ steps.archive.outputs.archive }}
+          name: ${{ steps.asset.outputs.asset }}
           path: |
-            ${{ steps.archive.outputs.archive }}
-            ${{ steps.archive.outputs.archive }}.sha256
+            ${{ steps.asset.outputs.asset }}
+            ${{ steps.asset.outputs.asset }}.sha256
           if-no-files-found: error
 
   # The checks of CI, for the tagged commit (on Linux, Windows and macOS): nothing is published without them.
   test:
     uses: ./.github/workflows/ci.yml
 
-  publish:
+  # Publishes the draft when it is complete: every binary of the build matrix with its checksum, and the checks
+  # passed. A release that is not a draft (published by hand, or by an earlier run) is left as it is.
+  finalize:
     needs: [prepare, build, test]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Every binary is attached
+        run: |
+          # The targets of the build matrix.
+          targets="x86_64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-gnu
+            aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin
+            x86_64-pc-windows-msvc.exe aarch64-pc-windows-msvc.exe"
+          attached=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          missing=""
+          for target in $targets; do
+            for name in "polarion-rs-$target" "polarion-rs-$target.sha256"; do
+              echo "$attached" | grep -qxF "$name" || missing="$missing $name"
+            done
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Release $TAG lacks:$missing"
+            exit 1
+          fi
+      - name: Publish the draft
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" != true ]; then
+            echo "Release $TAG is published already: left as it is."
+            exit 0
+          fi
+          # Latest: a release without a pre-release part that is not older than the latest one, so that a patch
+          # of an older version does not take over releases/latest/download.
+          latest=false
+          if [[ "$VERSION" != *-* ]]; then
+            current=$(gh release view --json tagName --jq .tagName 2> /dev/null || true)
+            current="${current#v}"
+            newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)
+            [ "$newest" = "$VERSION" ] && latest=true
+          fi
+          gh release edit "$TAG" --draft=false --latest="$latest"
+
+  publish:
+    needs: [prepare, build, test, finalize]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -198,7 +241,7 @@ jobs:
           fi
           # Dependencies first. cargo publish waits until each crate is in the index.
           for crate in polarion-commands-derive polarion-markdown polarion-soap polarion \
-                       polarion-commands polarion-cli polarion-mcp; do
+                       polarion-commands polarion-mcp polarion-cli; do
             status=$(curl -s -o /dev/null -w '%{http_code}' \
               -A "polarion-rs release (https://github.com/${GITHUB_REPOSITORY})" \
               "https://crates.io/api/v1/crates/$crate/$VERSION")

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Starts polarion-mcp through Start-PolarionMcp.ps1, as an MCP client would, and shows what
+    Starts the MCP server (polarion mcp) through Start-PolarionMcp.ps1, as an MCP client would, and shows what
     it offers: the write scope from the server's instructions and the tools it lists.
 
 .DESCRIPTION
@@ -17,7 +17,7 @@
     Also call get_project: checks URL, token and default project.
 
 .PARAMETER Exe
-    The polarion-mcp binary (default: polarion-mcp on PATH).
+    The polarion binary (default: polarion on PATH).
 
 .EXAMPLE
     .\Test-PolarionMcp.ps1 -Config full-access -Call
@@ -27,7 +27,7 @@ param(
     [string] $Config,
     [switch] $ReadOnly,
     [switch] $Call,
-    [string] $Exe = 'polarion-mcp'
+    [string] $Exe = 'polarion'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,7 +56,7 @@ function Receive([int] $Id) {
         $line = $process.StandardOutput.ReadLine()
         if ($null -eq $line) {
             $process.WaitForExit()
-            throw "polarion-mcp exited ($($process.ExitCode)): $($stderr.Result.Trim())"
+            throw "polarion mcp exited ($($process.ExitCode)): $($stderr.Result.Trim())"
         }
         $message = $line | ConvertFrom-Json
         if ($message.id -eq $Id) { return $message }

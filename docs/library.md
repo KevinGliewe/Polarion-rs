@@ -223,7 +223,7 @@ sequenceDiagram
   (`Sessions`), with its own reqwest client and cookie jar, so it shares nothing with the client's session. It is
   transaction-only (`ClientBuilder::transaction_only`): it logs in once (a renewal is `SessionExpired`) and sends no
   write outside its transaction (`NoTransaction`). It shares the write policy and the SOAP write filter with the
-  client, so budgets stay single. The polarion-mcp HTTP server can therefore run these commands although all its
+  client, so budgets stay single. The MCP server over HTTP can therefore run these commands although all its
   clients share one session.
 - **All or nothing:** a failed write or a follow-up that adds nothing (`Invalid`) rolls back; a commit the server
   refuses committed nothing (its fault is returned); a commit without an answer is `Error::CommitUncertain`; an

@@ -1,4 +1,4 @@
-//! The `polarion-mcp` binary over Streamable HTTP, against a mock SOAP server.
+//! `polarion mcp --http` over Streamable HTTP, against a mock SOAP server.
 
 use std::io::{BufRead, BufReader};
 use std::process::{ChildStderr, Stdio};
@@ -74,7 +74,7 @@ async fn polarion(logouts: u64) -> MockServer {
     server
 }
 
-/// A running `polarion-mcp --http`, killed on drop.
+/// A running `polarion mcp --http`, killed on drop.
 struct Mcp {
     child: std::process::Child,
     /// Kept open so the server can write to it; read by the Unix-only signal test.
@@ -94,7 +94,8 @@ impl Drop for Mcp {
 }
 
 fn command(polarion: Option<&MockServer>, env: &[(&str, &str)]) -> std::process::Command {
-    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    cmd.arg("mcp");
     for var in VARS {
         cmd.env_remove(var);
     }

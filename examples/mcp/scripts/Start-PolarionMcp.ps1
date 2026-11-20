@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Starts polarion-mcp with the settings saved by Save-PolarionSettings.ps1.
+    Starts the MCP server (polarion mcp) with the settings saved by Save-PolarionSettings.ps1.
 
 .DESCRIPTION
     MCP clients start their servers with an environment of their own, which does not always
     include the user's environment variables. This script reads the POLARION_* user variables
     from the registry (HKCU\Environment) and the token from %APPDATA%\polarion-mcp\token.txt
-    (DPAPI), sets them for polarion-mcp only and starts it. Standard input and output are
+    (DPAPI), sets them for the server only and starts it. Standard input and output are
     passed through unchanged, so it works as a stdio MCP server.
 
     Variables already set in the environment (e.g. by the client's "env" block) win over the
@@ -15,7 +15,7 @@
     entry.)
 
 .PARAMETER Config
-    The polarion-mcp config file (TOML): a path, or the name of a file in ..\config
+    The server's config file (TOML): a path, or the name of a file in ..\config
     (full-access, every-tool, no-deletes, read-only).
 
 .PARAMETER ReadOnly
@@ -25,7 +25,7 @@
     Serve Streamable HTTP at this address (e.g. 127.0.0.1:8787) instead of stdio.
 
 .PARAMETER Exe
-    The polarion-mcp binary (default: polarion-mcp on PATH).
+    The polarion binary (default: polarion on PATH). It is started as "polarion mcp".
 
 .EXAMPLE
     pwsh -NoProfile -File Start-PolarionMcp.ps1 -Config full-access
@@ -35,10 +35,16 @@ param(
     [string] $Config,
     [switch] $ReadOnly,
     [string] $Http,
-    [string] $Exe = 'polarion-mcp'
+    [string] $Exe = 'polarion'
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([IO.Path]::GetFileNameWithoutExtension($Exe) -eq 'polarion-mcp') {
+    # Up to 0.3 the server was a program of its own; started with "mcp" it would only print usage.
+    [Console]::Error.WriteLine("Start-PolarionMcp: -Exe names polarion-mcp, which no longer exists; pass the polarion binary (the server is 'polarion mcp')")
+    exit 1
+}
 
 $names = @(
     'POLARION_URL', 'POLARION_PROJECT', 'POLARION_INSECURE',
@@ -77,7 +83,7 @@ if (-not $env:POLARION_TOKEN -and -not ($env:POLARION_USER -and $env:POLARION_PA
     }
 }
 
-$arguments = @()
+$arguments = @('mcp')
 if ($Config) {
     $path = $Config
     if (-not (Test-Path $path)) {
@@ -89,7 +95,7 @@ if ($Http) {
     $arguments += '--http', $Http
 }
 
-# Not in a pipeline and not captured: polarion-mcp inherits this process's standard input and
+# Not in a pipeline and not captured: polarion inherits this process's standard input and
 # output directly.
 & $Exe @arguments
 exit $LASTEXITCODE

@@ -1,5 +1,5 @@
-# Two images from one build: `polarion-cli` (target `cli`) and `polarion-mcp` (target `mcp`, the
-# default, last stage).
+# Two images from one build, both with the one binary `polarion`: `polarion-cli` (target `cli`)
+# runs it as given, `polarion-mcp` (target `mcp`, the default, last stage) runs `polarion mcp`.
 #
 #   docker build --target cli -t polarion-cli .
 #   docker run --rm -e POLARION_URL=... -e POLARION_TOKEN=... polarion-cli items get MP-42
@@ -13,7 +13,7 @@
 #     -e POLARION_MCP_AUTH_TOKEN=<16+ characters> \
 #     polarion-mcp
 #
-# Stages: `build` (both release binaries), `test` (the workspace's tests; the images depend on it,
+# Stages: `build` (the release binary), `test` (the workspace's tests; the images depend on it,
 # so a failing test fails the build), `runtime` (slim Debian, non-root user, the entry point),
 # `cli` and `mcp`. `--target build` or `--target test` stops early.
 #
@@ -45,8 +45,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
-RUN cargo build --locked --profile dist -p polarion-cli -p polarion-mcp \
-    && cp target/dist/polarion target/dist/polarion-mcp /usr/local/bin/
+RUN cargo build --locked --profile dist -p polarion-cli \
+    && cp target/dist/polarion /usr/local/bin/
 
 FROM build AS test
 # The CI checks of CLAUDE.md that do not need rustfmt/clippy; nothing here contacts a server.
@@ -80,11 +80,12 @@ ENTRYPOINT ["polarion-entrypoint", "polarion"]
 CMD ["--help"]
 
 FROM runtime AS mcp
-COPY --from=build /usr/local/bin/polarion-mcp /usr/local/bin/polarion-mcp
+COPY --from=build /usr/local/bin/polarion /usr/local/bin/polarion
 COPY docker/profiles/mcp/ /etc/polarion/profiles/
 COPY examples/mcp/config/ /etc/polarion/mcp/
 ENV POLARION_PROFILE=full-access \
     POLARION_MCP_HTTP=0.0.0.0:8787
 WORKDIR /home/polarion
 EXPOSE 8787
-ENTRYPOINT ["polarion-entrypoint", "polarion-mcp"]
+# Arguments after the image name are arguments of `polarion mcp`.
+ENTRYPOINT ["polarion-entrypoint", "polarion", "mcp"]

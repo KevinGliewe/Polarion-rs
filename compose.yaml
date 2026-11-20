@@ -1,4 +1,5 @@
-# polarion-mcp over HTTP at http://localhost:8787/mcp, configured from the host's environment.
+# The MCP server (`polarion mcp`, image polarion-mcp) over HTTP at http://localhost:8787/mcp,
+# configured from the host's environment.
 #
 #   export POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=...
 #   export POLARION_MCP_AUTH_TOKEN=$(openssl rand -hex 32)   # or POLARION_MCP_ALLOW_UNAUTHENTICATED=1
@@ -37,7 +38,14 @@ services:
       - POLARION_URL
       - POLARION_TOKEN
       - POLARION_USER
+      - POLARION_PASSWORD
       - POLARION_PROJECT
+      - POLARION_INSECURE
+      # The scenario (Dockerfile; `full-access` unless set) and the write scope.
+      - POLARION_PROFILE
+      - POLARION_WRITE_PROJECTS
+      - POLARION_ALLOW_GLOBAL_WRITES
+      - POLARION_WRITE_TARGETS
       # One of the two, or the server does not start: the token (16+ characters), which clients
       # send as `Authorization: Bearer <token>` or in the URL, /mcp/<token>; or
       # POLARION_MCP_ALLOW_UNAUTHENTICATED=1: no token, everyone who reaches the port acts as

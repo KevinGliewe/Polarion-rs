@@ -1,4 +1,4 @@
-//! The `polarion-mcp` binary end to end: JSON-RPC lines on stdin against a mock SOAP server.
+//! `polarion mcp` end to end: JSON-RPC lines on stdin against a mock SOAP server.
 
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
@@ -138,7 +138,8 @@ async fn session_phases(
     env: &[(&str, &str)],
     phases: &[&[Value]],
 ) -> Vec<Value> {
-    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    cmd.arg("mcp");
     for var in VARS {
         cmd.env_remove(var);
     }
@@ -1750,7 +1751,8 @@ async fn exchange_arguments_are_advertised_only_with_a_folder() {
 
 #[test]
 fn a_missing_exchange_folder_stops_the_server() {
-    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    cmd.arg("mcp");
     for var in VARS {
         cmd.env_remove(var);
     }
@@ -2015,7 +2017,8 @@ async fn the_tools_variable_takes_selectors_and_wins_over_the_file() {
 /// Start the server with `args` and `env`, expect it to stop with exit code 1; its stderr.
 #[track_caller]
 fn refused(args: &[String], env: &[(&str, &str)]) -> String {
-    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    cmd.arg("mcp");
     for var in VARS {
         cmd.env_remove(var);
     }
@@ -2157,7 +2160,8 @@ async fn answered_while_rendering(curated: bool) {
     }
     let markdown = format!("```mermaid\n{diagram}```\n");
 
-    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion-mcp"));
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_polarion"));
+    cmd.arg("mcp");
     for var in VARS {
         cmd.env_remove(var);
     }
@@ -2256,13 +2260,25 @@ async fn answered_while_rendering(curated: bool) {
 
 /// The guides' Markdown, by area, in their order.
 const GUIDES: &[(&str, &str)] = &[
-    ("overview", include_str!("../guides/overview.md")),
-    ("queries", include_str!("../guides/queries.md")),
-    ("work-items", include_str!("../guides/work-items.md")),
-    ("documents", include_str!("../guides/documents.md")),
-    ("tests", include_str!("../guides/tests.md")),
-    ("plans", include_str!("../guides/plans.md")),
-    ("wiki", include_str!("../guides/wiki.md")),
+    (
+        "overview",
+        include_str!("../../polarion-mcp/guides/overview.md"),
+    ),
+    (
+        "queries",
+        include_str!("../../polarion-mcp/guides/queries.md"),
+    ),
+    (
+        "work-items",
+        include_str!("../../polarion-mcp/guides/work-items.md"),
+    ),
+    (
+        "documents",
+        include_str!("../../polarion-mcp/guides/documents.md"),
+    ),
+    ("tests", include_str!("../../polarion-mcp/guides/tests.md")),
+    ("plans", include_str!("../../polarion-mcp/guides/plans.md")),
+    ("wiki", include_str!("../../polarion-mcp/guides/wiki.md")),
 ];
 
 /// One enum option as the tracker returns it.

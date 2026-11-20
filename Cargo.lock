@@ -1805,7 +1805,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "polarion"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "polarion-markdown",
@@ -1822,12 +1822,15 @@ dependencies = [
 
 [[package]]
 name = "polarion-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
+ "jsonschema",
  "polarion",
  "polarion-commands",
+ "polarion-mcp",
+ "reqwest",
  "serde_json",
  "tokio",
  "wiremock",
@@ -1835,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "polarion-commands"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
@@ -1852,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "polarion-commands-derive"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1862,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "polarion-markdown"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "comrak",
@@ -1876,14 +1879,12 @@ dependencies = [
 
 [[package]]
 name = "polarion-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "base64 0.23.1",
- "jsonschema",
  "polarion",
  "polarion-commands",
- "reqwest",
  "rmcp",
  "serde",
  "serde_json",
@@ -1891,12 +1892,11 @@ dependencies = [
  "tokio-util",
  "toml",
  "tower-layer",
- "wiremock",
 ]
 
 [[package]]
 name = "polarion-soap"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.23.1",
  "reqwest",

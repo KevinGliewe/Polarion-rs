@@ -1,4 +1,4 @@
-# polarion-mcp: full access, every command as a tool of its own.
+# polarion mcp: full access, every command as a tool of its own.
 #
 # Use with POLARION_WRITE_PROJECTS and POLARION_ALLOW_GLOBAL_WRITES=1, as full-access.toml.
 #

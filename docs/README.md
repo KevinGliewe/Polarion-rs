@@ -5,8 +5,9 @@ the tools is covered by the [README](../README.md).
 
 ```mermaid
 flowchart LR
-    cli["polarion-cli"] --> commands["polarion-commands"]
-    mcp["polarion-mcp"] --> commands
+    cli["polarion-cli<br/>the polarion binary"] --> commands["polarion-commands"]
+    cli -- "polarion mcp" --> mcp["polarion-mcp"]
+    mcp --> commands
     commands --> lib["polarion"]
     lib --> soap["polarion-soap"]
     lib -- "feature markdown" --> md["polarion-markdown"]
@@ -20,7 +21,7 @@ flowchart LR
 | [Library](library.md) | `polarion`: area handles, domain types and conversions, the write guard and restricted mode, the coverage contract |
 | [Markdown](markdown.md) | `polarion-markdown` and descriptions as Markdown: both conversions, mermaid diagrams as SVG attachments, the request sequences |
 | [Commands](commands.md) | `polarion-commands` and its macros: command DTOs, the generated catalog, JSON arguments, output schemas |
-| [Front ends](front-ends.md) | The `polarion` CLI and the `polarion-mcp` server: dispatch, tool selection, attachments, HTTP |
+| [Front ends](front-ends.md) | The `polarion` CLI and its MCP server (`polarion mcp`, crate `polarion-mcp`): dispatch, tool selection, attachments, HTTP |
 | [Code generation](code-generation.md) | `xtask`: the SOAP client from the WSDLs |
 | [Testing](testing.md) | Test layers, the coverage chain, the live suite and its safety gate |
 | [Releasing](releasing.md) | The release workflow: semver tags, binaries for each platform, publishing to crates.io |

@@ -1,7 +1,9 @@
 //! The command line: global options plus `polarion <area> <command> [args]`, the command tree
-//! generated from the command DTOs (`polarion_commands::Cli`).
+//! generated from the command DTOs (`polarion_commands::Cli`), and the hand-written commands
+//! `commands` and `mcp`.
 
-use clap::builder::BoolishValueParser;
+use std::path::PathBuf;
+
 use clap::{ArgAction, Args, Parser, Subcommand};
 use polarion_commands::{Config, split_list, split_targets};
 
@@ -25,7 +27,7 @@ in response (suspect links on work items that link to a target, notifications) i
 Work items are ID (in the default project), PROJECT/ID or a URI; documents SPACE/NAME,
 PROJECT/SPACE/NAME or a URI. Text arguments such as --markdown also take @FILE (a file's
 content) or @- (standard input); @@ stands for a literal @. `polarion commands` lists every
-command.
+command; `polarion mcp` serves them to AI agents (`polarion mcp --help`).
 Exit codes: 0 success, 1 error, 2 usage error, 3 not found.";
 
 /// Command-line access to Siemens Polarion ALM (read-only unless writes are enabled)
@@ -62,7 +64,7 @@ pub struct Global {
     pub project: Option<String>,
     /// Accept invalid TLS certificates (test servers only)
     #[arg(long, env = "POLARION_INSECURE", action = ArgAction::SetTrue,
-        value_parser = BoolishValueParser::new(), global = true)]
+        value_parser = flag, global = true)]
     pub insecure: bool,
     /// Comma-separated projects that may be written (default: read-only)
     #[arg(
@@ -74,7 +76,7 @@ pub struct Global {
     pub write_projects: Option<String>,
     /// Allow writes not tied to a project (users, global folders, ...)
     #[arg(long, env = "POLARION_ALLOW_GLOBAL_WRITES", action = ArgAction::SetTrue,
-        value_parser = BoolishValueParser::new(), global = true)]
+        value_parser = flag, global = true)]
     pub allow_global_writes: bool,
     /// Comma-separated objects that may be written, and nothing else (even empty: no writes;
     /// overrides --write-projects and POLARION_WRITE_TARGETS): ID, PROJECT/ID, doc:SPACE/NAME,
@@ -101,8 +103,41 @@ pub enum Top {
         /// Area, e.g. items
         area: Option<String>,
     },
+    /// Run the MCP server for AI agents (stdio, or Streamable HTTP with --http)
+    ///
+    /// Speaks MCP on standard input and output by default; with --http ADDR it serves Streamable
+    /// HTTP at http://ADDR/mcp instead. The connection and the write settings are the global
+    /// options and their environment variables; --json and --out do not apply.
+    // `version`: `polarion mcp --version` works as `polarion --version` does.
+    #[command(version, after_long_help = polarion_mcp::HELP)]
+    Mcp(McpArgs),
     #[command(flatten)]
     Run(polarion_commands::Cli),
+}
+
+/// The options of `polarion mcp`.
+#[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Serve Streamable HTTP at http://ADDR/mcp instead of stdio, e.g. 127.0.0.1:8787
+    /// [env: POLARION_MCP_HTTP]
+    // The environment is read by `polarion_mcp::run`, not by clap: a blank value means "not
+    // set" there, and clap would refuse an empty path.
+    #[arg(long, value_name = "ADDR")]
+    pub http: Option<String>,
+    /// The tools to offer, as a TOML file (see below) [env: POLARION_MCP_CONFIG]
+    #[arg(long, value_name = "FILE")]
+    pub config: Option<PathBuf>,
+}
+
+/// A boolean option's value from the environment: empty is "not set", as it is for
+/// `Config::from_env`. Anything that is not a clear yes or no is a usage error, not a silent
+/// "off" (or "on") for a setting that decides about writes or certificate checks.
+fn flag(value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "0" | "false" | "no" | "off" | "n" | "f" => Ok(false),
+        "1" | "true" | "yes" | "on" | "y" | "t" => Ok(true),
+        _ => Err("expected 1, true, yes or on (or 0, false, no, off)".to_owned()),
+    }
 }
 
 impl Global {
@@ -149,6 +184,47 @@ mod tests {
     #[test]
     fn tree_is_consistent() {
         Opts::command().debug_assert();
+    }
+
+    #[test]
+    fn the_server_is_a_command_with_the_global_options() {
+        let opts = Opts::try_parse_from([
+            "polarion",
+            "mcp",
+            "--http=127.0.0.1:0",
+            "--config",
+            "tools.toml",
+            "-p",
+            "P",
+        ])
+        .unwrap();
+        assert_eq!(opts.global.project.as_deref(), Some("P"));
+        let Top::Mcp(args) = opts.command else {
+            panic!("expected mcp")
+        };
+        assert_eq!(args.http.as_deref(), Some("127.0.0.1:0"));
+        assert_eq!(args.config, Some(PathBuf::from("tools.toml")));
+        // No area of the catalog takes the name of a hand-written command.
+        for entry in polarion_commands::catalog() {
+            assert!(!["mcp", "commands"].contains(&entry.area), "{}", entry.area);
+        }
+    }
+
+    #[test]
+    fn boolean_settings_are_yes_no_or_empty() {
+        for (value, expected) in [
+            ("", false),
+            ("  ", false),
+            ("0", false),
+            ("off", false),
+            ("1", true),
+            (" TRUE ", true),
+            ("yes", true),
+            ("on", true),
+        ] {
+            assert_eq!(flag(value), Ok(expected), "{value:?}");
+        }
+        assert!(flag("maybe").is_err());
     }
 
     #[test]

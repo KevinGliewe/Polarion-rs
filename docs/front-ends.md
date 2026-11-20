@@ -1,8 +1,10 @@
 # Front ends (`polarion-cli`, `polarion-mcp`)
 
-Both binaries are thin. They turn their input into an `AnyCommand`, connect with the settings from the environment
-(`polarion_commands::Config`), run the command, and present the serialized result. Neither contains Polarion logic:
-the command tree and the tools come from the catalog (see [Commands](commands.md)).
+There is one binary, `polarion` (crate `polarion-cli`). Its commands are the command line; its command `mcp` runs
+the MCP server, which is the library crate `polarion-mcp`. Both front ends are thin. They turn their input into an
+`AnyCommand`, connect with the settings from the environment and the global options (`polarion_commands::Config`),
+run the command, and present the serialized result. Neither contains Polarion logic: the command tree and the tools
+come from the catalog (see [Commands](commands.md)).
 
 ## CLI
 
@@ -10,6 +12,7 @@ the command tree and the tools come from the catalog (see [Commands](commands.md
 flowchart LR
     argv["argv"] --> clap["Opts::parse()<br/>cli.rs"]
     clap -- "polarion commands AREA" --> list["list: AREAS + CATALOG<br/>--json adds input and output schemas"]
+    clap -- "polarion mcp" --> server["polarion_mcp::run(Global::config(), --http, --config)<br/>the MCP server, below"]
     clap -- "polarion AREA COMMAND ..." --> cmd["Top::Run(Cli) → AnyCommand::from"]
     cmd --> connect["Global::config() → Config::connect()<br/>env, overridden by options;<br/>write targets → restrict_writes"]
     connect -. "a write target that<br/>does not resolve" .-> cfgerr(["config error, exit 1,<br/>nothing sent"])
@@ -22,9 +25,13 @@ flowchart LR
     value -- "View::Text with --out" --> textfile["write the text as printed"]
 ```
 
-- **The command tree:** [`cli.rs`](../crates/polarion-cli/src/cli.rs) has two top-level variants. `Top::Commands`
-  lists commands, and `Top::Run` flattens the generated `polarion_commands::Cli` tree into the top level, so
-  `polarion items get MP-42` is the `ItemsCli::Get` variant. Global options (`--url`, `-p`, `--json`, `--out`,
+- **The command tree:** [`cli.rs`](../crates/polarion-cli/src/cli.rs) has three top-level variants. `Top::Commands`
+  lists commands, `Top::Mcp` is the server, and `Top::Run` flattens the generated `polarion_commands::Cli` tree into
+  the top level, so `polarion items get MP-42` is the `ItemsCli::Get` variant. `main` is not async: it parses first,
+  hands `mcp` to the server (which builds its own multi-threaded runtime) and runs every other command on a
+  current-thread runtime. No area may be called `mcp` or `commands` (a test in `cli.rs` checks it).
+- **Boolean settings** (`POLARION_INSECURE`, `POLARION_ALLOW_GLOBAL_WRITES`) are parsed by `flag` in `cli.rs` for
+  every command, the server included: yes and no words, empty is no, anything else is a usage error. Global options (`--url`, `-p`, `--json`, `--out`,
   `--write-projects`, ...) are in `Global` and override the environment.
 - **Write targets:** `POLARION_WRITE_TARGETS` restricts writes to the objects it lists (set, even empty, it wins
   over `POLARION_WRITE_PROJECTS` and `POLARION_ALLOW_GLOBAL_WRITES`; never any creates). `Config::from_env` reads
@@ -59,9 +66,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    main["main.rs"] --> args["--http, --config<br/>or POLARION_MCP_HTTP, POLARION_MCP_CONFIG"]
-    args --> cfg["Config::from_env()<br/>connection and write settings"]
-    cfg --> wt["Config::resolve_write_targets()<br/>POLARION_WRITE_TARGETS in POLARION_PROJECT"]
+    main["polarion mcp<br/>Top::Mcp in polarion-cli"] --> cfg["Global::config()<br/>connection and write settings:<br/>env, overridden by options"]
+    cfg --> args["polarion_mcp::run (lib.rs)<br/>--http, --config<br/>or POLARION_MCP_HTTP, POLARION_MCP_CONFIG"]
+    args --> wt
+    wt["Config::resolve_write_targets()<br/>POLARION_WRITE_TARGETS in POLARION_PROJECT"]
     wt --> sel["Selection::load(…, Config::writes_enabled())<br/>config.rs: which tools"]
     sel --> ex["Exchange::from_env()<br/>files.rs: POLARION_MCP_FILES"]
     ex --> new["PolarionMcp::new<br/>tools built once, Polarion client created<br/>(logs in on the first call)"]
@@ -71,6 +79,10 @@ flowchart LR
     ex -. "not a directory" .-> exit
     wt -. "an entry that does not resolve" .-> exit
 ```
+
+`polarion mcp` refuses `--json` and `--out` (exit 2): the server's results go to its client. `run` and the help
+text `HELP` are all that `polarion-mcp` exports. In stdio mode standard output carries the protocol only; every
+message of the server goes to standard error, with the prefix `polarion mcp:`.
 
 `PolarionMcp` is an rmcp `ServerHandler` whose tools are built at run time from the catalog (no `#[tool]` macros),
 in [`server.rs`](../crates/polarion-mcp/src/server.rs). Its state (tools, client, settings) sits behind an `Arc`,
@@ -174,7 +186,7 @@ flowchart TD
   every object a write names must be a target too, which the sentence on the targets says.
 - **Write targets:** `PolarionMcp::new` resolves `POLARION_WRITE_TARGETS` once, in `POLARION_PROJECT`, and builds
   the one client with them, so a command's `project` argument cannot move them; an entry that does not resolve
-  stops the server at startup (`main.rs`). The instructions and the startup line of the HTTP
+  stops the server at startup (`run` in `lib.rs`). The instructions and the startup line of the HTTP
   transport (`access`) name the targets (`write_scope`), what is refused even for them (creates, deletes of whole
   objects, workflow actions, status and resolution changes, the body of a document with work items), that every
   object a write names must be a target, and that the server's own reactions (suspect links, notifications) are not

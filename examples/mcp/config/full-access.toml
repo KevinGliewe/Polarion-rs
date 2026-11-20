@@ -1,4 +1,4 @@
-# polarion-mcp: full access, compact tool list.
+# polarion mcp: full access, compact tool list.
 #
 # Use with POLARION_WRITE_PROJECTS (every project that may be written) and
 # POLARION_ALLOW_GLOBAL_WRITES=1 (users, global folders, activity comments). This file only

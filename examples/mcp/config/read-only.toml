@@ -1,4 +1,4 @@
-# polarion-mcp: read-only.
+# polarion mcp: read-only.
 #
 # Without POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES and POLARION_WRITE_TARGETS the
 # server is read-only anyway; this file is not needed for that. It shows the options a read-only

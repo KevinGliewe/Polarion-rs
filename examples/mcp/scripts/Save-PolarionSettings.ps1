@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Saves the Polarion connection and write settings for polarion-mcp (and the polarion CLI).
+    Saves the Polarion connection and write settings for polarion (the commands and the MCP server).
 
 .DESCRIPTION
     The token is stored encrypted for the current Windows user (DPAPI) in
@@ -9,7 +9,7 @@
     POLARION_URL, POLARION_PROJECT, POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES,
     POLARION_MCP_FILES, POLARION_INSECURE and, with -HttpToken, POLARION_MCP_AUTH_TOKEN.
 
-    Start-PolarionMcp.ps1 reads both and starts polarion-mcp, so every MCP client only needs
+    Start-PolarionMcp.ps1 reads both and starts polarion mcp, so every MCP client only needs
     to start that script.
 
 .PARAMETER Url

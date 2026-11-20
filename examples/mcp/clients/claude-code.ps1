@@ -1,4 +1,4 @@
-# Claude Code: register polarion-mcp (run in PowerShell 7; Windows PowerShell 5.1 drops the `--`).
+# Claude Code: register the MCP server, polarion mcp (run in PowerShell 7; Windows PowerShell 5.1 drops the `--`).
 # Pick ONE of the blocks below; they all use the name "polarion", so a second `add` needs a
 # `claude mcp remove polarion --scope user` first, or another name.
 #
@@ -29,7 +29,7 @@ claude mcp add polarion --scope user -- `
 #     -e "POLARION_WRITE_TARGETS=MP-42,doc:Specs/Scratch,run:MP-Sandbox-Run" -- `
 #     pwsh -NoProfile -NonInteractive -File $launcher -Config full-access
 
-# 6. Without the launcher: polarion-mcp directly, everything in the entry (the token is then
+# 6. Without the launcher: polarion mcp directly, everything in the entry (the token is then
 #    stored in plain text in ~/.claude.json).
 # claude mcp add polarion --scope user `
 #     -e POLARION_URL=https://polarion.example.com/polarion `
@@ -38,7 +38,7 @@ claude mcp add polarion --scope user -- `
 #     -e "POLARION_WRITE_PROJECTS=MyProject,OtherProject" `
 #     -e POLARION_ALLOW_GLOBAL_WRITES=1 `
 #     -e POLARION_MCP_FILES=C:/Users/me/polarion-files -- `
-#     polarion-mcp --config C:/Polarion-rs/examples/mcp/config/full-access.toml
+#     polarion mcp --config C:/Polarion-rs/examples/mcp/config/full-access.toml
 
 # 7. The shared HTTP server (Start-PolarionMcp.ps1 -Http 127.0.0.1:8787 running elsewhere).
 # claude mcp add polarion --scope user --transport http http://127.0.0.1:8787/mcp `

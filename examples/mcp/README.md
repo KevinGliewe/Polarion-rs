@@ -1,13 +1,13 @@
-# Setting up polarion-mcp on your machine
+# Setting up the MCP server (`polarion mcp`) on your machine
 
-A step-by-step setup of the `polarion-mcp` MCP server on Windows, from read-only up to full write access, with
+A step-by-step setup of the MCP server, `polarion mcp`, on Windows, from read-only up to full write access, with
 ready-to-copy configurations for Claude Code, Claude Desktop, VS Code and Codex. The reference for every option is
 the [README](../../README.md#polarion-mcp-mcp-server); this page shows how to combine the options.
 
 ```
 examples/mcp/
 ├── README.md                       this guide
-├── config/                         tool selection (polarion-mcp --config FILE)
+├── config/                         tool selection (polarion mcp --config FILE)
 │   ├── full-access.toml            curated tools, everything else through polarion_call
 │   ├── every-tool.toml             every command as a tool of its own
 │   ├── no-deletes.toml             writes without deletes and user accounts
@@ -74,18 +74,22 @@ Even with full access, some things stay refused:
 
 ## 2. Prerequisites
 
-1. **The binaries.** `polarion-mcp`, and `polarion` (the CLI) for `-AllProjects`:
+1. **The binary.** `polarion` is the command line and, as `polarion mcp`, the server:
 
    ```powershell
-   cargo install polarion-mcp polarion-cli          # from crates.io
+   cargo install polarion-cli                       # from crates.io
    # or from this checkout:
-   cargo install --path crates/polarion-mcp
    cargo install --path crates/polarion-cli
    ```
 
-   Or download the Windows archive (x86-64 or ARM64) from the
-   [GitHub releases](https://github.com/KevinGliewe/Polarion-rs/releases), check its SHA-256, and put both `.exe`
-   files in a folder on `PATH`. Check: `polarion-mcp --version`.
+   Or download it (x86-64; ARM64: `aarch64-pc-windows-msvc`) into a folder on `PATH`:
+
+   ```powershell
+   curl.exe -fL https://github.com/KevinGliewe/Polarion-rs/releases/latest/download/polarion-rs-x86_64-pc-windows-msvc.exe -o polarion.exe
+   ```
+
+   Check: `polarion mcp --version`. If you used a version before 0.4, remove the old `polarion-mcp.exe`
+   (`cargo uninstall polarion-mcp`): the server is no longer a program of its own.
 
 2. **PowerShell 7** (`pwsh`, `winget install Microsoft.PowerShell`). The clients start the launcher with it;
    `Test-PolarionMcp.ps1`, `-HttpToken` and `claude mcp add ... -- ...` (Windows PowerShell 5.1 drops the `--`)
@@ -132,7 +136,7 @@ prints what it saved. Restart your MCP clients and open a new terminal afterward
 
 `Start-PolarionMcp.ps1` is what the clients run. It reads these settings from the registry (`HKCU\Environment`)
 rather than from its inherited environment, because MCP clients start servers with an environment of their own,
-which does not always contain your user variables. It decrypts the token, sets everything for `polarion-mcp`
+which does not always contain your user variables. It decrypts the token, sets everything for `polarion mcp`
 only, and starts it with stdin and stdout passed straight through. Variables the client sets in its `env` block
 win over the saved ones, and `-ReadOnly` drops the saved write settings.
 
@@ -362,7 +366,9 @@ The guide areas: `work-items` for work item commands; `documents`, `tests`, `pla
 | `Key not valid for use in specified state` | the token file was written by another user or machine (DPAPI); save the token again |
 | `pwsh` not found | install PowerShell 7, or use the full path `C:/Program Files/PowerShell/7/pwsh.exe` as the command |
 | `... cannot be loaded because running scripts is disabled` | the execution policy blocks scripts: `Unblock-File` on the scripts if they were downloaded, or add `-ExecutionPolicy Bypass` before `-File` (if your organisation's policy allows it) |
-| `polarion-mcp` not found | it is not on the `PATH` the client sees; pass `-Exe C:/path/to/polarion-mcp.exe` to the launcher |
+| `polarion` not found | it is not on the `PATH` the client sees; pass `-Exe C:/path/to/polarion.exe` to the launcher |
+| `unrecognized subcommand 'mcp'` | an older `polarion` (before 0.4) is first on the `PATH`; install the current one |
+| `-Exe names polarion-mcp, which no longer exists` | an entry from before 0.4: pass the `polarion` binary, or drop `-Exe` |
 | Settings changes have no effect | clients start the server once; restart the client (Claude Desktop: Quit from the tray) |
 | A new project cannot be written | run `Save-PolarionSettings.ps1 -AllProjects -GlobalWrites -KeepToken` again, then restart the client |
 | TLS errors on a test server | `-Insecure`; never for production |

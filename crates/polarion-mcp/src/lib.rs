@@ -1,7 +1,11 @@
-//! `polarion-mcp`: an MCP server giving AI agents access to Siemens Polarion ALM, over stdio
-//! (default) or Streamable HTTP (`--http ADDR`).
+//! The MCP server behind `polarion mcp`: access to Siemens Polarion ALM for AI agents, over
+//! stdio (default) or Streamable HTTP (`--http ADDR`).
 //!
-//! Configuration comes from the environment, as for the `polarion` command:
+//! This crate has no binary of its own: the `polarion` command (crate `polarion-cli`) parses
+//! the command line and calls [`run`]. Nothing else here is public.
+//!
+//! Configuration comes from the environment, as for the other `polarion` commands (which also
+//! take it as options, and so does `polarion mcp`):
 //! `POLARION_URL`, `POLARION_TOKEN` (or `POLARION_USER` and `POLARION_PASSWORD`),
 //! `POLARION_PROJECT`, `POLARION_INSECURE`, and for writes `POLARION_WRITE_PROJECTS` /
 //! `POLARION_ALLOW_GLOBAL_WRITES` (read-only without them) or `POLARION_WRITE_TARGETS` (only
@@ -25,12 +29,8 @@ use polarion_commands::Config;
 use crate::config::Selection;
 use crate::server::{PolarionMcp, Transport};
 
-const USAGE: &str = "\
-Usage: polarion-mcp [--http ADDR] [--config FILE]
-
-MCP server for Siemens Polarion ALM. Speaks stdio by default; with --http ADDR
-(e.g. 127.0.0.1:8787) it serves Streamable HTTP at http://ADDR/mcp instead.
-
+/// The help of `polarion mcp` below its options: the config file and the environment.
+pub const HELP: &str = "\
 The config file (TOML, optional) chooses the tools; every key is optional:
   tools = [\"default\", \"documents.*\"]   commands with a tool of their own (default: \"default\",
                                        the everyday reads, and the everyday writes (work items,
@@ -48,7 +48,7 @@ The config file (TOML, optional) chooses the tools; every key is optional:
 Selectors are command names (items.get), tool names (get_work_item) or `default`/`all`;
 `*` is a wildcard. The guides are also resources: polarion://guide/<area>.
 
-Environment:
+Environment (the connection also as options, see `polarion --help`):
   POLARION_URL, POLARION_TOKEN (or POLARION_USER + POLARION_PASSWORD), POLARION_PROJECT,
   POLARION_INSECURE, POLARION_WRITE_PROJECTS, POLARION_ALLOW_GLOBAL_WRITES
   POLARION_WRITE_TARGETS=TARGETS  only these objects may be written (set, even empty, it
@@ -80,51 +80,32 @@ Environment:
   POLARION_MCP_ALLOWED_ORIGINS    HTTP: browser origins allowed to connect, with scheme and port
                                   (comma-separated, e.g. http://localhost:3000; default: none)
   POLARION_MCP_ALLOWED_HOSTS      HTTP: Host names the server answers to (comma-separated;
-                                  default: localhost, 127.0.0.1, ::1); behind a proxy, its name
-";
+                                  default: localhost, 127.0.0.1, ::1); behind a proxy, its name";
 
-fn main() -> ExitCode {
-    let mut http_addr = std::env::var("POLARION_MCP_HTTP")
-        .ok()
-        .filter(|v| !v.trim().is_empty());
-    let mut config_file = std::env::var_os("POLARION_MCP_CONFIG")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from);
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--http" => match args.next() {
-                Some(addr) => http_addr = Some(addr),
-                None => return usage_error("--http needs an address, e.g. 127.0.0.1:8787"),
-            },
-            "--config" => match args.next() {
-                Some(file) => config_file = Some(file.into()),
-                None => return usage_error("--config needs a file"),
-            },
-            "-h" | "--help" => {
-                print!("{USAGE}");
-                return ExitCode::SUCCESS;
-            }
-            "-V" | "--version" => {
-                println!("polarion-mcp {}", env!("CARGO_PKG_VERSION"));
-                return ExitCode::SUCCESS;
-            }
-            other => {
-                if let Some(addr) = other.strip_prefix("--http=") {
-                    http_addr = Some(addr.to_owned());
-                } else if let Some(file) = other.strip_prefix("--config=") {
-                    config_file = Some(file.into());
-                } else {
-                    return usage_error(&format!("unknown argument `{other}`"));
-                }
-            }
-        }
-    }
-
-    let config = Config::from_env();
+/// Run the server until its client disconnects (stdio) or the process is told to stop (HTTP).
+///
+/// `config` is the connection as the command line resolved it. `http` is `--http ADDR` and
+/// `config_file` is `--config FILE`; without them `POLARION_MCP_HTTP` and `POLARION_MCP_CONFIG`
+/// apply. Everything else comes from the environment (see [`HELP`]). Must not be called inside
+/// a tokio runtime: it builds its own. Diagnostics go to standard error; in stdio mode standard
+/// output carries the protocol only.
+///
+/// The exit code is 0 after a clean end and 1 when the configuration is refused or serving
+/// fails.
+pub fn run(config: Config, http: Option<String>, config_file: Option<PathBuf>) -> ExitCode {
+    let http_addr = http.or_else(|| {
+        std::env::var("POLARION_MCP_HTTP")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+    });
+    let config_file = config_file.or_else(|| {
+        std::env::var_os("POLARION_MCP_CONFIG")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    });
     // A write allowlist that does not parse is not served at all.
     if let Err(e) = config.resolve_write_targets() {
-        eprintln!("polarion-mcp: {e}");
+        eprintln!("polarion mcp: {e}");
         return ExitCode::FAILURE;
     }
     let tools = std::env::var("POLARION_MCP_TOOLS")
@@ -141,14 +122,14 @@ fn main() -> ExitCode {
     ) {
         Ok(selection) => selection,
         Err(message) => {
-            eprintln!("polarion-mcp: {message}");
+            eprintln!("polarion mcp: {message}");
             return ExitCode::FAILURE;
         }
     };
     let exchange = match files::Exchange::from_env() {
         Ok(exchange) => exchange,
         Err(message) => {
-            eprintln!("polarion-mcp: {message}");
+            eprintln!("polarion mcp: {message}");
             return ExitCode::FAILURE;
         }
     };
@@ -161,7 +142,7 @@ fn main() -> ExitCode {
         )) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
-                eprintln!("polarion-mcp: {message}");
+                eprintln!("polarion mcp: {message}");
                 ExitCode::FAILURE
             }
         };
@@ -169,7 +150,7 @@ fn main() -> ExitCode {
     let settings = match http::Settings::from_env() {
         Ok(settings) => settings,
         Err(message) => {
-            eprintln!("polarion-mcp: {message}");
+            eprintln!("polarion mcp: {message}");
             return ExitCode::FAILURE;
         }
     };
@@ -181,13 +162,8 @@ fn main() -> ExitCode {
     match runtime.block_on(http::run(&addr, server, settings)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("polarion-mcp: cannot serve on {addr}: {e}");
+            eprintln!("polarion mcp: cannot serve on {addr}: {e}");
             ExitCode::FAILURE
         }
     }
-}
-
-fn usage_error(message: &str) -> ExitCode {
-    eprintln!("polarion-mcp: {message}\n\n{USAGE}");
-    ExitCode::from(2)
 }

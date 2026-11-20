@@ -150,7 +150,7 @@ impl Settings {
 pub async fn run(addr: &str, server: PolarionMcp, settings: Settings) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     eprintln!(
-        "polarion-mcp listening on http://{}{PATH} ({}; {})",
+        "polarion mcp: listening on http://{}{PATH} ({}; {})",
         listener.local_addr()?,
         server.access(),
         settings.describe()
@@ -171,7 +171,7 @@ pub async fn run(addr: &str, server: PolarionMcp, settings: Settings) -> std::io
             cancel.cancel();
         })
         .await?;
-    eprintln!("polarion-mcp: shutting down");
+    eprintln!("polarion mcp: shutting down");
     server.shutdown().await;
     Ok(())
 }

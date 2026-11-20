@@ -1,6 +1,6 @@
 //! The live suite against a real server: the tiers `read`, `write` and `permanent`, one
 //! `#[ignore]` test each, their steps in a fixed order (the front-end tier is in `polarion-cli`
-//! and `polarion-mcp`). See docs/testing.md and `live_support.rs` for the gates.
+//! and `polarion mcp`). See docs/testing.md and `live_support.rs` for the gates.
 //!
 //! ```sh
 //! cargo test -p polarion --all-features --test live read -- --ignored --nocapture

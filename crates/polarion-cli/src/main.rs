@@ -1,5 +1,5 @@
 //! `polarion`: command-line access to Siemens Polarion ALM, generated from the
-//! `polarion-commands` catalog.
+//! `polarion-commands` catalog, and its MCP server (`polarion mcp`, crate `polarion-mcp`).
 
 mod cli;
 mod render;
@@ -11,7 +11,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clap::Parser as _;
 use polarion_commands::{
-    AnyCommand, CommandError, Context, Entry, LocalFiles, View, catalog, find,
+    AnyCommand, CommandError, Config, Context, Entry, LocalFiles, View, catalog, find,
 };
 use serde_json::{Value, json};
 
@@ -23,8 +23,10 @@ struct Globals {
     out: Option<String>,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
+// Not `#[tokio::main]`: the server builds a runtime of its own (multi-threaded), which it could
+// not do inside this one. The command line is parsed first; `@FILE` arguments are read with
+// `std::fs`.
+fn main() -> ExitCode {
     let opts = Opts::parse();
     let config = opts.global.config();
     let globals = Globals {
@@ -33,8 +35,24 @@ async fn main() -> ExitCode {
     };
     let command = match opts.command {
         Top::Commands { area } => return list(&globals, area.as_deref()),
+        Top::Mcp(args) => {
+            // The server's results go to its client; an option silently ignored would mislead.
+            if globals.json || globals.out.is_some() {
+                eprintln!("error: --json and --out do not apply to `polarion mcp`");
+                return ExitCode::from(2);
+            }
+            return polarion_mcp::run(config, args.http, args.config);
+        }
         Top::Run(cli) => AnyCommand::from(cli),
     };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime")
+        .block_on(run(&globals, &config, command))
+}
+
+async fn run(globals: &Globals, config: &Config, command: AnyCommand) -> ExitCode {
     let entry = find(command.name()).expect("commands come from the catalog");
     let args = serde_json::to_value(&command).expect("commands serialize")["args"].take();
     let result = match config.connect() {
@@ -52,9 +70,9 @@ async fn main() -> ExitCode {
     match result {
         Ok(output) => {
             let value = serde_json::to_value(&output).expect("results serialize");
-            print(&globals, entry, &args, &value)
+            print(globals, entry, &args, &value)
         }
-        Err(e) => fail(&globals, &e),
+        Err(e) => fail(globals, &e),
     }
 }
 

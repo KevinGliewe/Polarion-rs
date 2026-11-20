@@ -8,7 +8,7 @@ server for AI agents, and the libraries behind them.
 | I want to ... | Go to |
 |---|---|
 | query and edit Polarion from a terminal or script | [polarion (command line)](#polarion-command-line) |
-| let an AI agent (Claude, Copilot, Codex) work with Polarion | [polarion-mcp (MCP server)](#polarion-mcp-mcp-server), setup guide in [examples/mcp](examples/mcp/README.md) |
+| let an AI agent (Claude, Copilot, Codex) work with Polarion | [polarion mcp (MCP server)](#polarion-mcp-mcp-server), setup guide in [examples/mcp](examples/mcp/README.md) |
 | call Polarion from Rust | [polarion (library)](#polarion) |
 | convert Markdown ↔ Polarion rich text | [polarion-markdown](#polarion-markdown) |
 | understand or change the code | [docs/](docs/README.md) (architecture, with diagrams) |
@@ -29,7 +29,7 @@ server for AI agents, and the libraries behind them.
     - [Arguments](#arguments)
     - [Markdown descriptions](#markdown-descriptions)
     - [Output and exit codes](#output-and-exit-codes)
-  - [polarion-mcp (MCP server)](#polarion-mcp-mcp-server)
+  - [polarion mcp (MCP server)](#polarion-mcp-mcp-server)
     - [Install](#install-1)
     - [Connect a client](#connect-a-client)
     - [Tools](#tools)
@@ -52,8 +52,8 @@ server for AI agents, and the libraries behind them.
 
 | Crate | Status | Purpose |
 |---|---|---|
-| [`polarion-cli`](crates/polarion-cli) | usable (writes mock-tested only) | `polarion` command-line tool covering the whole library, with JSON output for automation |
-| [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | MCP server (stdio or Streamable HTTP) so AI agents can work with Polarion |
+| [`polarion-cli`](crates/polarion-cli) | usable (writes mock-tested only) | The one binary, `polarion`: a command-line tool covering the whole library, with JSON output for automation, and the MCP server as `polarion mcp` |
+| [`polarion-mcp`](crates/polarion-mcp) | usable (writes mock-tested only) | The MCP server (stdio or Streamable HTTP) so AI agents can work with Polarion; a library that `polarion mcp` runs, without a binary of its own |
 | [`polarion`](crates/polarion) | usable (writes mock-tested only) | Convenient, JSON-serializable API over the whole SOAP API, by area, on top of `polarion-soap` |
 | [`polarion-markdown`](crates/polarion-markdown) | usable (Polarion's handling of the HTML not yet verified) | Markdown ↔ Polarion rich text (HTML) in both directions, mermaid diagrams rendered to SVG; no I/O |
 | [`polarion-commands`](crates/polarion-commands) | usable | Every library method as a typed command DTO (serde, JSON Schema, clap); shared by the CLI and the MCP server |
@@ -72,14 +72,49 @@ cargo install polarion-cli                  # from crates.io
 cargo install --path crates/polarion-cli    # or from a checkout
 ```
 
-Or download a ready-built binary: every [GitHub release](https://github.com/KevinGliewe/Polarion-rs/releases) has
-`polarion` and `polarion-mcp` for
+Or download the ready-built binary. Every [GitHub release](https://github.com/KevinGliewe/Polarion-rs/releases)
+has one file per platform, the executable itself (nothing to unpack), and the same address always gives the newest
+release:
 
-- Linux: x86-64 and ARM64, glibc and static musl
-- macOS: Intel and Apple silicon
-- Windows: x86-64 and ARM64
+```sh
+# Linux (x86_64 or aarch64); the musl build is static and runs on every distribution
+sudo curl -fL https://github.com/KevinGliewe/Polarion-rs/releases/latest/download/polarion-rs-$(uname -m)-unknown-linux-musl \
+  -o /usr/local/bin/polarion && sudo chmod +x /usr/local/bin/polarion
 
-Each archive comes with a SHA-256 checksum.
+# macOS, Apple silicon (Intel: x86_64-apple-darwin)
+sudo curl -fL https://github.com/KevinGliewe/Polarion-rs/releases/latest/download/polarion-rs-aarch64-apple-darwin \
+  -o /usr/local/bin/polarion && sudo chmod +x /usr/local/bin/polarion
+```
+
+```powershell
+# Windows (ARM64: aarch64-pc-windows-msvc); put the folder on PATH
+curl.exe -fL https://github.com/KevinGliewe/Polarion-rs/releases/latest/download/polarion-rs-x86_64-pc-windows-msvc.exe -o polarion.exe
+```
+
+| Platform | Files (`polarion-rs-<target>`) |
+|---|---|
+| Linux | `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` (static), `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu` (glibc) |
+| macOS | `aarch64-apple-darwin` (Apple silicon), `x86_64-apple-darwin` (Intel) |
+| Windows | `x86_64-pc-windows-msvc.exe`, `aarch64-pc-windows-msvc.exe` |
+
+- `-f` makes `curl` fail on a wrong name instead of saving the error page as the binary.
+- Each file has a SHA-256 checksum next to it (`<file>.sha256`): download both and run `sha256sum -c <file>.sha256`.
+- A specific version: `.../releases/download/v0.4.0/<file>` instead of `.../releases/latest/download/<file>`.
+- The binaries are not signed. A browser download on macOS is quarantined (`xattr -d com.apple.quarantine polarion`
+  removes that; `curl` does not set it), and Windows may ask before the first start.
+- The licenses are [MIT](LICENSE-MIT) and [Apache-2.0](LICENSE-APACHE).
+
+**Upgrading from 0.3:** there is one binary now. The MCP server is `polarion mcp`; the executable `polarion-mcp`
+and the release archives are gone.
+
+- In MCP client configurations, replace the command `polarion-mcp` with `polarion` and the argument `mcp`
+  (`"command": "polarion", "args": ["mcp"]`); `--http` and `--config` follow `mcp`. The environment variables are
+  unchanged.
+- Remove an old `polarion-mcp` from your `PATH` (`cargo uninstall polarion-mcp`), or clients keep starting it.
+  `cargo install polarion-mcp` no longer installs a program: use `cargo install polarion-cli`.
+- The Docker images keep their names and arguments.
+- `POLARION_INSECURE` and `POLARION_ALLOW_GLOBAL_WRITES` are now read the same way by every command: `1`, `true`,
+  `yes`, `on` (in any case) switch them on, an empty value is off, and anything unclear is an error instead of "off".
 
 ### Configure
 
@@ -218,25 +253,23 @@ Details: [docs/markdown.md](docs/markdown.md).
 - **Limits:** queries return at most 100 results unless `--limit N` or `--all`. A note on stderr says when results
   were cut off.
 
-## polarion-mcp (MCP server)
+## polarion mcp (MCP server)
 
-An [MCP](https://modelcontextprotocol.io) server that lets AI agents work with Polarion.
+`polarion mcp` is an [MCP](https://modelcontextprotocol.io) server that lets AI agents work with Polarion. It is
+part of the `polarion` binary.
 
 - **Step-by-step setup** on Windows, from read-only to full write access, with configurations for Claude Code,
   Claude Desktop, VS Code and Codex: [examples/mcp](examples/mcp/README.md).
 - **Transports:** stdio (default) or Streamable HTTP (`--http`, see [below](#shared-server-over-http)).
 - **Built on** the official Rust SDK ([`rmcp`](https://github.com/modelcontextprotocol/rust-sdk)), which negotiates
   the protocol version (up to `2026-07-28`).
-- **Configured** by the same environment variables as the [CLI](#configure).
+- **Configured** by the same environment variables as the other [commands](#configure), or by the same global
+  options (`polarion --url ... mcp`); `--json` and `--out` do not apply to it.
 
 ### Install
 
-```sh
-cargo install polarion-mcp                  # from crates.io
-cargo install --path crates/polarion-mcp    # or from a checkout
-```
-
-The [release archives](#install) contain it too.
+It comes with `polarion`: see [Install](#install). `polarion mcp --help` describes the options, the config file and
+the environment variables.
 
 ### Connect a client
 
@@ -244,7 +277,7 @@ Claude Code:
 
 ```sh
 claude mcp add polarion -e POLARION_URL=https://polarion.example.com/polarion \
-  -e POLARION_TOKEN=<token> -e POLARION_PROJECT=MyProject -- polarion-mcp
+  -e POLARION_TOKEN=<token> -e POLARION_PROJECT=MyProject -- polarion mcp
 ```
 
 Claude Desktop and other clients (`claude_desktop_config.json`, `.mcp.json`):
@@ -253,7 +286,8 @@ Claude Desktop and other clients (`claude_desktop_config.json`, `.mcp.json`):
 {
   "mcpServers": {
     "polarion": {
-      "command": "polarion-mcp",
+      "command": "polarion",
+      "args": ["mcp"],
       "env": {
         "POLARION_URL": "https://polarion.example.com/polarion",
         "POLARION_TOKEN": "<token>",
@@ -411,7 +445,7 @@ wiki pages and plans have no attachment operations at all.
 
 ### Shared server over HTTP
 
-`polarion-mcp --http ADDR` (or `POLARION_MCP_HTTP=ADDR`) serves MCP's Streamable HTTP transport at
+`polarion mcp --http ADDR` (or `POLARION_MCP_HTTP=ADDR`) serves MCP's Streamable HTTP transport at
 `http://ADDR/mcp`, for any number of clients, all using the server's Polarion account.
 
 Start the server:
@@ -419,7 +453,7 @@ Start the server:
 ```sh
 export POLARION_URL=https://polarion.example.com/polarion POLARION_TOKEN=<service account token>
 export POLARION_MCP_AUTH_TOKEN=$(openssl rand -hex 32)   # clients send it as a bearer token
-polarion-mcp --http 127.0.0.1:8787
+polarion mcp --http 127.0.0.1:8787
 ```
 
 Connect Claude Code:
@@ -485,11 +519,12 @@ Or another client:
 
 ### Docker
 
-The [`Dockerfile`](Dockerfile) builds two images, both on Debian slim, run as a non-root user:
+The [`Dockerfile`](Dockerfile) builds two images, both on Debian slim with the one binary `polarion`, run as a
+non-root user:
 
 | Image | Target | Runs |
 |---|---|---|
-| `polarion-mcp` | `mcp` (the default) | the [HTTP server](#shared-server-over-http) on port 8787 |
+| `polarion-mcp` | `mcp` (the default) | `polarion mcp` with the container's arguments: the [HTTP server](#shared-server-over-http) on port 8787 |
 | `polarion-cli` | `cli` | `polarion` with the container's arguments (`--help` without any) |
 
 Its stages:
@@ -523,7 +558,7 @@ docker run --rm -v "$PWD:/work" --user "$(id -u):$(id -g)" -e POLARION_URL -e PO
 | `polarion-mcp` | `full-access` (default) | the tools of [`full-access.toml`](examples/mcp/config/full-access.toml), `POLARION_ALLOW_GLOBAL_WRITES=1` |
 | | `every-tool` | every command as a tool ([`every-tool.toml`](examples/mcp/config/every-tool.toml)), `POLARION_ALLOW_GLOBAL_WRITES=1` |
 | | `no-deletes` | no deletes, no user accounts ([`no-deletes.toml`](examples/mcp/config/no-deletes.toml)); no global writes |
-| | `read-only` | [`read-only.toml`](examples/mcp/config/read-only.toml); the write scope is removed |
+| | `read-only` | [`read-only.toml`](examples/mcp/config/read-only.toml); the write scope is removed, and write options given as arguments are refused |
 | `polarion-cli` | none (default) | the environment as given (read-only without a write scope) |
 | | `full-access` | `POLARION_ALLOW_GLOBAL_WRITES=1` |
 | | `read-only` | the write scope is removed from the environment (write flags given as arguments still apply) |

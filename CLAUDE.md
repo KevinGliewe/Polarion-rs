@@ -3,8 +3,9 @@
 Rust workspace: `crates/polarion-soap` (generated SOAP client),
 `crates/polarion` (hand-written library on top of `polarion-soap`), `crates/polarion-markdown` (pure Markdown ↔
 Polarion rich text conversion, mermaid diagrams as SVG), `crates/polarion-commands` (every library method
-as a typed command DTO; macros in `crates/polarion-commands-derive`), `crates/polarion-cli` (`polarion` binary) and `crates/polarion-mcp` (`polarion-mcp` MCP server),
-both built from the command catalog, `xtask` (code generators).
+as a typed command DTO; macros in `crates/polarion-commands-derive`), `crates/polarion-cli` (the one binary,
+`polarion`) and `crates/polarion-mcp` (the MCP server, a library that `polarion mcp` runs), both built from the
+command catalog, `xtask` (code generators).
 The repository is English only: code, comments, docs and commit messages.
 
 - Never edit `crates/polarion-soap/src/generated/*` or `crates/polarion-soap/tests/spec_examples.rs` by hand. Change
@@ -57,7 +58,10 @@ The repository is English only: code, comments, docs and commit messages.
   public library method has no command: **a new library method needs a command**. Write commands set `write` and
   rely on the library's guard.
 - `polarion-cli` and `polarion-mcp` contain no Polarion logic: the clap tree (`cli.rs`) and the MCP tools
-  (`server.rs`) are generated from the catalog. CLI text output in `render.rs` (table columns come from the
+  (`server.rs`) are generated from the catalog. `polarion mcp` is the hand-written `Top::Mcp` in `cli.rs`; the
+  non-async `main` hands it to `polarion_mcp::run` (`lib.rs`; `run` and `HELP` are the crate's whole public API),
+  which builds its own runtime, so it must stay outside the CLI's. The server writes nothing but the protocol to
+  standard output. CLI text output in `render.rs` (table columns come from the
   command's `View`); JSON output is the library's serde form, don't reshape it. The MCP server is an
   `rmcp` `ServerHandler` (`server.rs`) whose tools are built at runtime from the catalog (no `#[tool]` macros),
   served over stdio (`stdio.rs`) or rmcp's Streamable HTTP service behind a token check (`http.rs`: bearer header or
@@ -75,8 +79,8 @@ The repository is English only: code, comments, docs and commit messages.
   in this process (`admit()` in `server.rs`, before anything is sent, on top of the library's write guard). Byte results
   are shown as image/text blocks or saved to the opt-in exchange folder (`files.rs`, `POLARION_MCP_FILES`:
   `save_as`, `<param>-file`, plain file names only). Over HTTP all clients share one Polarion
-  session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`tests/cli.rs`,
-  `tests/mcp.rs`) spawn the binaries against wiremock.
+  session, so commands that need a session of their own (transactions, `SESSION_BOUND`) are refused there. End-to-end tests (`polarion-cli/tests/cli.rs`,
+  and for the server `polarion-cli/tests/mcp.rs`, `mcp_http.rs`) spawn the binary against wiremock.
 - `polarion-markdown`: both directions stay inverse. A change in `emit/` (Markdown → HTML) needs the matching rule in
   `reverse/` (HTML → Markdown) and updated fixtures and golden files (`UPDATE_GOLDEN=1`); `docs/markdown.md` is the spec.
   Hand-built comrak trees must pass `validate()`: never an empty `Code` (the writer panics), missing escapes go in as
@@ -84,8 +88,10 @@ The repository is English only: code, comments, docs and commit messages.
   `mermaid::PROFILE` (it is part of every diagram's hash and attachment name).
 - Architecture docs are in `docs/` (Markdown with Mermaid diagrams; README.md covers usage). The diagrams name real
   functions, types and files: when you change a mechanism a page shows, update the page in the same change.
-- Releases: a semver tag runs `.github/workflows/release.yml` (`docs/releasing.md`): the GitHub release (an existing
-  one is only added to), `polarion` and `polarion-mcp` for every target, then `cargo publish` per crate. A new
+- Releases: a semver tag runs `.github/workflows/release.yml` (`docs/releasing.md`): the GitHub release as a draft (an existing
+  one is only added to), `polarion` for every target as a bare file `polarion-rs-<target>` (no version in the name:
+  `releases/latest/download/` must keep working), `finalize` publishing the complete draft, then `cargo publish`
+  per crate. A new
   published crate must be added to the publish loop there (dependencies first); its version is the workspace's.
   `.github/workflows/docker.yml` pushes the images `polarion-cli` and `polarion-mcp` (`Dockerfile` targets `cli`,
   `mcp`; scenario profiles in `docker/profiles/<image>/`, selected by `POLARION_PROFILE`, applied by

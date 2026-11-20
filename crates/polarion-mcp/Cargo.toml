@@ -1,8 +1,8 @@
 [package]
 name = "polarion-mcp"
-description = "MCP server (stdio or Streamable HTTP) giving AI agents access to Siemens Polarion ALM (read-only unless writes are enabled)"
+description = "The MCP server behind `polarion mcp` (crate polarion-cli): Siemens Polarion ALM for AI agents over stdio or Streamable HTTP. A library; install polarion-cli"
 keywords = ["polarion", "alm", "mcp", "ai", "agent"]
-categories = ["command-line-utilities"]
+categories = ["development-tools"]
 readme = "../../README.md"
 version.workspace = true
 edition.workspace = true
@@ -10,10 +10,6 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-
-[[bin]]
-name = "polarion-mcp"
-path = "src/main.rs"
 
 [dependencies]
 axum.workspace = true
@@ -27,11 +23,6 @@ tokio = { workspace = true, features = ["net", "signal"] }
 tokio-util.workspace = true
 tower-layer.workspace = true
 toml.workspace = true
-
-[dev-dependencies]
-jsonschema = { version = "0.58", default-features = false }
-reqwest.workspace = true
-wiremock.workspace = true
 
 [lints]
 workspace = true

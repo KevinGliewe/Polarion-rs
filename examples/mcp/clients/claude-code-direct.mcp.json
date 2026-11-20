@@ -2,8 +2,8 @@
   "mcpServers": {
     "polarion": {
       "type": "stdio",
-      "command": "polarion-mcp",
-      "args": ["--config", "C:/Polarion-rs/examples/mcp/config/full-access.toml"],
+      "command": "polarion",
+      "args": ["mcp", "--config", "C:/Polarion-rs/examples/mcp/config/full-access.toml"],
       "env": {
         "POLARION_URL": "${POLARION_URL}",
         "POLARION_TOKEN": "${POLARION_TOKEN}",

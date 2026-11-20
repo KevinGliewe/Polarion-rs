@@ -14,8 +14,8 @@ body:
       label: Component
       options:
         - polarion (command line)
-        - polarion-mcp over stdio
-        - polarion-mcp over HTTP
+        - polarion mcp (MCP server) over stdio
+        - polarion mcp (MCP server) over HTTP
         - Library crates (polarion, polarion-commands, polarion-soap)
         - Markdown conversion (polarion-markdown)
         - Docker images
@@ -26,7 +26,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `polarion --version` or `polarion-mcp --version`, the crate version, or the image tag.
+      description: Output of `polarion --version`, the crate version, or the image tag.
       placeholder: 0.3.0
     validations:
       required: true

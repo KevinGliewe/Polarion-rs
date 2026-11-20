@@ -1,6 +1,6 @@
 //! Shared code of the live suite against a real server: the tiers of `tests/live.rs`, the
 //! bootstrap `examples/live_fixtures.rs` and the front-end tiers of `polarion-cli` and
-//! `polarion-mcp`, which include this file with `#[path]` (it is no test of its own).
+//! `polarion mcp`, which include this file with `#[path]` (it is no test of its own).
 //!
 //! The suite writes only to four fixtures that the bootstrap creates once: work items A
 //! (`userstory`) and B (`testcase`), test run R and document D. Before anything is written,

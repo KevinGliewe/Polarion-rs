@@ -1,15 +1,17 @@
 # Releasing
 
-`.github/workflows/release.yml` turns a semver tag into a GitHub release with binaries and a crates.io release.
+`.github/workflows/release.yml` turns a semver tag into a GitHub release with one binary per platform and a
+crates.io release.
 
 ```mermaid
 flowchart LR
-    tag["git push origin v1.2.3"] --> prepare["prepare<br/>tag is semver,<br/>= every crate's version;<br/>release created unless it exists"]
-    prepare --> build["build (one job per target)<br/>cargo build --profile dist<br/>polarion, polarion-mcp<br/>--version smoke test"]
-    build --> upload["gh release upload --clobber<br/>archive + .sha256"]
+    tag["git push origin v1.2.3"] --> prepare["prepare<br/>tag is semver,<br/>= every crate's version;<br/>draft release created<br/>unless one exists"]
+    prepare --> build["build (one job per target)<br/>cargo build --profile dist -p polarion-cli<br/>smoke test: --version, mcp --version"]
+    build --> upload["gh release upload --clobber<br/>polarion-rs-TARGET + .sha256"]
     tag --> test["test<br/>the jobs of ci.yml<br/>for the tagged commit"]
-    build --> publish["publish (environment crates-io)<br/>cargo publish per crate,<br/>dependencies first,<br/>versions on crates.io skipped"]
-    test --> publish
+    upload --> finalize["finalize<br/>all 16 files attached;<br/>draft published,<br/>latest unless older or pre-release"]
+    test --> finalize
+    finalize --> publish["publish (environment crates-io)<br/>cargo publish per crate,<br/>dependencies first,<br/>versions on crates.io skipped"]
 ```
 
 ## Cutting a release
@@ -26,28 +28,35 @@ is created.
 
 | Job | Does | On a re-run |
 |---|---|---|
-| `prepare` | checks the tag; `gh release create --generate-notes` | an existing release is left as it is (title, notes, assets) |
-| `build` | builds both binaries for the target, runs `--version`, packs them with README and licenses, uploads the archive and its SHA-256 | the target's archive is replaced (`--clobber`); other assets stay |
+| `prepare` | checks the tag; `gh release create --generate-notes --draft` | an existing release, draft or published, is left as it is (title, notes, assets) |
+| `build` | builds `polarion` for the target, runs `--version` and `mcp --version`, uploads the executable as `polarion-rs-<target>` (`.exe` on Windows) with its SHA-256 | the target's files are replaced (`--clobber`); other assets stay |
 | `test` | the jobs of `.github/workflows/ci.yml` (checks, minimum Rust version, tests on Linux, Windows and macOS) | runs again |
+| `finalize` | checks that all 16 files are attached, then publishes the draft; it becomes the latest release unless it is a pre-release or older than the latest | a release that is published already is left as it is |
 | `publish` | `cargo publish --locked` for each crate in dependency order | crates whose version is on crates.io already are skipped |
 
-`publish` runs only when every build and `test` succeeded, so crates.io, where a version cannot be replaced, never
-gets one whose binaries failed to build or whose tests fail. The GitHub release and its archives do not wait for
-`test`: when it fails, delete the release and the tag, fix, and tag again.
+- **Nothing is public before it is complete.** The release stays a draft until every build and `test` succeeded;
+  crates.io, where a version cannot be replaced, comes after that. When a job fails, fix the cause and re-run the
+  failed jobs (or delete the draft and the tag, and tag again).
+- **Release notes:** to write your own, create the draft for the tag by hand before pushing the tag; the workflow
+  only adds to it and publishes it.
+- **File names carry no version**, so `https://github.com/KevinGliewe/Polarion-rs/releases/latest/download/polarion-rs-<target>`
+  is always the newest release (GitHub's "latest": never a pre-release). A draft is not "latest", so that address
+  keeps serving the release before until `finalize` ran.
+- **No archives:** the executable is the download. README and licenses are in the repository.
 
 Targets, each on a native runner (the TLS library `aws-lc-sys` builds C code, so nothing is cross-compiled except
 Intel macOS on Apple silicon):
 
-| Target | Runner | Archive |
+| Target | Runner | File |
 |---|---|---|
-| `x86_64-unknown-linux-gnu` | `ubuntu-22.04` (glibc 2.35) | `.tar.gz` |
-| `x86_64-unknown-linux-musl` | `ubuntu-22.04`, `musl-gcc` (static) | `.tar.gz` |
-| `aarch64-unknown-linux-gnu` | `ubuntu-22.04-arm` | `.tar.gz` |
-| `aarch64-unknown-linux-musl` | `ubuntu-22.04-arm`, `musl-gcc` (static) | `.tar.gz` |
-| `x86_64-apple-darwin` | `macos-latest` | `.tar.gz` |
-| `aarch64-apple-darwin` | `macos-latest` | `.tar.gz` |
-| `x86_64-pc-windows-msvc` | `windows-latest` | `.zip` |
-| `aarch64-pc-windows-msvc` | `windows-11-arm` | `.zip` |
+| `x86_64-unknown-linux-gnu` | `ubuntu-22.04` (glibc 2.35) | `polarion-rs-x86_64-unknown-linux-gnu` |
+| `x86_64-unknown-linux-musl` | `ubuntu-22.04`, `musl-gcc` (static) | `polarion-rs-x86_64-unknown-linux-musl` |
+| `aarch64-unknown-linux-gnu` | `ubuntu-22.04-arm` | `polarion-rs-aarch64-unknown-linux-gnu` |
+| `aarch64-unknown-linux-musl` | `ubuntu-22.04-arm`, `musl-gcc` (static) | `polarion-rs-aarch64-unknown-linux-musl` |
+| `x86_64-apple-darwin` | `macos-latest` | `polarion-rs-x86_64-apple-darwin` |
+| `aarch64-apple-darwin` | `macos-latest` | `polarion-rs-aarch64-apple-darwin` |
+| `x86_64-pc-windows-msvc` | `windows-latest` | `polarion-rs-x86_64-pc-windows-msvc.exe` |
+| `aarch64-pc-windows-msvc` | `windows-11-arm` | `polarion-rs-aarch64-pc-windows-msvc.exe` |
 
 The `dist` profile (root `Cargo.toml`) is `release` with thin LTO and stripped symbols.
 
@@ -60,7 +69,7 @@ The `dist` profile (root `Cargo.toml`) is `release` with thin LTO and stripped s
 
 ## Trying it without a release
 
-Actions > Release > Run workflow builds every target, runs the checks and keeps the archives as workflow artifacts;
+Actions > Release > Run workflow builds every target, runs the checks and keeps the binaries as workflow artifacts;
 it creates no release and publishes nothing.
 
 ## Actions

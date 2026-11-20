@@ -1,8 +1,8 @@
-//! The front-end tier of the live suite for the `polarion-mcp` server over stdio, against a real
+//! The front-end tier of the live suite for the MCP server (`polarion mcp`) over stdio, against a real
 //! server (see docs/testing.md and `crates/polarion/tests/live.rs`).
 //!
 //! ```sh
-//! cargo test -p polarion-mcp --test live -- --ignored --nocapture
+//! cargo test -p polarion-cli --test mcp_live -- --ignored --nocapture
 //! ```
 //!
 //! The environment of the write tier (`POLARION_URL`, `POLARION_TOKEN`, `POLARION_PROJECT`,
@@ -43,10 +43,11 @@ async fn session(g: &Gate, requests: &[Value]) -> Result<Vec<Value>, String> {
 /// as a write may come too late for it). Requests are numbered from 1 across the phases.
 async fn session_phases(g: &Gate, phases: &[&[Value]]) -> Result<Vec<Value>, String> {
     let mut cmd = front_end(
-        env!("CARGO_BIN_EXE_polarion-mcp"),
+        env!("CARGO_BIN_EXE_polarion"),
         &g.settings,
         &g.fixtures.a.uri,
     );
+    cmd.arg("mcp");
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
@@ -79,7 +80,7 @@ async fn session_phases(g: &Gate, phases: &[&[Value]]) -> Result<Vec<Value>, Str
     let (status, lines) = tokio::task::spawn_blocking(move || -> Result<_, String> {
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("cannot run polarion-mcp: {e}"))?;
+            .map_err(|e| format!("cannot run polarion mcp: {e}"))?;
         let mut stdin = child.stdin.take().expect("stdin is piped");
         let stdout = BufReader::new(child.stdout.take().expect("stdout is piped"));
         let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -96,7 +97,7 @@ async fn session_phases(g: &Gate, phases: &[&[Value]]) -> Result<Vec<Value>, Str
                 .write_all(input.as_bytes())
                 .and_then(|()| stdin.flush())
             {
-                failed = Some(format!("cannot write to polarion-mcp: {e}"));
+                failed = Some(format!("cannot write to polarion mcp: {e}"));
                 break;
             }
             if i == last {
@@ -132,7 +133,7 @@ async fn session_phases(g: &Gate, phases: &[&[Value]]) -> Result<Vec<Value>, Str
     .await
     .map_err(|e| e.to_string())??;
     if !status.success() {
-        return Err(format!("polarion-mcp exited with {:?}", status.code()));
+        return Err(format!("polarion mcp exited with {:?}", status.code()));
     }
     let mut responses = Vec::new();
     for line in &lines {

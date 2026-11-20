@@ -12,7 +12,7 @@ body:
       label: Component
       options:
         - polarion (command line)
-        - polarion-mcp (MCP server)
+        - polarion mcp (MCP server)
         - Library crates (polarion, polarion-commands, polarion-soap)
         - Markdown conversion (polarion-markdown)
         - Docker images
